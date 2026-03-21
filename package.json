@@ -53,6 +53,9 @@
       "assets/tray-icon*.png",
       "hooks/**/*"
     ],
+    "asarUnpack": [
+      "hooks/**/*"
+    ],
     "extraResources": [
       {
         "from": "assets/icon.ico",
