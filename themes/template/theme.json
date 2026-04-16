@@ -1,5 +1,6 @@
 {
   "_comment": "Clawd Theme Template — copy this folder to {userData}/themes/your-theme-id/ and customize",
+  "_scaffoldOnly": true,
 
   "schemaVersion": 1,
   "name": "My Theme",
@@ -56,7 +57,7 @@
     "waking":       ["waking.gif"]
   },
 
-  "_comment_optional_states": "Optional extras. PR2 allows visual fallbackTo only on error / attention / notification / sweeping / carrying / sleeping. Omit other optional states only if you are okay with them visually degrading to idle.",
+  "_comment_optional_states": "Optional extras. fallbackTo is only allowed on error / attention / notification / sweeping / carrying / sleeping. Omit other optional states only if you are okay with them visually degrading to idle.",
 
   "sleepSequence": {
     "_comment": "full = yawning/dozing/collapsing/waking all need real files. direct = go straight to sleeping after mouseSleepTimeout; waking becomes optional.",

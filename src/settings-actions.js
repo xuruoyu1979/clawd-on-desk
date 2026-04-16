@@ -122,15 +122,18 @@ function cloneStateOverrides(themeMap) {
   return out;
 }
 
-function cloneTierOverrides(themeMap, tierGroup) {
+function cloneFileKeyedMap(map) {
   const out = {};
-  if (!isPlainObject(themeMap) || !isPlainObject(themeMap.tiers)) return out;
-  const group = themeMap.tiers[tierGroup];
-  if (!isPlainObject(group)) return out;
-  for (const [originalFile, entry] of Object.entries(group)) {
+  if (!isPlainObject(map)) return out;
+  for (const [originalFile, entry] of Object.entries(map)) {
     if (isPlainObject(entry)) out[originalFile] = { ...entry };
   }
   return out;
+}
+
+function cloneTierOverrides(themeMap, tierGroup) {
+  if (!isPlainObject(themeMap) || !isPlainObject(themeMap.tiers)) return {};
+  return cloneFileKeyedMap(themeMap.tiers[tierGroup]);
 }
 
 function cloneAutoReturnOverrides(themeMap) {
@@ -145,12 +148,8 @@ function cloneAutoReturnOverrides(themeMap) {
 }
 
 function cloneIdleAnimationOverrides(themeMap) {
-  const out = {};
-  if (!isPlainObject(themeMap) || !isPlainObject(themeMap.idleAnimations)) return out;
-  for (const [originalFile, entry] of Object.entries(themeMap.idleAnimations)) {
-    if (isPlainObject(entry)) out[originalFile] = { ...entry };
-  }
-  return out;
+  if (!isPlainObject(themeMap)) return {};
+  return cloneFileKeyedMap(themeMap.idleAnimations);
 }
 
 function buildThemeOverrideMap({ states, workingTiers, jugglingTiers, autoReturn, idleAnimations }) {

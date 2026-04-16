@@ -5,6 +5,7 @@ let screen, nativeImage;
 try { ({ screen, nativeImage } = require("electron")); } catch { screen = null; nativeImage = null; }
 const path = require("path");
 const fs = require("fs");
+const { VISUAL_FALLBACK_STATES } = require("./theme-loader");
 
 // ── Agent icons (official logos from assets/icons/agents/) ──
 const AGENT_ICON_DIR = path.join(__dirname, "..", "assets", "icons", "agents");
@@ -39,7 +40,6 @@ let DND_SKIP_YAWN = false;
 let COLLAPSE_DURATION = 0;
 let SLEEP_MODE = "full";
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
-const VISUAL_FALLBACK_STATES = new Set(["error", "attention", "notification", "sweeping", "carrying", "sleeping"]);
 
 const STATE_PRIORITY = {
   error: 8, notification: 7, sweeping: 6, attention: 5,
@@ -218,7 +218,7 @@ function isOneshotDisabled(logicalState) {
 
 function pickStateFile(files) {
   if (!Array.isArray(files) || files.length === 0) return null;
-  return files[Math.floor(Math.random() * files.length)] || files[0] || null;
+  return files[Math.floor(Math.random() * files.length)];
 }
 
 function hasOwnVisualFiles(state) {
@@ -226,14 +226,19 @@ function hasOwnVisualFiles(state) {
   return !!(entry && Array.isArray(entry.files) && entry.files.length > 0);
 }
 
-function resolveVisualBinding(state, visited = new Set([state]), hops = 0) {
-  const entry = STATE_BINDINGS[state];
-  if (entry && Array.isArray(entry.files) && entry.files.length > 0) {
-    return pickStateFile(entry.files);
-  }
-  if (entry && entry.fallbackTo && VISUAL_FALLBACK_STATES.has(state) && hops < 3 && !visited.has(entry.fallbackTo)) {
+function resolveVisualBinding(state) {
+  let cursor = state;
+  let visited = null;
+  for (let hops = 0; hops <= 3; hops += 1) {
+    const entry = STATE_BINDINGS[cursor];
+    if (entry && Array.isArray(entry.files) && entry.files.length > 0) {
+      return pickStateFile(entry.files);
+    }
+    if (!entry || !entry.fallbackTo || !VISUAL_FALLBACK_STATES.has(cursor)) break;
+    if (!visited) visited = new Set([cursor]);
+    if (visited.has(entry.fallbackTo)) break;
     visited.add(entry.fallbackTo);
-    return resolveVisualBinding(entry.fallbackTo, visited, hops + 1);
+    cursor = entry.fallbackTo;
   }
   const idleEntry = STATE_BINDINGS.idle;
   if (idleEntry && Array.isArray(idleEntry.files) && idleEntry.files.length > 0) {

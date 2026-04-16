@@ -176,7 +176,7 @@ describe("theme-loader discovery", () => {
       {
         id: "template",
         builtin: true,
-        json: validThemeJson({ name: "My Theme" }),
+        json: validThemeJson({ name: "My Theme", _scaffoldOnly: true }),
       },
       {
         id: "user-cat",
@@ -444,7 +444,7 @@ describe("theme-loader fallback + sleepSequence", () => {
   it("rejects fallbackTo on unsupported source states", () => {
     assert.throws(
       () => themeLoader.loadTheme("badFallbackSource", { strict: true }),
-      /states\.waking\.fallbackTo is not supported in PR2/
+      /states\.waking\.fallbackTo is only allowed on/
     );
   });
 });

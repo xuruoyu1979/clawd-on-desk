@@ -164,14 +164,14 @@ function _scanThemesDir(dir, builtin, themes, seen) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       if (seen.has(entry.name)) continue;
-      if (builtin && entry.name === "template") continue;
       const jsonPath = path.join(dir, entry.name, "theme.json");
-      if (!fs.existsSync(jsonPath)) continue;
+      let cfg;
       try {
-        const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-        themes.push({ id: entry.name, name: cfg.name || entry.name, path: jsonPath, builtin });
-        seen.add(entry.name);
-      } catch { /* skip malformed */ }
+        cfg = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+      } catch { continue; }
+      if (builtin && cfg && cfg._scaffoldOnly === true) continue;
+      themes.push({ id: entry.name, name: cfg.name || entry.name, path: jsonPath, builtin });
+      seen.add(entry.name);
     }
   } catch { /* dir not found */ }
 }
@@ -634,7 +634,7 @@ function validateTheme(cfg) {
     const entry = normalizedStates[stateKey];
     if (!entry.fallbackTo) continue;
     if (!VISUAL_FALLBACK_STATES.has(stateKey)) {
-      errors.push(`states.${stateKey}.fallbackTo is not supported in PR2`);
+      errors.push(`states.${stateKey}.fallbackTo is only allowed on error/attention/notification/sweeping/carrying/sleeping`);
       continue;
     }
     if (!Object.prototype.hasOwnProperty.call(normalizedStates, entry.fallbackTo)) {
@@ -1376,11 +1376,10 @@ function _scanMetadata(dir, builtin, themes, seen) {
   try {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory() || seen.has(entry.name)) continue;
-      if (builtin && entry.name === "template") continue;
       const jsonPath = path.join(dir, entry.name, "theme.json");
-      if (!fs.existsSync(jsonPath)) continue;
       let raw;
       try { raw = JSON.parse(fs.readFileSync(jsonPath, "utf8")); } catch { continue; }
+      if (builtin && raw && raw._scaffoldOnly === true) continue;
       const themeDir = path.join(dir, entry.name);
       themes.push({
         id: entry.name,
@@ -1412,4 +1411,21 @@ module.exports = {
   getHitRendererConfig,
   ensureUserThemesDir,
   getSoundUrl,
+  // Schema constants + helpers — shared with scripts/validate-theme.js to
+  // keep validator and runtime loader from drifting on the same invariants.
+  REQUIRED_STATES,
+  FULL_SLEEP_REQUIRED_STATES,
+  MINI_REQUIRED_STATES,
+  VISUAL_FALLBACK_STATES,
+  isPlainObject: _isPlainObject,
+  hasNonEmptyArray: _hasNonEmptyArray,
+  getStateBindingEntry: _getStateBindingEntry,
+  getStateFiles: _getStateFiles,
+  hasStateFiles: _hasStateFiles,
+  hasStateBinding: _hasStateBinding,
+  normalizeStateBindings: _normalizeStateBindings,
+  hasReactionBindings: _hasReactionBindings,
+  supportsIdleTracking: _supportsIdleTracking,
+  deriveIdleMode: _deriveIdleMode,
+  deriveSleepMode: _deriveSleepMode,
 };

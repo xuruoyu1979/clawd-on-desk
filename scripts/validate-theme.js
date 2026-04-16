@@ -18,6 +18,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const themeLoader = require("../src/theme-loader");
 
 // ── Colors (ANSI) ──
 const R = "\x1b[31m";  // red
@@ -29,26 +30,21 @@ const D = "\x1b[0m";   // reset
 const PASS = `${G}\u2713${D}`;
 const FAIL = `${R}\u2717${D}`;
 const WARN = `${Y}!${D}`;
-const REQUIRED_STATES = ["idle", "working", "thinking"];
-const FULL_SLEEP_REQUIRED_STATES = ["yawning", "dozing", "collapsing", "waking"];
-const MINI_REQUIRED_STATES = [
-  "mini-idle",
-  "mini-enter",
-  "mini-enter-sleep",
-  "mini-crabwalk",
-  "mini-peek",
-  "mini-alert",
-  "mini-happy",
-  "mini-sleep",
-];
-const VISUAL_FALLBACK_STATES = new Set([
-  "error",
-  "attention",
-  "notification",
-  "sweeping",
-  "carrying",
-  "sleeping",
-]);
+const {
+  REQUIRED_STATES,
+  FULL_SLEEP_REQUIRED_STATES,
+  MINI_REQUIRED_STATES,
+  VISUAL_FALLBACK_STATES,
+  isPlainObject,
+  hasNonEmptyArray,
+  getStateFiles,
+  hasStateFiles,
+  hasStateBinding,
+  normalizeStateBindings,
+  hasReactionBindings,
+  deriveIdleMode,
+  deriveSleepMode,
+} = themeLoader;
 
 // ── Main ──
 
@@ -110,80 +106,6 @@ function warn(condition, msg) {
     console.log(`  ${WARN} ${msg}`);
     warnings++;
   }
-}
-
-function isPlainObject(value) {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasNonEmptyArray(value) {
-  return Array.isArray(value) && value.length > 0;
-}
-
-function getStateBindingEntry(entry) {
-  if (Array.isArray(entry)) {
-    return { files: [...entry], fallbackTo: null };
-  }
-  if (isPlainObject(entry)) {
-    return {
-      files: Array.isArray(entry.files) ? [...entry.files] : [],
-      fallbackTo: (typeof entry.fallbackTo === "string" && entry.fallbackTo) ? entry.fallbackTo : null,
-    };
-  }
-  return { files: [], fallbackTo: null };
-}
-
-function getStateFiles(entry) {
-  return getStateBindingEntry(entry).files;
-}
-
-function hasStateFiles(entry) {
-  return getStateFiles(entry).length > 0;
-}
-
-function hasStateBinding(entry) {
-  const normalized = getStateBindingEntry(entry);
-  return normalized.files.length > 0 || !!normalized.fallbackTo;
-}
-
-function normalizeStateBindings(states) {
-  const normalized = {};
-  if (!isPlainObject(states)) return normalized;
-  for (const [stateKey, entry] of Object.entries(states)) {
-    if (stateKey.startsWith("_")) continue;
-    normalized[stateKey] = getStateBindingEntry(entry);
-  }
-  return normalized;
-}
-
-function hasReactionBindings(reactions) {
-  if (!isPlainObject(reactions)) return false;
-  return Object.values(reactions).some((entry) =>
-    isPlainObject(entry)
-    && (
-      (typeof entry.file === "string" && entry.file.length > 0)
-      || (Array.isArray(entry.files) && entry.files.some((file) => typeof file === "string" && file.length > 0))
-    )
-  );
-}
-
-function supportsIdleTracking(cfg) {
-  return !!(
-    isPlainObject(cfg && cfg.eyeTracking)
-    && cfg.eyeTracking.enabled
-    && Array.isArray(cfg.eyeTracking.states)
-    && cfg.eyeTracking.states.includes("idle")
-  );
-}
-
-function deriveIdleMode(cfg) {
-  if (supportsIdleTracking(cfg)) return "tracked";
-  if (hasNonEmptyArray(cfg && cfg.idleAnimations)) return "animated";
-  return "static";
-}
-
-function deriveSleepMode(cfg) {
-  return (cfg && cfg.sleepSequence && cfg.sleepSequence.mode === "direct") ? "direct" : "full";
 }
 
 function svgHasClass(content, className) {
@@ -467,7 +389,7 @@ if (fallbackEntries.length === 0) {
   for (const [stateKey, entry] of fallbackEntries) {
     check(
       VISUAL_FALLBACK_STATES.has(stateKey),
-      `states.${stateKey}.fallbackTo is supported in PR2`
+      `states.${stateKey}.fallbackTo is only allowed on error/attention/notification/sweeping/carrying/sleeping`
     );
     check(
       Object.prototype.hasOwnProperty.call(normalizedStates, entry.fallbackTo),

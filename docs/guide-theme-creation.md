@@ -152,7 +152,7 @@ Eye tracking makes the character follow the user's cursor. It requires the idle 
 
 ### Capability Switches
 
-PR1 keeps the existing schema fields as the only runtime truth. These fields already act as the theme's capability switches:
+The existing schema fields are the only runtime truth. They already act as the theme's capability switches:
 
 | Field | Current meaning |
 |-------|-----------------|
@@ -168,7 +168,7 @@ The loader also derives read-only metadata such as `idleMode` (`tracked` / `anim
 
 ### State Visual Fallback
 
-PR2 adds object-form state bindings for a small set of interruption/sleep states. Legacy array form still works:
+State bindings accept the legacy array form, or an object with `files` and optional `fallbackTo`:
 
 ```json
 "states": {
@@ -181,7 +181,7 @@ PR2 adds object-form state bindings for a small set of interruption/sleep states
 
 - `files` — the state's own assets
 - `fallbackTo` — visual-only fallback target inside `states`
-- Supported `fallbackTo` sources in PR2: `error`, `attention`, `notification`, `sweeping`, `carrying`, `sleeping`
+- Supported `fallbackTo` source states: `error`, `attention`, `notification`, `sweeping`, `carrying`, `sleeping`
 - Fallback does **not** skip the logical state. Timers, hitboxes, and state transitions still run as the original state.
 
 ### Sleep Sequence
@@ -359,7 +359,7 @@ If you only have still artwork, that is fine. A theme with single-frame PNG / We
 - set `miniMode.supported` to `false` unless you really drew all 8 mini states
 - use one real file each for `idle`, `thinking`, `working`, and `sleeping`
 - add `sleepSequence.mode: "direct"` if you do not want to draw `yawning` / `dozing` / `collapsing` / `waking`
-- use PR2 `fallbackTo` on interruption states when one still image is enough
+- use `fallbackTo` on interruption states when one still image is enough
 
 Example:
 

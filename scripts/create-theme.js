@@ -130,23 +130,14 @@ function resolveTarget(options = {}) {
 }
 
 function copyTemplateDir(sourceDir, targetDir) {
-  const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
-  fs.mkdirSync(targetDir, { recursive: true });
-  for (const entry of entries) {
-    const sourcePath = path.join(sourceDir, entry.name);
-    const targetPath = path.join(targetDir, entry.name);
-    if (entry.isDirectory()) {
-      copyTemplateDir(sourcePath, targetPath);
-    } else {
-      fs.copyFileSync(sourcePath, targetPath);
-    }
-  }
+  fs.cpSync(sourceDir, targetDir, { recursive: true });
 }
 
 function patchThemeJsonTemplate(sourceText, replacements) {
   return sourceText
     .replace(/"name":\s*"[^"]*"/, `"name": ${JSON.stringify(replacements.name)}`)
-    .replace(/"author":\s*"[^"]*"/, `"author": ${JSON.stringify(replacements.author)}`);
+    .replace(/"author":\s*"[^"]*"/, `"author": ${JSON.stringify(replacements.author)}`)
+    .replace(/\r?\n[ \t]*"_scaffoldOnly":\s*true,?/, "");
 }
 
 function createThemeScaffold(options = {}) {
