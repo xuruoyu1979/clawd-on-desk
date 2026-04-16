@@ -475,6 +475,35 @@ describe("setAnimationOverride", () => {
     });
   });
 
+  it("写 idleAnimation file + transition + duration，用 originalFile 作 key", () => {
+    const r = action(
+      {
+        themeId: "clawd",
+        slotType: "idleAnimation",
+        originalFile: "idle-look.svg",
+        file: "custom-idle-look.svg",
+        transition: { in: 40, out: 110 },
+        durationMs: 4200,
+      },
+      {
+        snapshot: baseSnap(),
+        activateTheme: () => ({ themeId: "clawd", variantId: "default" }),
+      },
+    );
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit.themeOverrides, {
+      clawd: {
+        idleAnimations: {
+          "idle-look.svg": {
+            file: "custom-idle-look.svg",
+            transition: { in: 40, out: 110 },
+            durationMs: 4200,
+          },
+        },
+      },
+    });
+  });
+
   it("非当前主题不触发 activateTheme，但照样提交 override", () => {
     const calls = [];
     const snap = baseSnap();

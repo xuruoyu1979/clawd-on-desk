@@ -883,6 +883,13 @@ function _buildBaseBindingMetadata(raw) {
       if (files[0]) states[stateKey] = _basenameOnly(files[0]);
     }
   }
+  const miniStates = {};
+  if (_isPlainObject(raw.miniMode) && _isPlainObject(raw.miniMode.states)) {
+    for (const [stateKey, entry] of Object.entries(raw.miniMode.states)) {
+      if (stateKey.startsWith("_")) continue;
+      if (Array.isArray(entry) && entry[0]) miniStates[stateKey] = _basenameOnly(entry[0]);
+    }
+  }
   const mapTierGroup = (tiers) =>
     Array.isArray(tiers)
       ? tiers
@@ -893,6 +900,15 @@ function _buildBaseBindingMetadata(raw) {
         }))
         .sort((a, b) => b.minSessions - a.minSessions)
       : [];
+  const idleAnimations = Array.isArray(raw.idleAnimations)
+    ? raw.idleAnimations
+      .filter((entry) => _isPlainObject(entry) && typeof entry.file === "string" && entry.file)
+      .map((entry, index) => ({
+        index,
+        originalFile: _basenameOnly(entry.file),
+        duration: Number.isFinite(entry.duration) ? entry.duration : null,
+      }))
+    : [];
   const displayHintMap = {};
   if (_isPlainObject(raw.displayHintMap)) {
     for (const [key, value] of Object.entries(raw.displayHintMap)) {
@@ -901,8 +917,10 @@ function _buildBaseBindingMetadata(raw) {
   }
   return {
     states,
+    miniStates,
     workingTiers: mapTierGroup(raw.workingTiers),
     jugglingTiers: mapTierGroup(raw.jugglingTiers),
+    idleAnimations,
     displayHintMap,
   };
 }
@@ -926,11 +944,21 @@ function _applyUserOverridesPatch(raw, overrides) {
   const patched = { ...raw };
 
   const stateOverrides = _isPlainObject(overrides.states) ? overrides.states : {};
-  if (_isPlainObject(raw.states) && Object.keys(stateOverrides).length > 0) {
+  if (Object.keys(stateOverrides).length > 0) {
     const nextStates = { ...raw.states };
+    const nextMiniMode = _isPlainObject(raw.miniMode) ? { ...raw.miniMode } : null;
+    const nextMiniStates = nextMiniMode && _isPlainObject(raw.miniMode.states)
+      ? { ...raw.miniMode.states }
+      : null;
     for (const [stateKey, entry] of Object.entries(stateOverrides)) {
       if (!_isPlainObject(entry)) continue;
-      const currentState = _getStateBindingEntry(nextStates[stateKey]);
+      const rawStateEntry = nextStates[stateKey];
+      const rawMiniEntry = nextMiniStates ? nextMiniStates[stateKey] : undefined;
+      const targetCollection = rawStateEntry !== undefined
+        ? nextStates
+        : (rawMiniEntry !== undefined ? nextMiniStates : null);
+      if (!targetCollection) continue;
+      const currentState = _getStateBindingEntry(targetCollection[stateKey]);
       const currentFiles = currentState.files;
       if (currentFiles.length === 0 && !(typeof entry.file === "string" && entry.file)) continue;
       const nextFiles = [...currentFiles];
@@ -938,17 +966,21 @@ function _applyUserOverridesPatch(raw, overrides) {
         if (nextFiles.length > 0) nextFiles[0] = entry.file;
         else nextFiles.push(entry.file);
       }
-      if (Array.isArray(nextStates[stateKey])) {
-        nextStates[stateKey] = nextFiles;
-      } else if (_isPlainObject(nextStates[stateKey])) {
-        nextStates[stateKey] = { ...nextStates[stateKey], files: nextFiles };
+      if (Array.isArray(targetCollection[stateKey])) {
+        targetCollection[stateKey] = nextFiles;
+      } else if (_isPlainObject(targetCollection[stateKey])) {
+        targetCollection[stateKey] = { ...targetCollection[stateKey], files: nextFiles };
       } else {
-        nextStates[stateKey] = nextFiles;
+        targetCollection[stateKey] = nextFiles;
       }
       const transitionTarget = (typeof entry.file === "string" && entry.file) ? entry.file : nextFiles[0];
       _applyTransitionOverride(patched, transitionTarget, entry.transition);
     }
     patched.states = nextStates;
+    if (nextMiniMode && nextMiniStates) {
+      nextMiniMode.states = nextMiniStates;
+      patched.miniMode = nextMiniMode;
+    }
   }
 
   const tierGroups = _isPlainObject(overrides.tiers) ? overrides.tiers : {};
@@ -983,6 +1015,28 @@ function _applyUserOverridesPatch(raw, overrides) {
       nextTimings.autoReturn[stateKey] = value;
     }
     patched.timings = nextTimings;
+  }
+
+  const idleAnimationOverrides = _isPlainObject(overrides.idleAnimations) ? overrides.idleAnimations : null;
+  if (idleAnimationOverrides && Array.isArray(raw.idleAnimations)) {
+    const nextIdleAnimations = raw.idleAnimations.map((entry) => (_isPlainObject(entry) ? { ...entry } : entry));
+    for (const [originalFile, entry] of Object.entries(idleAnimationOverrides)) {
+      if (!_isPlainObject(entry)) continue;
+      const cleanOriginal = _basenameOnly(originalFile);
+      const idleAnimation = nextIdleAnimations.find((candidate) =>
+        _isPlainObject(candidate) && _basenameOnly(candidate.file) === cleanOriginal
+      );
+      if (!idleAnimation) continue;
+      if (typeof entry.file === "string" && entry.file) {
+        idleAnimation.file = entry.file;
+      }
+      if (Number.isFinite(entry.durationMs)) {
+        idleAnimation.duration = entry.durationMs;
+      }
+      const transitionTarget = (typeof entry.file === "string" && entry.file) ? entry.file : idleAnimation.file;
+      _applyTransitionOverride(patched, transitionTarget, entry.transition);
+    }
+    patched.idleAnimations = nextIdleAnimations;
   }
 
   return patched;

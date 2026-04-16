@@ -212,6 +212,7 @@ function normalizeSlotOverride(entry, { allowDisabled = true } = {}) {
   if (allowDisabled && entry.disabled === true) out.disabled = true;
   if (typeof entry.file === "string" && entry.file) out.file = entry.file;
   if (typeof entry.sourceThemeId === "string" && entry.sourceThemeId) out.sourceThemeId = entry.sourceThemeId;
+  if (typeof entry.durationMs === "number" && Number.isFinite(entry.durationMs)) out.durationMs = entry.durationMs;
   const transition = normalizeTransitionOverride(entry.transition);
   if (transition) out.transition = transition;
   return Object.keys(out).length > 0 ? out : null;
@@ -229,6 +230,17 @@ function normalizeStateOverridesMap(value) {
 }
 
 function normalizeTierOverrideGroup(value) {
+  if (!isPlainObject(value)) return null;
+  const out = {};
+  for (const [originalFile, entry] of Object.entries(value)) {
+    if (typeof originalFile !== "string" || !originalFile) continue;
+    const cleanEntry = normalizeSlotOverride(entry, { allowDisabled: false });
+    if (cleanEntry) out[originalFile] = cleanEntry;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function normalizeIdleAnimationOverrides(value) {
   if (!isPlainObject(value)) return null;
   const out = {};
   for (const [originalFile, entry] of Object.entries(value)) {
@@ -261,7 +273,7 @@ function normalizeThemeOverrides(value, defaultsValue) {
     // Back-compat: older prefs wrote state entries directly under themeId.
     const legacyStates = {};
     for (const [key, entry] of Object.entries(themeMap)) {
-      if (key === "states" || key === "tiers" || key === "timings") continue;
+      if (key === "states" || key === "tiers" || key === "timings" || key === "idleAnimations") continue;
       const cleanEntry = normalizeSlotOverride(entry, { allowDisabled: true });
       if (cleanEntry) legacyStates[key] = cleanEntry;
     }
@@ -287,6 +299,9 @@ function normalizeThemeOverrides(value, defaultsValue) {
         cleanThemeMap.timings = { autoReturn: cleanAutoReturn };
       }
     }
+
+    const idleAnimations = normalizeIdleAnimationOverrides(themeMap.idleAnimations);
+    if (idleAnimations) cleanThemeMap.idleAnimations = idleAnimations;
 
     if (Object.keys(cleanThemeMap).length > 0) {
       out[themeId] = cleanThemeMap;

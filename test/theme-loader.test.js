@@ -272,6 +272,8 @@ describe("theme-loader fallback + sleepSequence", () => {
         json: validThemeJson({
           name: "Direct Sleep",
           states: directSleepStates,
+          idleAnimations: [{ file: "idle-loop.svg", duration: 1800 }],
+          miniMode: fullMiniMode(),
           sleepSequence: { mode: "direct" },
         }),
       },
@@ -361,6 +363,32 @@ describe("theme-loader fallback + sleepSequence", () => {
       fallbackTo: "attention",
     });
     assert.deepStrictEqual(theme.transitions["custom-error.svg"], { in: 30, out: 60 });
+  });
+
+  it("user overrides can patch mini states and idle animations", () => {
+    const theme = themeLoader.loadTheme("directSleep", {
+      strict: true,
+      overrides: {
+        states: {
+          "mini-idle": {
+            file: "custom-mini-idle.svg",
+            transition: { in: 10, out: 20 },
+          },
+        },
+        idleAnimations: {
+          "idle-loop.svg": {
+            file: "custom-idle-loop.svg",
+            transition: { in: 25, out: 35 },
+            durationMs: 4200,
+          },
+        },
+      },
+    });
+    assert.deepStrictEqual(theme.miniMode.states["mini-idle"], ["custom-mini-idle.svg"]);
+    assert.strictEqual(theme.idleAnimations[0].file, "custom-idle-loop.svg");
+    assert.strictEqual(theme.idleAnimations[0].duration, 4200);
+    assert.deepStrictEqual(theme.transitions["custom-mini-idle.svg"], { in: 10, out: 20 });
+    assert.deepStrictEqual(theme.transitions["custom-idle-loop.svg"], { in: 25, out: 35 });
   });
 
   it("rejects invalid sleepSequence values", () => {

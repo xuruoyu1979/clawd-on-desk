@@ -113,6 +113,18 @@ const STRINGS = {
     animOverridesDisplayHintWarning: "displayHintMap can override this slot at runtime.",
     animOverridesFallbackHint: "This slot currently falls back to {state}.",
     animOverridesOverriddenTooltip: "Modified from default",
+    animOverridesUseOwnFile: "Use own file",
+    animOverridesDurationIdle: "Pool hold",
+    animOverridesSectionIdle: "Idle",
+    animOverridesSectionWork: "Work",
+    animOverridesSectionInterrupts: "Interrupts",
+    animOverridesSectionSleep: "Sleep",
+    animOverridesSectionMini: "Mini Mode",
+    animOverridesSectionIdleTracked: "Cursor-follow idle",
+    animOverridesSectionIdleAnimated: "Idle random pool",
+    animOverridesSectionIdleStatic: "Single static idle",
+    animOverridesSectionSleepFull: "Full sleep sequence",
+    animOverridesSectionSleepDirect: "Direct sleep only",
     animOverridesExpandRow: "Expand",
     animOverridesModalTitle: "Choose an asset file",
     animOverridesModalSubtitle: "Add files to the current theme assets folder, then refresh the list here.",
@@ -220,6 +232,18 @@ const STRINGS = {
     animOverridesDisplayHintWarning: "运行时可能被 displayHintMap 盖掉。",
     animOverridesFallbackHint: "这个槽位当前回退到 {state}。",
     animOverridesOverriddenTooltip: "已修改（非默认值）",
+    animOverridesUseOwnFile: "使用独立素材",
+    animOverridesDurationIdle: "驻留时长",
+    animOverridesSectionIdle: "Idle",
+    animOverridesSectionWork: "工作态",
+    animOverridesSectionInterrupts: "打扰态",
+    animOverridesSectionSleep: "睡眠",
+    animOverridesSectionMini: "Mini Mode",
+    animOverridesSectionIdleTracked: "跟随鼠标的 idle",
+    animOverridesSectionIdleAnimated: "idle 随机池",
+    animOverridesSectionIdleStatic: "单张静态 idle",
+    animOverridesSectionSleepFull: "完整睡眠序列",
+    animOverridesSectionSleepDirect: "直睡模式",
     animOverridesExpandRow: "展开",
     animOverridesModalTitle: "选择素材文件",
     animOverridesModalSubtitle: "把文件放进当前主题 assets 目录后，可在这里刷新列表重新选择。",
@@ -327,6 +351,18 @@ const STRINGS = {
     animOverridesDisplayHintWarning: "displayHintMap이 런타임에 이 슬롯을 덮어쓸 수 있습니다.",
     animOverridesFallbackHint: "이 슬롯은 현재 {state}(으)로 폴백됩니다.",
     animOverridesOverriddenTooltip: "기본값에서 변경됨",
+    animOverridesUseOwnFile: "개별 파일 사용",
+    animOverridesDurationIdle: "유지 시간",
+    animOverridesSectionIdle: "Idle",
+    animOverridesSectionWork: "작업",
+    animOverridesSectionInterrupts: "인터럽트",
+    animOverridesSectionSleep: "수면",
+    animOverridesSectionMini: "Mini Mode",
+    animOverridesSectionIdleTracked: "커서 추적 idle",
+    animOverridesSectionIdleAnimated: "idle 랜덤 풀",
+    animOverridesSectionIdleStatic: "단일 정적 idle",
+    animOverridesSectionSleepFull: "전체 수면 시퀀스",
+    animOverridesSectionSleepDirect: "직접 수면",
     animOverridesExpandRow: "펼치기",
     animOverridesModalTitle: "에셋 파일 선택",
     animOverridesModalSubtitle: "파일을 현재 테마의 assets 폴더에 추가한 뒤 여기서 목록을 새로고침하세요.",
@@ -815,6 +851,7 @@ function previewStateForCard(card) {
   if (card.slotType === "tier") {
     return card.tierGroup === "jugglingTiers" ? "juggling" : "working";
   }
+  if (card.slotType === "idleAnimation") return "idle";
   return card.stateKey;
 }
 
@@ -826,6 +863,8 @@ function buildAnimOverrideRequest(card, patch) {
   };
   if (card.slotType === "tier") {
     base.tierGroup = card.tierGroup;
+    base.originalFile = card.originalFile;
+  } else if (card.slotType === "idleAnimation") {
     base.originalFile = card.originalFile;
   } else {
     base.stateKey = card.stateKey;
@@ -874,6 +913,9 @@ function formatSessionRange(minSessions, maxSessions) {
 
 function getAnimOverrideTriggerLabel(card) {
   switch (card.triggerKind) {
+    case "idleTracked": return "Idle follow";
+    case "idleStatic": return "Idle";
+    case "idleAnimation": return `Idle random #${card.poolIndex || 1}`;
     case "thinking": return "UserPromptSubmit";
     case "working": return `PreToolUse (${formatSessionRange(card.minSessions, card.maxSessions)})`;
     case "juggling": return `SubagentStart (${formatSessionRange(card.minSessions, card.maxSessions)})`;
@@ -882,10 +924,77 @@ function getAnimOverrideTriggerLabel(card) {
     case "notification": return "PermissionRequest";
     case "sweeping": return "PreCompact";
     case "carrying": return "WorktreeCreate";
+    case "yawning": return "Sleep: yawn";
+    case "dozing": return "Sleep: doze";
+    case "collapsing": return "Sleep: collapse";
     case "sleeping": return "60s no events";
     case "waking": return "Wake";
+    case "mini-idle": return "Mini idle";
+    case "mini-enter": return "Mini enter";
+    case "mini-enter-sleep": return "Mini enter sleep";
+    case "mini-crabwalk": return "Mini crabwalk";
+    case "mini-peek": return "Mini peek";
+    case "mini-alert": return "Mini alert";
+    case "mini-happy": return "Mini happy";
+    case "mini-sleep": return "Mini sleep";
     default: return card.triggerKind || card.stateKey || card.id;
   }
+}
+
+function getAnimOverrideSectionTitle(section) {
+  if (!section || !section.id) return "";
+  switch (section.id) {
+    case "idle": return t("animOverridesSectionIdle");
+    case "work": return t("animOverridesSectionWork");
+    case "interrupts": return t("animOverridesSectionInterrupts");
+    case "sleep": return t("animOverridesSectionSleep");
+    case "mini": return t("animOverridesSectionMini");
+    default: return section.id;
+  }
+}
+
+function getAnimOverrideSectionSubtitle(section) {
+  if (!section) return "";
+  if (section.id === "idle") {
+    if (section.mode === "tracked") return t("animOverridesSectionIdleTracked");
+    if (section.mode === "animated") return t("animOverridesSectionIdleAnimated");
+    if (section.mode === "static") return t("animOverridesSectionIdleStatic");
+  }
+  if (section.id === "sleep") {
+    if (section.mode === "full") return t("animOverridesSectionSleepFull");
+    if (section.mode === "direct") return t("animOverridesSectionSleepDirect");
+  }
+  return "";
+}
+
+function buildAnimOverrideSection(section) {
+  const wrapper = document.createElement("section");
+  wrapper.className = "anim-override-section";
+
+  const head = document.createElement("div");
+  head.className = "anim-override-section-head";
+
+  const title = document.createElement("div");
+  title.className = "section-title";
+  title.textContent = getAnimOverrideSectionTitle(section);
+  head.appendChild(title);
+
+  const subtitleText = getAnimOverrideSectionSubtitle(section);
+  if (subtitleText) {
+    const subtitle = document.createElement("div");
+    subtitle.className = "anim-override-section-subtitle";
+    subtitle.textContent = subtitleText;
+    head.appendChild(subtitle);
+  }
+  wrapper.appendChild(head);
+
+  const list = document.createElement("div");
+  list.className = "anim-override-list";
+  for (const card of (section.cards || [])) {
+    list.appendChild(buildAnimOverrideRow(card));
+  }
+  wrapper.appendChild(list);
+  return wrapper;
 }
 
 function buildAnimPreviewNode(fileUrl) {
@@ -969,13 +1078,11 @@ function renderAnimOverridesTab(parent) {
   themeMeta.appendChild(resetAllBtn);
   parent.appendChild(themeMeta);
 
-  const cards = Array.isArray(data.cards) ? data.cards : [];
-  const list = document.createElement("div");
-  list.className = "anim-override-list";
-  for (const card of cards) {
-    list.appendChild(buildAnimOverrideRow(card));
+  const sections = Array.isArray(data.sections) ? data.sections : [];
+  for (const section of sections) {
+    if (!section || !Array.isArray(section.cards) || !section.cards.length) continue;
+    parent.appendChild(buildAnimOverrideSection(section));
   }
-  parent.appendChild(list);
   renderAssetPickerModal();
 }
 
@@ -996,6 +1103,10 @@ function isCardOverridden(card) {
     const group = map.tiers && map.tiers[card.tierGroup];
     return !!(group && group[card.originalFile]);
   }
+  if (card.slotType === "idleAnimation") {
+    const group = map.idleAnimations;
+    return !!(group && group[card.originalFile]);
+  }
   const entry = map.states && map.states[card.stateKey];
   if (entry) return true;
   const autoReturn = map.timings && map.timings.autoReturn;
@@ -1005,6 +1116,7 @@ function isCardOverridden(card) {
 function buildAnimOverrideRow(card) {
   const row = document.createElement("details");
   row.className = "anim-override-row";
+  if (card.fallbackTargetState) row.classList.add("inherited");
   row.dataset.rowId = card.id;
   if (expandedOverrideRowIds.has(card.id)) row.open = true;
   row.addEventListener("toggle", () => {
@@ -1093,7 +1205,7 @@ function buildAnimOverrideSummary(card) {
   const changeBtn = document.createElement("button");
   changeBtn.type = "button";
   changeBtn.className = "soft-btn accent anim-override-summary-change";
-  changeBtn.textContent = t("animOverridesChangeFile");
+  changeBtn.textContent = card.fallbackTargetState ? t("animOverridesUseOwnFile") : t("animOverridesChangeFile");
   changeBtn.addEventListener("click", (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
@@ -1148,14 +1260,14 @@ function buildAnimOverrideDrawer(card) {
     card.assetCycleMs,
     card.assetCycleStatus
   ));
-  if (card.supportsAutoReturn && card.assetCycleMs == null && card.suggestedDurationMs != null) {
+  if ((card.supportsAutoReturn || card.supportsDuration) && card.assetCycleMs == null && card.suggestedDurationMs != null) {
     info.appendChild(buildAnimTimingHint(
-      t("animOverridesSuggestedTiming"),
+      card.supportsDuration ? t("animOverridesDurationIdle") : t("animOverridesSuggestedTiming"),
       card.suggestedDurationMs,
       card.suggestedDurationStatus
     ));
   }
-  if (!card.supportsAutoReturn) {
+  if (!card.supportsAutoReturn && !card.supportsDuration) {
     const hint = document.createElement("div");
     hint.className = "anim-override-binding";
     hint.textContent = t("animOverridesContinuousHint");
@@ -1196,6 +1308,20 @@ function buildAnimOverrideDrawer(card) {
       },
     }));
   }
+  if (card.supportsDuration) {
+    const current = Number.isFinite(card.durationMs) ? card.durationMs : (card.suggestedDurationMs || 3000);
+    sliders.appendChild(buildAnimOverrideSliderRow({
+      label: t("animOverridesDurationIdle"),
+      min: 500, max: 20000, step: 100,
+      value: current,
+      numberMin: 500,
+      numberMax: 60000,
+      onCommit: (v) => {
+        if (!Number.isFinite(v) || v < 500 || v > 60000) return;
+        return runAnimationOverrideCommand(card, { durationMs: v });
+      },
+    }));
+  }
   drawer.appendChild(sliders);
 
   const footer = document.createElement("div");
@@ -1205,13 +1331,15 @@ function buildAnimOverrideDrawer(card) {
   resetBtn.className = "soft-btn";
   resetBtn.textContent = t("animOverridesReset");
   resetBtn.disabled = !isCardOverridden(card);
-  attachActivation(resetBtn, () =>
-    runAnimationOverrideCommand(card, {
+  attachActivation(resetBtn, () => {
+    const patch = {
       file: null,
       transition: null,
       ...(card.supportsAutoReturn ? { autoReturnMs: null } : {}),
-    })
-  );
+      ...(card.supportsDuration ? { durationMs: null } : {}),
+    };
+    return runAnimationOverrideCommand(card, patch);
+  });
   footer.appendChild(resetBtn);
   drawer.appendChild(footer);
 

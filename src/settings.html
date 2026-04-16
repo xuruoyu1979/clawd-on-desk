@@ -496,6 +496,21 @@ html, body {
   color: var(--text-secondary);
   margin-right: auto;
 }
+.anim-override-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.anim-override-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.anim-override-section-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .anim-override-list {
   display: flex;
   flex-direction: column;
@@ -506,6 +521,14 @@ html, body {
 }
 .anim-override-row {
   border-bottom: 1px solid var(--border);
+}
+.anim-override-row.inherited > summary {
+  background: rgba(0, 0, 0, 0.025);
+}
+@media (prefers-color-scheme: dark) {
+  .anim-override-row.inherited > summary {
+    background: rgba(255, 255, 255, 0.03);
+  }
 }
 .anim-override-row:last-child { border-bottom: none; }
 .anim-override-row > summary {

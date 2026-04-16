@@ -104,7 +104,7 @@ function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-const THEME_OVERRIDE_RESERVED_KEYS = new Set(["states", "tiers", "timings"]);
+const THEME_OVERRIDE_RESERVED_KEYS = new Set(["states", "tiers", "timings", "idleAnimations"]);
 const TIER_OVERRIDE_GROUPS = new Set(["workingTiers", "jugglingTiers"]);
 
 function cloneStateOverrides(themeMap) {
@@ -144,7 +144,16 @@ function cloneAutoReturnOverrides(themeMap) {
   return out;
 }
 
-function buildThemeOverrideMap({ states, workingTiers, jugglingTiers, autoReturn }) {
+function cloneIdleAnimationOverrides(themeMap) {
+  const out = {};
+  if (!isPlainObject(themeMap) || !isPlainObject(themeMap.idleAnimations)) return out;
+  for (const [originalFile, entry] of Object.entries(themeMap.idleAnimations)) {
+    if (isPlainObject(entry)) out[originalFile] = { ...entry };
+  }
+  return out;
+}
+
+function buildThemeOverrideMap({ states, workingTiers, jugglingTiers, autoReturn, idleAnimations }) {
   const out = {};
   if (states && Object.keys(states).length > 0) out.states = states;
   const tiers = {};
@@ -152,6 +161,7 @@ function buildThemeOverrideMap({ states, workingTiers, jugglingTiers, autoReturn
   if (jugglingTiers && Object.keys(jugglingTiers).length > 0) tiers.jugglingTiers = jugglingTiers;
   if (Object.keys(tiers).length > 0) out.tiers = tiers;
   if (autoReturn && Object.keys(autoReturn).length > 0) out.timings = { autoReturn };
+  if (idleAnimations && Object.keys(idleAnimations).length > 0) out.idleAnimations = idleAnimations;
   return out;
 }
 
@@ -598,6 +608,7 @@ function setThemeOverrideDisabled(payload, deps) {
     workingTiers: cloneTierOverrides(currentThemeMap, "workingTiers"),
     jugglingTiers: cloneTierOverrides(currentThemeMap, "jugglingTiers"),
     autoReturn: cloneAutoReturnOverrides(currentThemeMap),
+    idleAnimations: cloneIdleAnimationOverrides(currentThemeMap),
   });
   const nextOverrides = { ...currentOverrides };
   if (Object.keys(nextThemeMap).length > 0) {
@@ -616,15 +627,16 @@ function setAnimationOverride(payload, deps) {
   const { themeId, slotType } = payload;
   const idCheck = _validateAnimationOverrideThemeId(themeId);
   if (idCheck.status !== "ok") return idCheck;
-  if (slotType !== "state" && slotType !== "tier") {
-    return { status: "error", message: "setAnimationOverride.slotType must be 'state' or 'tier'" };
+  if (slotType !== "state" && slotType !== "tier" && slotType !== "idleAnimation") {
+    return { status: "error", message: "setAnimationOverride.slotType must be 'state', 'tier', or 'idleAnimation'" };
   }
 
   const touchesFile = Object.prototype.hasOwnProperty.call(payload, "file");
   const touchesTransition = Object.prototype.hasOwnProperty.call(payload, "transition");
   const touchesAutoReturn = Object.prototype.hasOwnProperty.call(payload, "autoReturnMs");
-  if (!touchesFile && !touchesTransition && !touchesAutoReturn) {
-    return { status: "error", message: "setAnimationOverride must change file, transition, or autoReturnMs" };
+  const touchesDuration = Object.prototype.hasOwnProperty.call(payload, "durationMs");
+  if (!touchesFile && !touchesTransition && !touchesAutoReturn && !touchesDuration) {
+    return { status: "error", message: "setAnimationOverride must change file, transition, autoReturnMs, or durationMs" };
   }
 
   if (touchesFile && payload.file !== null && (typeof payload.file !== "string" || !payload.file)) {
@@ -641,6 +653,14 @@ function setAnimationOverride(payload, deps) {
       return { status: "error", message: "setAnimationOverride.autoReturnMs must be between 500 and 60000" };
     }
   }
+  if (touchesDuration && payload.durationMs !== null) {
+    if (typeof payload.durationMs !== "number" || !Number.isFinite(payload.durationMs)) {
+      return { status: "error", message: "setAnimationOverride.durationMs must be null or a finite number" };
+    }
+    if (payload.durationMs < 500 || payload.durationMs > 60000) {
+      return { status: "error", message: "setAnimationOverride.durationMs must be between 500 and 60000" };
+    }
+  }
 
   const snapshot = (deps && deps.snapshot) || {};
   const currentOverrides = snapshot.themeOverrides || {};
@@ -649,10 +669,14 @@ function setAnimationOverride(payload, deps) {
   const nextWorkingTiers = cloneTierOverrides(currentThemeMap, "workingTiers");
   const nextJugglingTiers = cloneTierOverrides(currentThemeMap, "jugglingTiers");
   const nextAutoReturn = cloneAutoReturnOverrides(currentThemeMap);
+  const nextIdleAnimations = cloneIdleAnimationOverrides(currentThemeMap);
 
   if (slotType === "state") {
     if (typeof payload.stateKey !== "string" || !payload.stateKey) {
       return { status: "error", message: "setAnimationOverride.stateKey must be a non-empty string for state slots" };
+    }
+    if (touchesDuration) {
+      return { status: "error", message: "setAnimationOverride.durationMs is only supported for idleAnimation slots" };
     }
     const stateKey = payload.stateKey;
     const nextEntry = { ...(nextStates[stateKey] || {}) };
@@ -675,7 +699,7 @@ function setAnimationOverride(payload, deps) {
       if (payload.autoReturnMs === null) delete nextAutoReturn[stateKey];
       else nextAutoReturn[stateKey] = payload.autoReturnMs;
     }
-  } else {
+  } else if (slotType === "tier") {
     const { tierGroup, originalFile } = payload;
     if (!TIER_OVERRIDE_GROUPS.has(tierGroup)) {
       return { status: "error", message: "setAnimationOverride.tierGroup must be workingTiers or jugglingTiers" };
@@ -685,6 +709,9 @@ function setAnimationOverride(payload, deps) {
     }
     if (touchesAutoReturn) {
       return { status: "error", message: "setAnimationOverride.autoReturnMs is only supported for state slots" };
+    }
+    if (touchesDuration) {
+      return { status: "error", message: "setAnimationOverride.durationMs is not supported for tier slots" };
     }
     const tierMap = tierGroup === "workingTiers" ? nextWorkingTiers : nextJugglingTiers;
     const nextEntry = { ...(tierMap[originalFile] || {}) };
@@ -702,6 +729,33 @@ function setAnimationOverride(payload, deps) {
     }
     if (Object.keys(nextEntry).length > 0) tierMap[originalFile] = nextEntry;
     else delete tierMap[originalFile];
+  } else {
+    const { originalFile } = payload;
+    if (typeof originalFile !== "string" || !originalFile) {
+      return { status: "error", message: "setAnimationOverride.originalFile must be a non-empty string for idleAnimation slots" };
+    }
+    if (touchesAutoReturn) {
+      return { status: "error", message: "setAnimationOverride.autoReturnMs is not supported for idleAnimation slots" };
+    }
+    const nextEntry = { ...(nextIdleAnimations[originalFile] || {}) };
+    if (touchesFile) {
+      if (payload.file === null) {
+        delete nextEntry.file;
+        delete nextEntry.sourceThemeId;
+      } else {
+        nextEntry.file = payload.file;
+      }
+    }
+    if (touchesTransition) {
+      if (payload.transition === null) delete nextEntry.transition;
+      else nextEntry.transition = normalizeTransitionPayload(payload.transition);
+    }
+    if (touchesDuration) {
+      if (payload.durationMs === null) delete nextEntry.durationMs;
+      else nextEntry.durationMs = payload.durationMs;
+    }
+    if (Object.keys(nextEntry).length > 0) nextIdleAnimations[originalFile] = nextEntry;
+    else delete nextIdleAnimations[originalFile];
   }
 
   const nextThemeMap = buildThemeOverrideMap({
@@ -709,6 +763,7 @@ function setAnimationOverride(payload, deps) {
     workingTiers: nextWorkingTiers,
     jugglingTiers: nextJugglingTiers,
     autoReturn: nextAutoReturn,
+    idleAnimations: nextIdleAnimations,
   });
   const nextOverrides = { ...currentOverrides };
   if (Object.keys(nextThemeMap).length > 0) nextOverrides[themeId] = nextThemeMap;
