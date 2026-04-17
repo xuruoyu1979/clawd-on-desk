@@ -89,6 +89,7 @@ function rawSession(state, opts = {}) {
     host: opts.host || null,
     headless: opts.headless || false,
     sessionTitle: opts.sessionTitle ?? null,
+    recentEvents: opts.recentEvents || [],
     pidReachable: opts.pidReachable ?? false,
     resumeState: opts.resumeState || null,
   };
@@ -753,6 +754,154 @@ describe("updateSession()", () => {
       menu[0].label.includes("project-abc"),
       `expected folder fallback, got: ${menu[0].label}`
     );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Group 6b: recentEvents + deriveSessionBadge (C1)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("recentEvents tracking", () => {
+  let api;
+  beforeEach(() => { api = require("../src/state")(makeCtx()); });
+  afterEach(() => { api.cleanup(); });
+
+  it("pushes events in order, capped at 8 (RECENT_EVENT_LIMIT)", () => {
+    for (let i = 0; i < 12; i++) {
+      update(api, { id: "s1", state: "working", event: `Event${i}` });
+    }
+    const events = api.sessions.get("s1").recentEvents;
+    assert.strictEqual(events.length, 8);
+    // Oldest 4 should have been dropped (Event0..Event3), keeping Event4..Event11
+    assert.strictEqual(events[0].event, "Event4");
+    assert.strictEqual(events[7].event, "Event11");
+  });
+
+  it("does not store an i18n label on events (derived at render time)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse" });
+    const evt = api.sessions.get("s1").recentEvents[0];
+    assert.ok(!("label" in evt), "recentEvents entries must not persist a 'label' field");
+  });
+
+  it("records state + event + at timestamp on each entry", () => {
+    const before = Date.now();
+    update(api, { id: "s1", state: "thinking", event: "UserPromptSubmit" });
+    const after = Date.now();
+    const evt = api.sessions.get("s1").recentEvents[0];
+    assert.strictEqual(evt.event, "UserPromptSubmit");
+    assert.strictEqual(evt.state, "thinking");
+    assert.ok(evt.at >= before && evt.at <= after);
+  });
+
+  it("recentEvents survives across multiple updates to the same session", () => {
+    update(api, { id: "s1", state: "thinking", event: "UserPromptSubmit" });
+    update(api, { id: "s1", state: "working", event: "PreToolUse" });
+    update(api, { id: "s1", state: "idle", event: "Stop" });
+    const events = api.sessions.get("s1").recentEvents;
+    assert.strictEqual(events.length, 3);
+    assert.deepStrictEqual(
+      events.map((e) => e.event),
+      ["UserPromptSubmit", "PreToolUse", "Stop"]
+    );
+  });
+
+  it("handles null event as null (not crash, not skipped)", () => {
+    // The update() helper falls back to "PreToolUse" on null event —
+    // bypass it here to test the null path directly.
+    api.updateSession("s1", "working", null, { cwd: "/tmp", agentId: "claude-code" });
+    const events = api.sessions.get("s1").recentEvents;
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].event, null);
+  });
+});
+
+describe("deriveSessionBadge", () => {
+  let api;
+  beforeEach(() => { api = require("../src/state")(makeCtx()); });
+  afterEach(() => { api.cleanup(); });
+
+  // ── reachable states (what updateSession actually keeps on session.state) ──
+  // oneshot states (attention/error/sweeping/notification/carrying) get
+  // normalized to idle by updateSession, so they aren't tested here.
+
+  it("returns 'running' for reachable active states", () => {
+    // working / thinking / juggling are what the state machine stores
+    for (const st of ["working", "thinking", "juggling"]) {
+      assert.strictEqual(
+        api.deriveSessionBadge({ state: st, recentEvents: [] }),
+        "running",
+        `state=${st}`
+      );
+    }
+  });
+
+  it("returns 'interrupted' when idle with StopFailure in recentEvents", () => {
+    const s = { state: "idle", recentEvents: [{ event: "StopFailure" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "interrupted");
+  });
+
+  it("returns 'interrupted' when idle with PostToolUseFailure in recentEvents", () => {
+    const s = { state: "idle", recentEvents: [{ event: "PostToolUseFailure" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "interrupted");
+  });
+
+  it("returns 'done' when idle with Stop in recentEvents", () => {
+    const s = { state: "idle", recentEvents: [{ event: "Stop" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "done");
+  });
+
+  it("returns 'done' when idle with PostCompact in recentEvents", () => {
+    const s = { state: "idle", recentEvents: [{ event: "PostCompact" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "done");
+  });
+
+  it("returns 'idle' when sleeping (no tombstone, not 'exited')", () => {
+    // SessionEnd deletes the session from the Map so menu iteration never
+    // sees it — sleeping here comes from other paths (idle timeout etc).
+    const s = { state: "sleeping", recentEvents: [{ event: "Stop" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "idle");
+  });
+
+  it("returns 'idle' when idle with no notable recentEvents", () => {
+    assert.strictEqual(api.deriveSessionBadge({ state: "idle", recentEvents: [] }), "idle");
+  });
+
+  it("uses the LATEST event for idle disambiguation", () => {
+    // PostToolUseFailure (interrupted) comes before Stop (done)
+    // Latest = Stop, so badge should be 'done', not 'interrupted'
+    const s = {
+      state: "idle",
+      recentEvents: [
+        { event: "PreToolUse" },
+        { event: "PostToolUseFailure" },
+        { event: "Stop" },
+      ],
+    };
+    assert.strictEqual(api.deriveSessionBadge(s), "done");
+  });
+
+  // ── defensive inputs (not reachable session states but safe to pass) ──
+
+  it("is defensive against null session", () => {
+    assert.strictEqual(api.deriveSessionBadge(null), "idle");
+  });
+
+  it("is defensive against undefined session", () => {
+    assert.strictEqual(api.deriveSessionBadge(undefined), "idle");
+  });
+
+  it("treats unknown non-idle state as 'running'", () => {
+    // If the state machine ever introduces a new active state, the badge
+    // should degrade gracefully to 'running' rather than throw or return
+    // undefined.
+    assert.strictEqual(
+      api.deriveSessionBadge({ state: "bogus-future-state", recentEvents: [] }),
+      "running"
+    );
+  });
+
+  it("handles missing recentEvents field (defensive)", () => {
+    assert.strictEqual(api.deriveSessionBadge({ state: "idle" }), "idle");
   });
 });
 

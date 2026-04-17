@@ -48,6 +48,11 @@ const STATE_PRIORITY = {
 
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
+// Rolling event history per session. Used by deriveSessionBadge() to infer a
+// user-facing status ("Running" / "Done" / "Interrupted" / "Idle") without
+// extending the state machine. Cap avoids unbounded growth on long sessions.
+const RECENT_EVENT_LIMIT = 8;
+
 // Session display hints — validated against theme.displayHintMap keys
 let DISPLAY_HINT_MAP = {};
 
@@ -458,6 +463,45 @@ function debugSession(msg) {
   try { ctx.debugLog(msg); } catch {}
 }
 
+// Append an event to a session's rolling recentEvents list, dropping the
+// oldest when over RECENT_EVENT_LIMIT. Returned list is a new array —
+// caller assigns it to session.recentEvents.
+// Intentionally does NOT store a human-readable label field. C2 derives
+// labels via i18n at render time so language switches update existing
+// sessions' menu labels too.
+function pushRecentEvent(existing, state, event) {
+  const previous = Array.isArray(existing && existing.recentEvents)
+    ? existing.recentEvents.slice(-(RECENT_EVENT_LIMIT - 1))
+    : [];
+  previous.push({
+    at: Date.now(),
+    event: event || null,
+    state: state || "idle",
+  });
+  return previous;
+}
+
+// Derive a user-facing status badge from a session. Returns one of:
+// "running" / "done" / "interrupted" / "idle".
+// Intentionally 4 categories — not 5. There is no "exited" because sessions
+// are deleted on SessionEnd (src/state.js `sessions.delete(sessionId)`),
+// so a session with state:"sleeping"+event:"SessionEnd" is unreachable in
+// the menu iteration.
+function deriveSessionBadge(session) {
+  if (!session) return "idle";
+  // Any non-idle/non-sleeping state → session is actively doing something
+  if (session.state !== "idle" && session.state !== "sleeping") return "running";
+  // Sleeping is treated as idle (the pet sleeping doesn't mean the session is dead)
+  if (session.state === "sleeping") return "idle";
+  // state === "idle": disambiguate by most-recent event
+  const events = Array.isArray(session.recentEvents) ? session.recentEvents : [];
+  const latest = events.length ? events[events.length - 1] : null;
+  const latestEvent = latest && latest.event;
+  if (latestEvent === "StopFailure" || latestEvent === "PostToolUseFailure") return "interrupted";
+  if (latestEvent === "Stop" || latestEvent === "PostCompact") return "done";
+  return "idle";
+}
+
 // Local title normalizer (trim, empty → null). Note: hooks/clawd-hook.js has
 // an identical 4-liner; hook scripts can't require src/* (different runtime
 // context: plain node child process, no Electron), so the two are kept in
@@ -529,7 +573,8 @@ function updateSession(sessionId, state, event, opts = {}) {
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, sessionTitle: srcSessionTitle, pidReachable };
+  const recentEvents = pushRecentEvent(existing, state, event);
+  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, sessionTitle: srcSessionTitle, recentEvents, pidReachable };
 
   // Evict oldest session if at capacity and this is a new session
   if (!existing && sessions.size >= MAX_SESSIONS) {
@@ -998,6 +1043,7 @@ return {
   getSvgOverride, cleanStaleSessions, startStartupRecovery, refreshTheme,
   detectRunningAgentProcesses, buildSessionSubmenu,
   clearSessionsByAgent,
+  deriveSessionBadge,
   getCurrentState, getCurrentSvg, getCurrentHitBox, getStartupRecoveryActive,
   sessions, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
   get STATE_SVGS() { return STATE_SVGS; },
