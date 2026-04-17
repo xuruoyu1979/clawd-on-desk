@@ -444,6 +444,12 @@ function startHttpServer() {
               opencodePatterns: patterns,
             };
             ctx.pendingPermissions.push(permEntry);
+            // Play notification animation on the pet body so the bubble doesn't
+            // appear "silently". Mirrors the Codex path (main.js showCodexNotifyBubble)
+            // and the Elicitation branch below. state.js:581 has a special
+            // PermissionRequest branch that setStates notification without
+            // mutating session state — so working/thinking is preserved for resolve.
+            ctx.updateSession(sessionId, "notification", "PermissionRequest", { agentId: "opencode" });
             ctx.permLog(`opencode showing bubble: tool=${toolName} session=${sessionId}`);
             try {
               ctx.showPermissionBubble(permEntry);
@@ -561,6 +567,13 @@ function startHttpServer() {
           res.on("close", abortHandler);
 
           ctx.pendingPermissions.push(permEntry);
+
+          // Play notification animation on the pet body so the bubble doesn't
+          // appear "silently". Mirrors the Codex path (main.js showCodexNotifyBubble)
+          // and the Elicitation branch above. state.js:581 has a special
+          // PermissionRequest branch that setStates notification without
+          // mutating session state — so working/thinking is preserved for resolve.
+          ctx.updateSession(sessionId, "notification", "PermissionRequest", { agentId: permAgentId });
 
           if (ctx.hideBubbles) {
             ctx.permLog(`bubble hidden: tool=${toolName} session=${sessionId} — terminal only`);
