@@ -112,12 +112,11 @@ function startServer(overrides) {
   };
 }
 
-// The sessionTitle is currently the 13th positional arg of updateSession
-// (index 12). B2 refactors this to an options bag.
-const UPDATE_SESSION_TITLE_IDX = 12;
+// updateSession signature (post-B2): (sessionId, state, event, opts = {})
+// — opts.sessionTitle is what we're asserting on.
 
 describe("/state session_title handling", () => {
-  it("passes session_title through to updateSession (13th positional arg)", async () => {
+  it("passes session_title through to updateSession opts", async () => {
     const { handler, updateSessionCalls } = startServer();
     const req = makeReq("POST", "/state", JSON.stringify({
       state: "working",
@@ -128,7 +127,7 @@ describe("/state session_title handling", () => {
     const res = await callHandler(handler, req);
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(updateSessionCalls.length, 1);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], "Fix login bug");
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, "Fix login bug");
   });
 
   it("trims whitespace on session_title", async () => {
@@ -139,7 +138,7 @@ describe("/state session_title handling", () => {
       session_title: "   Padded Title   ",
     }));
     await callHandler(handler, req);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], "Padded Title");
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, "Padded Title");
   });
 
   it("passes null when session_title is absent (keeps 200)", async () => {
@@ -150,7 +149,7 @@ describe("/state session_title handling", () => {
     }));
     const res = await callHandler(handler, req);
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], null);
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
   });
 
   it("ignores non-string session_title and keeps 200 (matches cwd/agent_id style)", async () => {
@@ -162,7 +161,7 @@ describe("/state session_title handling", () => {
     }));
     const res = await callHandler(handler, req);
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], null);
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
   });
 
   it("ignores empty/whitespace session_title and keeps 200", async () => {
@@ -174,7 +173,7 @@ describe("/state session_title handling", () => {
     }));
     const res = await callHandler(handler, req);
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], null);
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
   });
 
   it("ignores object session_title and keeps 200", async () => {
@@ -186,7 +185,7 @@ describe("/state session_title handling", () => {
     }));
     const res = await callHandler(handler, req);
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(updateSessionCalls[0][UPDATE_SESSION_TITLE_IDX], null);
+    assert.strictEqual(updateSessionCalls[0][3].sessionTitle, null);
   });
 });
 

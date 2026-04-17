@@ -309,7 +309,18 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               ctx.setState(state, safeSvg);
             } else {
-              ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless, display_svg, sessionTitle);
+              ctx.updateSession(sid, state, event, {
+                sourcePid: source_pid,
+                cwd,
+                editor,
+                pidChain,
+                agentPid,
+                agentId,
+                host,
+                headless,
+                displayHint: display_svg,
+                sessionTitle,
+              });
             }
             res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
             res.end("ok");
@@ -525,7 +536,7 @@ function startHttpServer() {
           // User clicks "Go to Terminal" → deny → Claude Code falls back to terminal.
           if (toolName === "AskUserQuestion") {
             ctx.permLog(`ELICITATION: tool=${toolName} session=${sessionId}`);
-            ctx.updateSession(sessionId, "notification", "Elicitation", null, "", null, null, null, "claude-code");
+            ctx.updateSession(sessionId, "notification", "Elicitation", { agentId: "claude-code" });
 
             const permEntry = { res, abortHandler: null, suggestions: [], sessionId, bubble: null, hideTimer: null, toolName, toolInput, resolvedSuggestion: null, createdAt: Date.now(), isElicitation: true, agentId: permAgentId };
             const abortHandler = () => {

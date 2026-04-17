@@ -482,9 +482,22 @@ function describeSession(sessionId, session) {
 }
 
 // ── Session management ──
-// B1 note: `sessionTitle` is tacked on as a 13th positional param for now.
-// This signature is ugly; B2 will refactor the whole thing to an options bag.
-function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain, agentPid, agentId, host, headless, displayHint, sessionTitle) {
+// Session-related fields go through `opts`. Earlier versions took 13
+// positional params — refactored in B2 to an options bag so new fields
+// (sessionTitle, etc.) don't keep extending the argument list.
+function updateSession(sessionId, state, event, opts = {}) {
+  const {
+    sourcePid = null,
+    cwd = null,
+    editor = null,
+    pidChain = null,
+    agentPid = null,
+    agentId = null,
+    host = null,
+    headless = false,
+    displayHint = undefined,
+    sessionTitle = null,
+  } = opts;
   if (startupRecoveryActive) {
     startupRecoveryActive = false;
     if (startupRecoveryTimer) { clearTimeout(startupRecoveryTimer); startupRecoveryTimer = null; }

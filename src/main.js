@@ -2257,7 +2257,11 @@ if (!gotTheLock) {
       const codexAgent = require("../agents/codex");
       _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
         if (state === "codex-permission") {
-          updateSession(sid, "notification", event, null, extra.cwd, null, null, null, "codex", null, null, null, extra.sessionTitle);
+          updateSession(sid, "notification", event, {
+            cwd: extra.cwd,
+            agentId: "codex",
+            sessionTitle: extra.sessionTitle,
+          });
           showCodexNotifyBubble({
             sessionId: sid,
             command: extra.permissionDetail?.command || "",
@@ -2265,7 +2269,11 @@ if (!gotTheLock) {
           return;
         }
         clearCodexNotifyBubbles(sid);
-        updateSession(sid, state, event, null, extra.cwd, null, null, null, "codex", null, null, null, extra.sessionTitle);
+        updateSession(sid, state, event, {
+          cwd: extra.cwd,
+          agentId: "codex",
+          sessionTitle: extra.sessionTitle,
+        });
       });
       if (_isAgentEnabled(_settingsController.getSnapshot(), "codex")) {
         _codexMonitor.start();
@@ -2278,7 +2286,10 @@ if (!gotTheLock) {
       const GeminiLogMonitor = require("../agents/gemini-log-monitor");
       const geminiAgent = require("../agents/gemini-cli");
       _geminiMonitor = new GeminiLogMonitor(geminiAgent, (sid, state, event, extra) => {
-        updateSession(sid, state, event, null, extra.cwd, null, null, null, "gemini-cli");
+        updateSession(sid, state, event, {
+          cwd: extra.cwd,
+          agentId: "gemini-cli",
+        });
       });
       if (_isAgentEnabled(_settingsController.getSnapshot(), "gemini-cli")) {
         _geminiMonitor.start();

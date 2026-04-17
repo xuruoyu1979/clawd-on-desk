@@ -56,11 +56,21 @@ function cloneTheme(theme) {
 /** Shorthand for updateSession with named params */
 function update(api, o = {}) {
   api.updateSession(
-    o.id || "s1", o.state || "working", o.event || "PreToolUse",
-    o.sourcePid ?? null, o.cwd || "/tmp", o.editor || null,
-    o.pidChain || null, o.agentPid ?? null, o.agentId || "claude-code",
-    o.host || null, o.headless || false, o.displayHint,
-    o.sessionTitle ?? null,
+    o.id || "s1",
+    o.state || "working",
+    o.event || "PreToolUse",
+    {
+      sourcePid: o.sourcePid ?? null,
+      cwd: o.cwd || "/tmp",
+      editor: o.editor || null,
+      pidChain: o.pidChain || null,
+      agentPid: o.agentPid ?? null,
+      agentId: o.agentId || "claude-code",
+      host: o.host || null,
+      headless: o.headless || false,
+      displayHint: o.displayHint,
+      sessionTitle: o.sessionTitle ?? null,
+    },
   );
 }
 
