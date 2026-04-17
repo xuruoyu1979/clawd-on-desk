@@ -53,6 +53,37 @@ const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification"
 // extending the state machine. Cap avoids unbounded growth on long sessions.
 const RECENT_EVENT_LIMIT = 8;
 
+// Badge (4-category) → i18n key. Flat keys, not dot-paths — createTranslator()
+// in src/i18n.js only does flat dict[key] lookup.
+const SESSION_BADGE_KEYS = {
+  running: "sessionBadgeRunning",
+  done: "sessionBadgeDone",
+  interrupted: "sessionBadgeInterrupted",
+  idle: "sessionBadgeIdle",
+};
+
+// Hook event name → i18n key for recentEvents.label derivation (C2 renders at
+// read time so a language switch updates already-stored events too).
+// eslint-disable-next-line no-unused-vars
+const EVENT_LABEL_KEYS = {
+  SessionStart: "eventLabelSessionStart",
+  SessionEnd: "eventLabelSessionEnd",
+  UserPromptSubmit: "eventLabelUserPromptSubmit",
+  PreToolUse: "eventLabelPreToolUse",
+  PostToolUse: "eventLabelPostToolUse",
+  PostToolUseFailure: "eventLabelPostToolUseFailure",
+  Stop: "eventLabelStop",
+  StopFailure: "eventLabelStopFailure",
+  SubagentStart: "eventLabelSubagentStart",
+  SubagentStop: "eventLabelSubagentStop",
+  PreCompact: "eventLabelPreCompact",
+  PostCompact: "eventLabelPostCompact",
+  Notification: "eventLabelNotification",
+  Elicitation: "eventLabelElicitation",
+  WorktreeCreate: "eventLabelWorktreeCreate",
+  "stale-cleanup": "eventLabelStaleCleanup",
+};
+
 // Session display hints — validated against theme.displayHintMap keys
 let DISPLAY_HINT_MAP = {};
 
@@ -920,7 +951,7 @@ function formatElapsed(ms) {
 function buildSessionSubmenu() {
   const entries = [];
   for (const [id, s] of sessions) {
-    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host, headless: s.headless, agentId: s.agentId, sessionTitle: s.sessionTitle });
+    entries.push({ id, state: s.state, updatedAt: s.updatedAt, sourcePid: s.sourcePid, cwd: s.cwd, editor: s.editor, pidChain: s.pidChain, host: s.host, headless: s.headless, agentId: s.agentId, sessionTitle: s.sessionTitle, recentEvents: s.recentEvents });
   }
   if (entries.length === 0) {
     return [{ label: ctx.t("noSessions"), enabled: false }];
@@ -935,7 +966,10 @@ function buildSessionSubmenu() {
   const now = Date.now();
 
   function buildItem(e) {
-    const stateText = ctx.t(STATE_LABEL_KEY[e.state] || "sessionIdle");
+    // 4-category badge derived from session.state + recentEvents tail.
+    // Not the raw state name — user-facing language (Running/Done/...).
+    const badgeKey = SESSION_BADGE_KEYS[deriveSessionBadge(e)] || "sessionBadgeIdle";
+    const badgeText = ctx.t(badgeKey);
     const folder = e.cwd ? path.basename(e.cwd) : (e.id.length > 6 ? e.id.slice(0, 6) + ".." : e.id);
     // Prefer user-set session title (Claude Code /rename, Codex turn summary)
     // over the cwd folder name when available.
@@ -945,7 +979,7 @@ function buildSessionSubmenu() {
     const hasPid = !!e.sourcePid;
     const icon = getAgentIcon(e.agentId);
     const item = {
-      label: `${e.headless ? "🤖 " : ""}${name}  ${stateText}  ${elapsed}`,
+      label: `${e.headless ? "🤖 " : ""}${name}  ${badgeText}  ${elapsed}`,
       enabled: hasPid,
       click: hasPid ? () => ctx.focusTerminalWindow(e.sourcePid, e.cwd, e.editor, e.pidChain) : undefined,
     };

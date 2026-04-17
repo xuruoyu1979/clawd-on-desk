@@ -7,11 +7,13 @@ const themeLoader = require("../src/theme-loader");
 themeLoader.init(require("path").join(__dirname, "..", "src"));
 const _defaultTheme = themeLoader.loadTheme("clawd");
 const _calicoTheme = themeLoader.loadTheme("calico");
+const { createTranslator } = require("../src/i18n");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeCtx(overrides = {}) {
-  return {
+  const ctx = {
+    lang: "en",
     theme: _defaultTheme,
     doNotDisturb: false,
     miniTransitioning: false,
@@ -32,7 +34,6 @@ function makeCtx(overrides = {}) {
     buildTrayMenu: () => {},
     pendingPermissions: [],
     resolvePermissionEntry: () => {},
-    t: (k) => k,
     showSessionId: false,
     focusTerminalWindow: () => {},
     // Default: all pids dead
@@ -40,6 +41,12 @@ function makeCtx(overrides = {}) {
     getCursorScreenPoint: () => ({ x: 100, y: 100 }),
     ...overrides,
   };
+  // Real translator — reads ctx.lang at call time so tests that flip
+  // ctx.lang between assertions see different strings. Unknown keys fall
+  // back to the key itself (existing createTranslator behavior), so tests
+  // that predate C2 and still pass internal state keys get identity behavior.
+  ctx.t = createTranslator(() => ctx.lang);
+  return ctx;
 }
 
 function makePidKill(alivePids) {
@@ -902,6 +909,119 @@ describe("deriveSessionBadge", () => {
 
   it("handles missing recentEvents field (defensive)", () => {
     assert.strictEqual(api.deriveSessionBadge({ state: "idle" }), "idle");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Group 6c: Sessions submenu badge + i18n (C2)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("buildSessionSubmenu badge + i18n", () => {
+  let api, ctx;
+  const pid = process.pid;
+
+  beforeEach(() => {
+    ctx = makeCtx({ processKill: makePidKill(new Set([pid])) });
+    api = require("../src/state")(ctx);
+  });
+  afterEach(() => api.cleanup());
+
+  function menuLabel() {
+    // First entry's label — assume single session in these tests so no
+    // host-grouping header rows.
+    return api.buildSessionSubmenu()[0].label;
+  }
+
+  it("shows English 'Running' when session is working (lang=en)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    ctx.lang = "en";
+    assert.match(menuLabel(), /Running/);
+  });
+
+  it("shows Chinese '运行中' when lang=zh", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    ctx.lang = "zh";
+    assert.match(menuLabel(), /运行中/);
+  });
+
+  it("shows Korean '실행 중' when lang=ko", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    ctx.lang = "ko";
+    assert.match(menuLabel(), /실행 중/);
+  });
+
+  it("shows 'Done' after Stop event (en)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    update(api, { id: "s1", state: "idle", event: "Stop", sourcePid: pid });
+    ctx.lang = "en";
+    assert.match(menuLabel(), /Done/);
+  });
+
+  it("shows '已完成' after Stop event (zh)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    update(api, { id: "s1", state: "idle", event: "Stop", sourcePid: pid });
+    ctx.lang = "zh";
+    assert.match(menuLabel(), /已完成/);
+  });
+
+  it("shows 'Interrupted' after StopFailure (en)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    update(api, { id: "s1", state: "idle", event: "StopFailure", sourcePid: pid });
+    ctx.lang = "en";
+    assert.match(menuLabel(), /Interrupted/);
+  });
+
+  it("shows '中断' after StopFailure (zh)", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    update(api, { id: "s1", state: "idle", event: "StopFailure", sourcePid: pid });
+    ctx.lang = "zh";
+    assert.match(menuLabel(), /中断/);
+  });
+
+  it("shows 'Idle' for fresh idle session with no notable events (en)", () => {
+    update(api, { id: "s1", state: "idle", event: "SessionStart", sourcePid: pid });
+    ctx.lang = "en";
+    assert.match(menuLabel(), /Idle/);
+  });
+
+  it("language switch changes label without needing a new state event", () => {
+    update(api, { id: "s1", state: "working", event: "PreToolUse", sourcePid: pid });
+    ctx.lang = "en";
+    const enLabel = menuLabel();
+    ctx.lang = "zh";
+    const zhLabel = menuLabel();
+    ctx.lang = "ko";
+    const koLabel = menuLabel();
+    assert.notStrictEqual(enLabel, zhLabel, "en vs zh should differ");
+    assert.notStrictEqual(zhLabel, koLabel, "zh vs ko should differ");
+    assert.match(enLabel, /Running/);
+    assert.match(zhLabel, /运行中/);
+    assert.match(koLabel, /실행 중/);
+  });
+
+  it("badge label falls back for idle sessions with only SessionStart", () => {
+    // SessionStart event shouldn't flip badge to done/interrupted
+    update(api, { id: "s1", state: "idle", event: "SessionStart", sourcePid: pid });
+    ctx.lang = "en";
+    const label = menuLabel();
+    assert.ok(!/Done|Interrupted/.test(label), `unexpected badge in: ${label}`);
+    assert.match(label, /Idle/);
+  });
+
+  it("sessionTitle still takes precedence over folder name when badge is present", () => {
+    update(api, {
+      id: "s1",
+      state: "working",
+      event: "PreToolUse",
+      sourcePid: pid,
+      cwd: "/tmp/project-abc",
+      sessionTitle: "Fix login bug",
+    });
+    ctx.lang = "en";
+    const label = menuLabel();
+    assert.ok(label.includes("Fix login bug"));
+    assert.ok(!label.includes("project-abc"));
+    assert.match(label, /Running/);
   });
 });
 
