@@ -163,6 +163,18 @@ describe("buildStateBody", () => {
       assert.strictEqual(body.session_title, "Spaced Title");
     });
 
+    it("strips control characters and truncates payload.session_title", () => {
+      const body = buildStateBody(
+        "SessionStart",
+        { session_id: "s", session_title: `  Fix\tlogin\nbug ${"x".repeat(100)}  ` },
+        mockResolve
+      );
+      assert.strictEqual(body.session_title.startsWith("Fix login bug "), true);
+      assert.strictEqual(body.session_title.length, 80);
+      assert.strictEqual(body.session_title.endsWith("…"), true);
+      assert.strictEqual(/[\u0000-\u001F\u007F-\u009F]/.test(body.session_title), false);
+    });
+
     it("omits session_title field when payload has none and no transcript path", () => {
       const body = buildStateBody("SessionStart", { session_id: "s" }, mockResolve);
       assert.ok(!("session_title" in body));
@@ -278,6 +290,17 @@ describe("extractSessionTitleFromTranscript", () => {
       { type: "custom-title", customTitle: "  Padded  " },
     ]);
     assert.strictEqual(extractSessionTitleFromTranscript(file), "Padded");
+  });
+
+  it("strips control characters and truncates extracted titles", () => {
+    const file = writeTmpJsonl([
+      { type: "custom-title", customTitle: `  Fix\tlogin\nbug ${"x".repeat(100)}  ` },
+    ]);
+    const title = extractSessionTitleFromTranscript(file);
+    assert.strictEqual(title.startsWith("Fix login bug "), true);
+    assert.strictEqual(title.length, 80);
+    assert.strictEqual(title.endsWith("…"), true);
+    assert.strictEqual(/[\u0000-\u001F\u007F-\u009F]/.test(title), false);
   });
 
   it("ignores corrupt JSON lines and keeps scanning", () => {

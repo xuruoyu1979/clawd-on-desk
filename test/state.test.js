@@ -701,6 +701,19 @@ describe("updateSession()", () => {
     assert.strictEqual(api.sessions.get("s1").sessionTitle, "Spaced");
   });
 
+  it("strips control characters and truncates long sessionTitle values", () => {
+    update(api, {
+      id: "s1",
+      state: "working",
+      sessionTitle: `  Fix\tlogin\nbug ${"x".repeat(100)}  `,
+    });
+    const title = api.sessions.get("s1").sessionTitle;
+    assert.strictEqual(title.startsWith("Fix login bug "), true);
+    assert.strictEqual(title.length, 80);
+    assert.strictEqual(title.endsWith("…"), true);
+    assert.strictEqual(/[\u0000-\u001F\u007F-\u009F]/.test(title), false);
+  });
+
   it("sticky sessionTitle: follow-up events without title keep existing", () => {
     update(api, { id: "s1", state: "thinking", sessionTitle: "Persistent Title" });
     update(api, { id: "s1", state: "working" }); // no title in this update

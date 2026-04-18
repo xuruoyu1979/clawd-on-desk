@@ -533,14 +533,23 @@ function deriveSessionBadge(session) {
   return "idle";
 }
 
-// Local title normalizer (trim, empty → null). Note: hooks/clawd-hook.js has
-// an identical 4-liner; hook scripts can't require src/* (different runtime
+// Local title normalizer (trim, strip control chars, clamp, empty → null).
+// Note: hooks/clawd-hook.js has an identical helper; hook scripts can't require src/* (different runtime
 // context: plain node child process, no Electron), so the two are kept in
 // sync manually rather than sharing a module.
+const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
+const SESSION_TITLE_MAX = 80;
+
 function normalizeTitle(value) {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
+  const collapsed = value
+    .replace(SESSION_TITLE_CONTROL_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!collapsed) return null;
+  return collapsed.length > SESSION_TITLE_MAX
+    ? `${collapsed.slice(0, SESSION_TITLE_MAX - 1)}\u2026`
+    : collapsed;
 }
 
 function describeSession(sessionId, session) {

@@ -8,11 +8,19 @@ const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
 
 const TRANSCRIPT_TAIL_BYTES = 262144; // 256 KB
+const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
+const SESSION_TITLE_MAX = 80;
 
 function normalizeTitle(value) {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
+  const collapsed = value
+    .replace(SESSION_TITLE_CONTROL_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!collapsed) return null;
+  return collapsed.length > SESSION_TITLE_MAX
+    ? `${collapsed.slice(0, SESSION_TITLE_MAX - 1)}\u2026`
+    : collapsed;
 }
 
 // Read the tail of a Claude Code transcript JSONL and return the most recent

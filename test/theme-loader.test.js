@@ -217,12 +217,17 @@ describe("theme-loader external SVG sanitization", () => {
         builtin: false,
         json: validThemeJson({ name: "Unsafe Inline Style" }),
         assets: {
+          "pattern.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
           "idle.svg": [
             "<svg xmlns=\"http://www.w3.org/2000/svg\">",
             "  <rect",
-            "    style=\"fill:url(https://example.com/pattern.svg#p);stroke:url(#allowed)\"",
-            "    fill=\"url(https://bad.example/fill.svg#p)\"",
+            "    style=\"fill:url(pattern.svg#grad);stroke:url(#allowed);filter:url(https://example.com/filter.svg#p)\"",
+            "    fill=\"url(pattern.svg#fill)\"",
+            "    mask=\"url(//bad.example/fill.svg#p)\"",
             "    width=\"10\" height=\"10\"/>",
+            "  <use href=\"pattern.svg#shape\"/>",
+            "  <use href=\"//attacker.com/x.svg#p\"/>",
+            "  <image href=\"..%2F..%2Fetc%2Fpasswd\"/>",
             "</svg>",
           ].join(""),
         },
@@ -231,15 +236,19 @@ describe("theme-loader external SVG sanitization", () => {
   });
   after(() => fixture && fixture.cleanup());
 
-  it("strips external url() references from inline style and presentation attrs", () => {
+  it("strips unsafe href/url references while preserving safe local ones", () => {
     themeLoader.loadTheme("unsafe-inline-style", { strict: true });
     const sanitizedPath = themeLoader.getAssetPath("idle.svg");
     const sanitized = fs.readFileSync(sanitizedPath, "utf8");
 
+    assert.ok(sanitized.includes("fill:url(pattern.svg#grad)"), "safe relative CSS url should survive");
     assert.ok(sanitized.includes("stroke:url(#allowed)"), "internal fragment url should survive");
+    assert.ok(sanitized.includes("fill=\"url(pattern.svg#fill)\""), "safe relative presentation attr should survive");
+    assert.ok(sanitized.includes("href=\"pattern.svg#shape\""), "safe relative href should survive");
     assert.ok(!sanitized.includes("https://example.com"), "inline style external url should be removed");
-    assert.ok(!sanitized.includes("https://bad.example"), "presentation attr external url should be removed");
-    assert.ok(!sanitized.includes("fill=\"url("), "unsafe fill attr should be dropped");
+    assert.ok(!sanitized.includes("//bad.example"), "protocol-relative presentation attr should be removed");
+    assert.ok(!sanitized.includes("//attacker.com"), "protocol-relative href should be removed");
+    assert.ok(!sanitized.includes("..%2F..%2Fetc%2Fpasswd"), "encoded traversal href should be removed");
   });
 });
 

@@ -105,7 +105,7 @@ const DANGEROUS_TAGS = new Set([
 ]);
 const DANGEROUS_ATTR_RE = /^on/i;
 const DANGEROUS_HREF_RE = /^\s*javascript\s*:/i;
-const EXTERNAL_RESOURCE_RE = /^\s*(https?|data|file|ftp)\s*:/i;
+const EXTERNAL_RESOURCE_RE = /^\s*(?:\/\/|(https?|data|file|ftp)\s*:)/i;
 const PATH_TRAVERSAL_RE = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
 const HREF_ATTRS = new Set(["href", "xlink:href", "src", "action", "formaction"]);
 const SVG_URL_ATTRS = new Set([
@@ -120,6 +120,8 @@ const SVG_URL_ATTRS = new Set([
   "marker-end",
   "cursor",
 ]);
+const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/;
+const ROOT_ABSOLUTE_PATH_RE = /^[\\/](?![\\/])/;
 
 // ── State ──
 
@@ -391,14 +393,35 @@ function _unwrapCssUrlTarget(rawValue) {
   return trimmed;
 }
 
-function _isUnsafeResourceTarget(rawValue) {
-  const target = _unwrapCssUrlTarget(rawValue);
+function _decodeResourceTarget(target) {
+  if (typeof target !== "string" || !target) return target || "";
+  try {
+    return decodeURIComponent(target);
+  } catch {
+    return target;
+  }
+}
+
+function _hasUnsafeResourcePattern(target) {
   if (!target) return false;
-  if (target.startsWith("#")) return false;
   return DANGEROUS_HREF_RE.test(target)
     || EXTERNAL_RESOURCE_RE.test(target)
     || PATH_TRAVERSAL_RE.test(target)
-    || !target.startsWith("#");
+    || WINDOWS_ABSOLUTE_PATH_RE.test(target)
+    || ROOT_ABSOLUTE_PATH_RE.test(target);
+}
+
+function _isUnsafeHrefTarget(rawValue) {
+  const target = _unwrapCssUrlTarget(rawValue);
+  if (!target || target.startsWith("#")) return false;
+  const decoded = _decodeResourceTarget(target);
+  return _hasUnsafeResourcePattern(target) || _hasUnsafeResourcePattern(decoded);
+}
+
+function _isUnsafeCssUrlTarget(rawValue) {
+  const target = _unwrapCssUrlTarget(rawValue);
+  if (!target || target.startsWith("#")) return false;
+  return _isUnsafeHrefTarget(target);
 }
 
 function _sanitizeCssUrls(cssText) {
@@ -406,7 +429,7 @@ function _sanitizeCssUrls(cssText) {
   return cssText
     .replace(/@import\b[^;]*/gi, "/* sanitized */")
     .replace(/url\s*\(\s*([^)]*?)\s*\)/gi, (match, rawTarget) => (
-      _isUnsafeResourceTarget(rawTarget) ? "url()" : match
+      _isUnsafeCssUrlTarget(rawTarget) ? "url()" : match
     ));
 }
 
@@ -414,7 +437,7 @@ function _containsUnsafeCssUrl(cssText) {
   if (typeof cssText !== "string" || !cssText) return false;
   const matches = cssText.matchAll(/url\s*\(\s*([^)]*?)\s*\)/gi);
   for (const match of matches) {
-    if (_isUnsafeResourceTarget(match[1])) return true;
+    if (_isUnsafeCssUrlTarget(match[1])) return true;
   }
   return false;
 }
@@ -462,7 +485,7 @@ function _sanitizeNode(node) {
         // Remove javascript: URLs, external protocols, and path traversal
         if (HREF_ATTRS.has(key.toLowerCase())) {
           const val = child.attribs[key];
-          if (DANGEROUS_HREF_RE.test(val) || EXTERNAL_RESOURCE_RE.test(val) || PATH_TRAVERSAL_RE.test(val)) {
+          if (_isUnsafeHrefTarget(val)) {
             delete child.attribs[key];
             continue;
           }
