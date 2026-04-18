@@ -366,13 +366,24 @@ opencode 是唯一**以 plugin 形式集成**的 agent，其他 agent 都是 hoo
 - 位置持久化：窗口坐标 + 尺寸存入 `clawd-prefs.json`
 - 多显示器边界钳制：`clampToScreen()` 用 `getNearestWorkArea()` 查找最近显示器工作区
 
+## 文档导航（docs/）
+
+`docs/` 在 `08cc501` 拆成了 6 个分类子目录，需要背景或历史方案时按类找而不是全盘扫：
+
+- `docs/guides/` — 面向外部用户的指南：`state-mapping.md`（状态 → 动画权威表）、`guide-theme-creation.md`（主题作者指南）、`guide-svg-animation.md`（SVG 动画约定）、`setup-guide.md` / `known-limitations.md`（含 `.zh-CN` 翻译）、`guide-remote-ssh.md`、`copilot-setup.md`
+- `docs/plans/` — 功能方案 / 重构计划：`plan-settings-panel*.md`、`plan-opencode-integration.md`、`plan-multi-agent.md`、`plan-permission-bubble.md` 等（每个大 PR 基本都能找到对应 plan）
+- `docs/investigations/` — Bug 根因 / Spike 记录：`drag-bug-investigation.md`、`opencode-phase1-debug.md`、`permission-hook-fail-deny-investigation.md`、`pitfall-svg-apng-positioning.md`、`handover-opencode-dnd-fix.md` 等——新 bug 先搜这里看有没有踩过
+- `docs/project/` — 高层介绍：`project-architecture.md`、`project-introduction.md`、`session-dashboard-design.md`
+- `docs/releases/` — 发布相关记录
+- `docs/legal/` — 许可 / 法务相关
+
 ## 开发规范
 
 - 敏感信息只放 `.env`，禁止硬编码
 - 注册 Claude Code hook 时必须**追加**到已有 hook 数组，不能覆盖
 - HTTP 服务端口范围 `127.0.0.1:23333-23337`，运行时端口写入 `~/.clawd/runtime.json`，退出时清理；全部占用时降级为 idle-only 模式
 - hook 脚本仅依赖 Node 内置模块 + 同目录的 `server-config.js` / `shared-process.js` / `json-utils.js`，禁止引入三方包（所有 hook 入口：`clawd-hook.js` / `copilot-hook.js` / `cursor-hook.js` / `gemini-hook.js` / `kiro-hook.js` / `codebuddy-hook.js` 都复用 `shared-process.js` 的进程树遍历 + 终端名白名单）
-- main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks
+- main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks；同时扫 `DEPRECATED_CORE_HOOKS`（当前含 `WorktreeCreate`）清掉旧版本留下的过时 clawd hook 条目，仅删 command 指向 `clawd-hook.js` 的那条，用户自己写的同事件 hook 不动
 - PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）
 - 极简模式动画期间（`miniTransitioning`），所有窗口定位路径（`always-on-top-changed`、`display-metrics-changed`、`display-removed` 等）都必须检查此标志，否则并发定位会导致 `setPosition()` 崩溃
 
