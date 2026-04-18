@@ -2099,6 +2099,49 @@ const _updaterCtx = {
 const _updater = require("./updater")(_updaterCtx);
 const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel } = _updater;
 
+// ── About tab IPC ──
+// Hero SVG is inlined (not file URL) because settings.html CSP is
+// `default-src 'none'` with no `object-src`/`frame-src` — <object>/<iframe>
+// loads are blocked. Inlining keeps CSP strict while letting the renderer
+// access #shake-slot to drive the click reaction.
+ipcMain.handle("settings:get-about-info", () => {
+  const heroSvgAbsPath = path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
+  let heroSvgContent = "";
+  try {
+    heroSvgContent = fs.readFileSync(heroSvgAbsPath, "utf8");
+  } catch (err) {
+    console.warn("Clawd: failed to read about hero SVG:", err && err.message);
+  }
+  return {
+    version: app.getVersion(),
+    repoUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
+    license: "MIT",
+    copyright: "\u00a9 2026 Ruller_Lulu",
+    authorName: "Ruller_Lulu / \u9e7f\u9e7f",
+    authorUrl: "https://github.com/rullerzhou-afk",
+    heroSvgContent,
+  };
+});
+ipcMain.handle("settings:check-for-updates", () => {
+  try {
+    checkForUpdates(true);
+    return { status: "ok" };
+  } catch (err) {
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+});
+ipcMain.handle("settings:open-external", async (_event, url) => {
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+    return { status: "error", message: "Invalid URL" };
+  }
+  try {
+    await shell.openExternal(url);
+    return { status: "ok" };
+  } catch (err) {
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+});
+
 // ── Settings panel window ──
 //
 // Single-instance, non-modal, system-titlebar BrowserWindow that hosts the

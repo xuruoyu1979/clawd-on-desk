@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   update: (key, value) => ipcRenderer.invoke("settings:update", { key, value }),
   command: (action, payload) => ipcRenderer.invoke("settings:command", { action, payload }),
   listAgents: () => ipcRenderer.invoke("settings:list-agents"),
+  getAboutInfo: () => ipcRenderer.invoke("settings:get-about-info"),
+  checkForUpdates: () => ipcRenderer.invoke("settings:check-for-updates"),
+  openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
   confirmRemoveTheme: (themeId) =>
     ipcRenderer.invoke("settings:confirm-remove-theme", themeId),

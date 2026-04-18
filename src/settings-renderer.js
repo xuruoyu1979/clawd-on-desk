@@ -176,6 +176,20 @@ const STRINGS = {
     animOverridesModalUse: "Use this file",
     animOverridesModalCancel: "Cancel",
     animOverridesRefresh: "Refresh list",
+    aboutTitle: "About Clawd",
+    aboutSubtitle: "The pixel crab that watches your AI coding sessions.",
+    aboutTagline: "A desktop companion for your AI coding journey.",
+    aboutVersionLabel: "Version",
+    aboutCheckForUpdates: "Check for Updates",
+    aboutRepositoryLabel: "Repository",
+    aboutLicenseLabel: "License",
+    aboutAuthorLabel: "Made by",
+    aboutContributorsLabel: "Contributors",
+    aboutContributorsShowAll: "Show all",
+    aboutContributorsHide: "Hide",
+    aboutFooter: "Clawd is open source. Built with care by the community.",
+    aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+    aboutOpenExternalFailed: "Couldn't open the link in your browser.",
   },
   zh: {
     settingsTitle: "设置",
@@ -336,6 +350,20 @@ const STRINGS = {
     animOverridesModalUse: "使用这个文件",
     animOverridesModalCancel: "取消",
     animOverridesRefresh: "刷新列表",
+    aboutTitle: "关于 Clawd",
+    aboutSubtitle: "陪你写代码的像素螃蟹。",
+    aboutTagline: "陪你 AI 编码的桌面伙伴。",
+    aboutVersionLabel: "版本",
+    aboutCheckForUpdates: "检查更新",
+    aboutRepositoryLabel: "代码仓库",
+    aboutLicenseLabel: "开源协议",
+    aboutAuthorLabel: "作者",
+    aboutContributorsLabel: "贡献者",
+    aboutContributorsShowAll: "展开全部",
+    aboutContributorsHide: "收起",
+    aboutFooter: "Clawd 是开源项目 · 与社区一起打造。",
+    aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+    aboutOpenExternalFailed: "无法在浏览器中打开链接。",
   },
   ko: {
     settingsTitle: "설정",
@@ -496,8 +524,31 @@ const STRINGS = {
     animOverridesModalUse: "이 파일 사용",
     animOverridesModalCancel: "취소",
     animOverridesRefresh: "목록 새로고침",
+    aboutTitle: "Clawd 정보",
+    aboutSubtitle: "당신의 AI 코딩 세션을 지켜보는 픽셀 게.",
+    aboutTagline: "AI 코딩 여정을 함께하는 데스크톱 동반자.",
+    aboutVersionLabel: "버전",
+    aboutCheckForUpdates: "업데이트 확인",
+    aboutRepositoryLabel: "저장소",
+    aboutLicenseLabel: "라이선스",
+    aboutAuthorLabel: "제작",
+    aboutContributorsLabel: "기여자",
+    aboutContributorsShowAll: "모두 보기",
+    aboutContributorsHide: "접기",
+    aboutFooter: "Clawd는 오픈 소스 · 커뮤니티와 함께 만듭니다.",
+    aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+    aboutOpenExternalFailed: "링크를 브라우저에서 열 수 없습니다.",
   },
 };
+
+// Contributors list (README order, hardcoded — update when new contributors land).
+// GitHub usernames don't translate, so this is shared across all locales.
+const CONTRIBUTORS = [
+  "PixelCookie-zyf", "yujiachen-y", "AooooooZzzz", "purefkh", "Tobeabellwether", "Jasonhonghh", "crashchen",
+  "hongbigtou", "InTimmyDate", "NeizhiTouhu", "xu3stones-cmd", "androidZzT", "Ye-0413", "WanfengzzZ",
+  "TaoXieSZ", "ssly", "stickycandy", "Rladmsrl", "YOIMIYA66", "Kevin7Qi", "sefuzhou770801-hub",
+  "Tonic-Jin", "seoki180", "PeterShanxin", "CHIANGANGSTER",
+];
 
 const SHORTCUT_API = globalThis.ClawdShortcutActions || {};
 const SHORTCUT_ACTIONS = SHORTCUT_API.SHORTCUT_ACTIONS || {};
@@ -562,7 +613,7 @@ const SIDEBAR_TABS = [
   { id: "animMap", icon: "\u{1F3AC}", labelKey: "sidebarAnimMap", available: true },
   { id: "animOverrides", icon: "\u{1F39E}", labelKey: "sidebarAnimOverrides", available: true },
   { id: "shortcuts", icon: "\u2328", labelKey: "sidebarShortcuts", available: true },
-  { id: "about", icon: "\u2139", labelKey: "sidebarAbout", available: false },
+  { id: "about", icon: "\u2139", labelKey: "sidebarAbout", available: true },
 ];
 
 function renderSidebar() {
@@ -605,6 +656,8 @@ function renderContent() {
     renderAnimOverridesTab(content);
   } else if (activeTab === "shortcuts") {
     renderShortcutsTab(content);
+  } else if (activeTab === "about") {
+    renderAboutTab(content);
   } else {
     renderPlaceholder(content);
   }
@@ -2535,6 +2588,232 @@ function renderShortcutsTab(parent) {
 
   const rows = SHORTCUT_ACTION_IDS.map((actionId) => buildShortcutRow(actionId));
   parent.appendChild(buildSection("", rows));
+}
+
+// ── About tab ──
+//
+// Hero: Clawd "Deal with it" intro → freeze at cool pose (4.4s), then breathing.
+// Click counter on the crab (7 reveals the easter-egg toast).
+// Info rows (version / repo / license / author), collapsible contributors grid, footer.
+let aboutInfoCache = null;
+let aboutClickCount = 0;
+let aboutContributorsExpanded = false;
+
+function fetchAboutInfo() {
+  if (aboutInfoCache) return Promise.resolve(aboutInfoCache);
+  if (!window.settingsAPI || typeof window.settingsAPI.getAboutInfo !== "function") {
+    return Promise.resolve(null);
+  }
+  return window.settingsAPI.getAboutInfo().then((info) => {
+    aboutInfoCache = info;
+    return info;
+  }).catch(() => null);
+}
+
+function openExternalSafe(url) {
+  if (!url) return;
+  if (!window.settingsAPI || typeof window.settingsAPI.openExternal !== "function") return;
+  window.settingsAPI.openExternal(url).then((result) => {
+    if (result && result.status === "error") {
+      showToast(t("aboutOpenExternalFailed"), { error: true });
+    }
+  }).catch(() => {
+    showToast(t("aboutOpenExternalFailed"), { error: true });
+  });
+}
+
+function handleAboutCrabClick(crabWrap) {
+  const slot = crabWrap.querySelector("#shake-slot");
+  if (slot) {
+    slot.classList.remove("shake");
+    void slot.getBoundingClientRect();
+    slot.classList.add("shake");
+    const onEnd = () => {
+      slot.classList.remove("shake");
+      slot.removeEventListener("animationend", onEnd);
+    };
+    slot.addEventListener("animationend", onEnd);
+  }
+  aboutClickCount++;
+  if (aboutClickCount >= 7) {
+    aboutClickCount = 0;
+    showToast(t("aboutEasterEggToast"), { ttl: 5000 });
+  }
+}
+
+function buildAboutLinkRow(label, url, displayText) {
+  const row = document.createElement("div");
+  row.className = "about-info-row";
+  const l = document.createElement("div");
+  l.className = "about-info-label";
+  l.textContent = label;
+  const v = document.createElement("div");
+  v.className = "about-info-value";
+  const a = document.createElement("a");
+  a.href = "#";
+  a.textContent = displayText;
+  a.addEventListener("click", (e) => {
+    e.preventDefault();
+    openExternalSafe(url);
+  });
+  v.appendChild(a);
+  row.appendChild(l);
+  row.appendChild(v);
+  return row;
+}
+
+function renderAboutTab(parent) {
+  // Hero: SVG + title + tagline
+  const hero = document.createElement("div");
+  hero.className = "about-hero";
+
+  const crabWrap = document.createElement("div");
+  crabWrap.className = "about-crab-wrap";
+  crabWrap.title = "Clawd";
+
+  const title = document.createElement("h2");
+  title.className = "about-title";
+  title.textContent = "Clawd on Desk";
+
+  const tagline = document.createElement("p");
+  tagline.className = "about-tagline";
+  tagline.textContent = t("aboutTagline");
+
+  hero.appendChild(crabWrap);
+  hero.appendChild(title);
+  hero.appendChild(tagline);
+  parent.appendChild(hero);
+
+  // Unified info section — version, repo, license, author, contributors
+  // all share the same visual block (no extra section-gap between author
+  // and contributors like an earlier draft that split them apart).
+  const infoSection = document.createElement("section");
+  infoSection.className = "section";
+  parent.appendChild(infoSection);
+
+  // Contributors header as an info-row (label + toggle button); list
+  // appended right after, no visual gap before it.
+  const contribRow = document.createElement("div");
+  contribRow.className = "about-info-row";
+  const contribLabel = document.createElement("div");
+  contribLabel.className = "about-info-label";
+  contribLabel.textContent = t("aboutContributorsLabel") + " (" + CONTRIBUTORS.length + ")";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "about-contributors-toggle";
+  toggleBtn.textContent = aboutContributorsExpanded ? t("aboutContributorsHide") : t("aboutContributorsShowAll");
+  contribRow.appendChild(contribLabel);
+  contribRow.appendChild(toggleBtn);
+
+  const contribList = document.createElement("div");
+  contribList.className = "about-contributors-list" + (aboutContributorsExpanded ? "" : " collapsed");
+  for (const name of CONTRIBUTORS) {
+    const link = document.createElement("a");
+    link.className = "about-contributor-link";
+    link.textContent = "@" + name;
+    link.href = "#";
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      openExternalSafe("https://github.com/" + name);
+    });
+    contribList.appendChild(link);
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    aboutContributorsExpanded = !aboutContributorsExpanded;
+    contribList.classList.toggle("collapsed", !aboutContributorsExpanded);
+    toggleBtn.textContent = aboutContributorsExpanded
+      ? t("aboutContributorsHide")
+      : t("aboutContributorsShowAll");
+  });
+
+  // Footer
+  const footer = document.createElement("div");
+  footer.className = "about-footer";
+  footer.textContent = t("aboutFooter");
+  parent.appendChild(footer);
+
+  // Async: populate hero SVG and info rows
+  fetchAboutInfo().then((info) => {
+    const safe = info || {};
+
+    if (safe.heroSvgContent) {
+      // Inline SVG so the renderer can reach #shake-slot for the click reaction.
+      // CSP blocks <object>/<iframe> under default-src 'none'.
+      crabWrap.innerHTML = safe.heroSvgContent;
+    }
+    crabWrap.addEventListener("click", () => handleAboutCrabClick(crabWrap));
+
+    infoSection.innerHTML = "";
+
+    // Version + Check for Updates
+    const versionRow = document.createElement("div");
+    versionRow.className = "about-info-row";
+    const vl = document.createElement("div");
+    vl.className = "about-info-label";
+    vl.textContent = t("aboutVersionLabel");
+    const vvWrap = document.createElement("div");
+    vvWrap.style.display = "flex";
+    vvWrap.style.alignItems = "center";
+    vvWrap.style.gap = "10px";
+    const vv = document.createElement("span");
+    vv.className = "about-info-value";
+    vv.textContent = "v" + (safe.version || "?");
+    const updateBtn = document.createElement("button");
+    updateBtn.className = "about-check-update-btn";
+    updateBtn.textContent = t("aboutCheckForUpdates");
+    updateBtn.addEventListener("click", () => {
+      if (!window.settingsAPI || typeof window.settingsAPI.checkForUpdates !== "function") return;
+      updateBtn.disabled = true;
+      window.settingsAPI.checkForUpdates()
+        .catch(() => {})
+        .finally(() => { updateBtn.disabled = false; });
+    });
+    vvWrap.appendChild(vv);
+    vvWrap.appendChild(updateBtn);
+    versionRow.appendChild(vl);
+    versionRow.appendChild(vvWrap);
+    infoSection.appendChild(versionRow);
+
+    // Repository
+    if (safe.repoUrl) {
+      infoSection.appendChild(buildAboutLinkRow(
+        t("aboutRepositoryLabel"),
+        safe.repoUrl,
+        safe.repoUrl.replace(/^https?:\/\//, "")
+      ));
+    }
+
+    // License + copyright
+    if (safe.license) {
+      const lRow = document.createElement("div");
+      lRow.className = "about-info-row";
+      const ll = document.createElement("div");
+      ll.className = "about-info-label";
+      ll.textContent = t("aboutLicenseLabel");
+      const lv = document.createElement("div");
+      lv.className = "about-info-value";
+      lv.textContent = safe.license + (safe.copyright ? " \u00b7 " + safe.copyright : "");
+      lRow.appendChild(ll);
+      lRow.appendChild(lv);
+      infoSection.appendChild(lRow);
+    }
+
+    // Author
+    if (safe.authorName) {
+      infoSection.appendChild(buildAboutLinkRow(
+        t("aboutAuthorLabel"),
+        safe.authorUrl,
+        safe.authorName
+      ));
+    }
+
+    // Contributors (header row + collapsible list) appended last so
+    // `about-info-row:last-child { border-bottom: none }` hits the
+    // contributor row cleanly. List is a sibling; its own visual padding
+    // handles spacing when expanded.
+    infoSection.appendChild(contribRow);
+    infoSection.appendChild(contribList);
+  });
 }
 
 // ── Boot ──
