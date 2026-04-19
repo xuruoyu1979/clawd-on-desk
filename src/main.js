@@ -7,6 +7,7 @@ const {
   applyWindowsAppUserModelId,
   getSettingsWindowIconPath,
   getSettingsWindowTaskbarDetails: getSettingsWindowTaskbarDetailsHelper,
+  shouldOpenSettingsWindowFromArgv,
   SETTINGS_WINDOW_TITLE,
 } = require("./settings-window-icon");
 const {
@@ -2422,6 +2423,14 @@ function getSettingsWindowTaskbarDetails() {
   });
 }
 
+function openSettingsWindowWhenReady() {
+  if (app.isReady()) {
+    openSettingsWindow();
+    return;
+  }
+  app.once("ready", openSettingsWindow);
+}
+
 function openSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore();
@@ -3116,7 +3125,7 @@ if (!gotTheLock) {
   // Another instance is already running — quit silently
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, commandLine) => {
     if (win) {
       win.showInactive();
       if (isLinux) win.setSkipTaskbar(true);
@@ -3124,6 +3133,9 @@ if (!gotTheLock) {
     if (hitWin && !hitWin.isDestroyed()) {
       hitWin.showInactive();
       if (isLinux) hitWin.setSkipTaskbar(true);
+    }
+    if (shouldOpenSettingsWindowFromArgv(commandLine)) {
+      openSettingsWindowWhenReady();
     }
     reapplyMacVisibility();
   });
@@ -3145,6 +3157,9 @@ if (!gotTheLock) {
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     createWindow();
+    if (shouldOpenSettingsWindowFromArgv(process.argv)) {
+      openSettingsWindow();
+    }
 
     // Register persistent global shortcuts from the validated prefs snapshot.
     registerPersistentShortcutsFromSettings();

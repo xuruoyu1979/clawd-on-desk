@@ -6,10 +6,12 @@ const path = require("path");
 
 const {
   WINDOWS_APP_USER_MODEL_ID,
+  SETTINGS_WINDOW_LAUNCH_ARG,
   SETTINGS_WINDOW_TITLE,
   getSettingsWindowIconPath,
   getWindowsShellIconPath,
   getSettingsWindowTaskbarDetails,
+  shouldOpenSettingsWindowFromArgv,
   applyWindowsAppUserModelId,
 } = require("../src/settings-window-icon");
 
@@ -116,12 +118,49 @@ describe("settings window taskbar details", () => {
       appId: WINDOWS_APP_USER_MODEL_ID,
       appIconPath: iconPath,
       appIconIndex: 0,
-      relaunchCommand: `"${execPath}" "${appPath}"`,
+      relaunchCommand: `"${execPath}" "${appPath}" "${SETTINGS_WINDOW_LAUNCH_ARG}"`,
+      relaunchDisplayName: SETTINGS_WINDOW_TITLE,
+    });
+  });
+
+  it("builds Windows taskbar metadata for packaged runs", () => {
+    const resourcesPath = "C:\\Program Files\\Clawd on Desk\\resources";
+    const execPath = "C:\\Program Files\\Clawd on Desk\\Clawd on Desk.exe";
+    const iconPath = path.join(resourcesPath, "icon.ico");
+    const actual = getSettingsWindowTaskbarDetails({
+      platform: "win32",
+      isPackaged: true,
+      resourcesPath,
+      execPath,
+      existsSync: (candidate) => candidate === iconPath,
+    });
+    assert.deepStrictEqual(actual, {
+      appId: WINDOWS_APP_USER_MODEL_ID,
+      appIconPath: iconPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${execPath}" "${SETTINGS_WINDOW_LAUNCH_ARG}"`,
       relaunchDisplayName: SETTINGS_WINDOW_TITLE,
     });
   });
 
   it("returns null on non-Windows platforms", () => {
     assert.strictEqual(getSettingsWindowTaskbarDetails({ platform: "darwin" }), null);
+  });
+});
+
+describe("settings window launch arg", () => {
+  it("detects the settings window launch arg in argv", () => {
+    assert.strictEqual(
+      shouldOpenSettingsWindowFromArgv(["electron.exe", ".", SETTINGS_WINDOW_LAUNCH_ARG]),
+      true
+    );
+  });
+
+  it("ignores argv that do not request the settings window", () => {
+    assert.strictEqual(
+      shouldOpenSettingsWindowFromArgv(["electron.exe", "."]),
+      false
+    );
+    assert.strictEqual(shouldOpenSettingsWindowFromArgv(null), false);
   });
 });
