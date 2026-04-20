@@ -581,7 +581,7 @@ const CONTRIBUTORS = [
   "PixelCookie-zyf", "yujiachen-y", "AooooooZzzz", "purefkh", "Tobeabellwether", "Jasonhonghh", "crashchen",
   "hongbigtou", "InTimmyDate", "NeizhiTouhu", "xu3stones-cmd", "androidZzT", "Ye-0413", "WanfengzzZ",
   "TaoXieSZ", "ssly", "stickycandy", "Rladmsrl", "YOIMIYA66", "Kevin7Qi", "sefuzhou770801-hub",
-  "Tonic-Jin", "seoki180", "PeterShanxin", "CHIANGANGSTER", "JaeHyeon-KAIST", "rullerzhou-afk",
+  "Tonic-Jin", "seoki180", "PeterShanxin", "CHIANGANGSTER", "JaeHyeon-KAIST",
 ];
 
 const SHORTCUT_API = globalThis.ClawdShortcutActions || {};
