@@ -37,6 +37,10 @@ const SCHEMA = {
   positionSaved: { type: "boolean", default: false },
   positionThemeId: { type: "string", default: "" },
   positionVariantId: { type: "string", default: "" },
+  // Last realized pixel bounds. Used to restore proportional mode exactly
+  // when keepSizeAcrossDisplays is enabled.
+  savedPixelWidth: { type: "number", default: 0, validate: (v) => Number.isFinite(v) && v >= 0 },
+  savedPixelHeight: { type: "number", default: 0, validate: (v) => Number.isFinite(v) && v >= 0 },
   size: {
     type: "string",
     default: "P:9",

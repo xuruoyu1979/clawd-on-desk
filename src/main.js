@@ -28,7 +28,11 @@ const {
   computeFinalDragBounds,
   materializeVirtualBounds,
 } = require("./drag-position");
-const { getLaunchSizingWorkArea, getProportionalPixelSize } = require("./size-utils");
+const {
+  getLaunchPixelSize,
+  getLaunchSizingWorkArea,
+  getProportionalPixelSize,
+} = require("./size-utils");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -231,6 +235,8 @@ function flushRuntimeStateToPrefs() {
     positionSaved: true,
     positionThemeId: activeTheme ? activeTheme._id : "",
     positionVariantId: activeTheme ? activeTheme._variantId : "",
+    savedPixelWidth: bounds.width,
+    savedPixelHeight: bounds.height,
     size: currentSize,
     miniMode: _mini.getMiniMode(),
     miniEdge: _mini.getMiniEdge(),
@@ -341,6 +347,19 @@ function getPixelSizeFor(sizeKey, overrideWa) {
 function getCurrentPixelSize(overrideWa) {
   if (!isProportionalMode()) return SIZES[currentSize] || SIZES.S;
   return getPixelSizeFor(currentSize, overrideWa);
+}
+
+function getEffectiveCurrentPixelSize(overrideWa) {
+  if (
+    keepSizeAcrossDisplaysCached &&
+    isProportionalMode() &&
+    win &&
+    !win.isDestroyed()
+  ) {
+    const bounds = getPetWindowBounds();
+    return { width: bounds.width, height: bounds.height };
+  }
+  return getCurrentPixelSize(overrideWa);
 }
 let contextMenu;
 let doNotDisturb = false;
@@ -1085,6 +1104,7 @@ const _menuCtx = {
   getPetWindowBounds,
   applyPetWindowBounds,
   getCurrentPixelSize,
+  getEffectiveCurrentPixelSize,
   getPixelSizeFor,
   isProportionalMode,
   PROPORTIONAL_RATIOS,
@@ -1174,7 +1194,7 @@ function wireSettingsSubscribers() {
           !_mini.getMiniMode() &&
           !_mini.getMiniTransitioning()
         ) {
-          const size = getCurrentPixelSize();
+          const size = getEffectiveCurrentPixelSize();
           const virtualBounds = getPetWindowBounds();
           const clamped = computeFinalDragBounds(virtualBounds, size, clampToScreenVisual);
           if (clamped) applyPetWindowBounds(clamped);
@@ -2499,7 +2519,7 @@ function createWindow() {
   // Read everything from the settings controller. The mirror caches above
   // (lang/showTray/etc.) were already initialized at module-load time, so
   // here we just need the position/mini fields plus the legacy size migration.
-  const prefs = _settingsController.getSnapshot();
+  let prefs = _settingsController.getSnapshot();
   // Legacy S/M/L → P:N migration. Only kicks in for prefs files that haven't
   // been touched since v0; new files always store the proportional form.
   if (SIZES[prefs.size]) {
@@ -2508,6 +2528,7 @@ function createWindow() {
     const ratio = Math.round(px / wa.width * 100);
     const migrated = `P:${Math.max(1, Math.min(75, ratio))}`;
     _settingsController.applyUpdate("size", migrated); // subscriber updates currentSize mirror
+    prefs = _settingsController.getSnapshot();
   }
   // macOS: apply dock visibility (default visible — but persisted state wins).
   if (isMac) {
@@ -2518,7 +2539,9 @@ function createWindow() {
     getPrimaryWorkAreaSafe() || SYNTHETIC_WORK_AREA,
     getNearestWorkArea,
   );
-  const size = getCurrentPixelSize(launchSizingWorkArea);
+  // keepSizeAcrossDisplays preserves the last realized pixel size across restarts.
+  const proportionalSize = getCurrentPixelSize(launchSizingWorkArea);
+  const size = getLaunchPixelSize(prefs, proportionalSize);
 
   // Restore saved position, or default to bottom-right of primary display.
   // Prefs file always exists in the new architecture (defaults are hydrated
@@ -2932,6 +2955,7 @@ const _miniCtx = {
   get currentState() { return _state.getCurrentState(); },
   SIZES,
   getCurrentPixelSize,
+  getEffectiveCurrentPixelSize,
   isProportionalMode,
   sendToRenderer,
   sendToHitWin,

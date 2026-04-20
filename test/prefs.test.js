@@ -45,6 +45,9 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.manageClaudeHooksAutomatically, true);
     assert.strictEqual(d.autoStartWithClaude, false);
     assert.strictEqual(d.allowEdgePinning, false);
+    assert.strictEqual(d.keepSizeAcrossDisplays, false);
+    assert.strictEqual(d.savedPixelWidth, 0);
+    assert.strictEqual(d.savedPixelHeight, 0);
   });
 
   it("seeds all known agents as enabled", () => {
@@ -75,6 +78,8 @@ describe("prefs.validate", () => {
       bubbleFollowPet: true, // ok
       hideBubbles: 0,        // wrong type
       allowEdgePinning: "yes",
+      savedPixelWidth: -1,
+      savedPixelHeight: "286",
     });
     const d = prefs.getDefaults();
     assert.strictEqual(v.lang, d.lang);
@@ -83,6 +88,8 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.hideBubbles, false);
     assert.strictEqual(v.allowEdgePinning, false);
+    assert.strictEqual(v.savedPixelWidth, 0);
+    assert.strictEqual(v.savedPixelHeight, 0);
   });
 
   it("keeps valid fields verbatim", () => {
@@ -91,6 +98,9 @@ describe("prefs.validate", () => {
       soundMuted: true,
       bubbleFollowPet: true,
       allowEdgePinning: true,
+      keepSizeAcrossDisplays: true,
+      savedPixelWidth: 286,
+      savedPixelHeight: 286,
       x: 100,
       y: -50,
       size: "P:15",
@@ -101,6 +111,9 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.soundMuted, true);
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.allowEdgePinning, true);
+    assert.strictEqual(v.keepSizeAcrossDisplays, true);
+    assert.strictEqual(v.savedPixelWidth, 286);
+    assert.strictEqual(v.savedPixelHeight, 286);
     assert.strictEqual(v.x, 100);
     assert.strictEqual(v.y, -50);
     assert.strictEqual(v.size, "P:15");

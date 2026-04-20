@@ -197,6 +197,9 @@ function cancelMiniTransition() {
 }
 
 function _getSize() {
+  if (typeof ctx.getEffectiveCurrentPixelSize === "function") {
+    return ctx.getEffectiveCurrentPixelSize();
+  }
   return ctx.getCurrentPixelSize ? ctx.getCurrentPixelSize() : ctx.SIZES[ctx.currentSize];
 }
 

@@ -77,12 +77,22 @@ describe("updateRegistry pure-data validators", () => {
   it("function-form boolean fields reject non-booleans", () => {
     const deps = { snapshot: baseSnapshot };
     for (const key of [
-      "soundMuted", "bubbleFollowPet", "hideBubbles", "allowEdgePinning",
+      "soundMuted", "bubbleFollowPet", "hideBubbles", "allowEdgePinning", "keepSizeAcrossDisplays",
       "showSessionId", "miniMode", "openAtLoginHydrated",
     ]) {
       assert.strictEqual(updateRegistry[key](true, deps).status, "ok", `${key}(true)`);
       assert.strictEqual(updateRegistry[key](false, deps).status, "ok", `${key}(false)`);
       assert.strictEqual(updateRegistry[key]("yes", deps).status, "error", `${key}("yes")`);
+    }
+  });
+
+  it("saved pixel sizes require non-negative finite numbers", () => {
+    const deps = { snapshot: baseSnapshot };
+    for (const key of ["savedPixelWidth", "savedPixelHeight"]) {
+      assert.strictEqual(updateRegistry[key](0, deps).status, "ok", `${key}(0)`);
+      assert.strictEqual(updateRegistry[key](286, deps).status, "ok", `${key}(286)`);
+      assert.strictEqual(updateRegistry[key](-1, deps).status, "error", `${key}(-1)`);
+      assert.strictEqual(updateRegistry[key](Infinity, deps).status, "error", `${key}(Infinity)`);
     }
   });
 

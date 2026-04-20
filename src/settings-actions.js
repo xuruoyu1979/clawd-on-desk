@@ -81,6 +81,15 @@ function requireFiniteNumber(key) {
   };
 }
 
+function requireNonNegativeFiniteNumber(key) {
+  return function (value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return { status: "error", message: `${key} must be a non-negative finite number` };
+    }
+    return { status: "ok" };
+  };
+}
+
 function requireEnum(key, allowed) {
   return function (value) {
     if (!allowed.includes(value)) {
@@ -227,6 +236,8 @@ const updateRegistry = {
   positionSaved: requireBoolean("positionSaved"),
   positionThemeId: requireString("positionThemeId", { allowEmpty: true }),
   positionVariantId: requireString("positionVariantId", { allowEmpty: true }),
+  savedPixelWidth: requireNonNegativeFiniteNumber("savedPixelWidth"),
+  savedPixelHeight: requireNonNegativeFiniteNumber("savedPixelHeight"),
 
   // ── Pure data prefs (function-form: validator only) ──
   lang: requireEnum("lang", ["en", "zh", "ko"]),

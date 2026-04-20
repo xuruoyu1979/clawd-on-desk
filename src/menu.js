@@ -270,17 +270,12 @@ module.exports = function initMenu(ctx) {
     if (!ctx.win || ctx.win.isDestroyed()) return;
     if (ctx.getMiniMode()) return;
     const wa = display.workArea;
-    if (ctx.isProportionalMode && ctx.isProportionalMode()) {
-      const size = ctx.getCurrentPixelSize(wa);
-      const x = Math.round(wa.x + (wa.width - size.width) / 2);
-      const y = Math.round(wa.y + (wa.height - size.height) / 2);
-      ctx.applyPetWindowBounds({ x, y, width: size.width, height: size.height });
-    } else {
-      const size = SIZES[ctx.currentSize] || ctx.getCurrentPixelSize();
-      const x = Math.round(wa.x + (wa.width - size.width) / 2);
-      const y = Math.round(wa.y + (wa.height - size.height) / 2);
-      ctx.applyPetWindowBounds({ x, y, width: size.width, height: size.height });
-    }
+    const size = typeof ctx.getEffectiveCurrentPixelSize === "function"
+      ? ctx.getEffectiveCurrentPixelSize(wa)
+      : (SIZES[ctx.currentSize] || ctx.getCurrentPixelSize(wa));
+    const x = Math.round(wa.x + (wa.width - size.width) / 2);
+    const y = Math.round(wa.y + (wa.height - size.height) / 2);
+    ctx.applyPetWindowBounds({ x, y, width: size.width, height: size.height });
     ctx.syncHitWin();
     ctx.repositionBubbles();
     ctx.flushRuntimeStateToPrefs();

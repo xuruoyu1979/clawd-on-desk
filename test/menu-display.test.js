@@ -134,4 +134,68 @@ describe("menu send-to-display", () => {
     assert.strictEqual(repositionCalls, 1);
     assert.strictEqual(flushCalls, 1);
   });
+
+  it("keeps the current pixel size when keep-size-across-displays is active", () => {
+    const displays = [
+      {
+        id: 1,
+        bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 0, y: 0, width: 1920, height: 1040 },
+      },
+      {
+        id: 2,
+        bounds: { x: 1920, y: 0, width: 834, height: 1194 },
+        workArea: { x: 1920, y: 0, width: 834, height: 1154 },
+      },
+    ];
+    const fakeElectron = {
+      app: { quit: () => {}, setActivationPolicy: () => {}, dock: { show: () => {}, hide: () => {} } },
+      BrowserWindow: function BrowserWindow() {},
+      Menu: {
+        buildFromTemplate(template) {
+          return { template };
+        },
+      },
+      Tray: function Tray() {},
+      nativeImage: {
+        createFromPath() {
+          return {
+            resize() { return this; },
+            setTemplateImage() {},
+          };
+        },
+      },
+      screen: {
+        getAllDisplays: () => displays,
+        getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+        getDisplayNearestPoint: () => displays[0],
+      },
+    };
+    const initMenu = loadMenuWithElectron(fakeElectron);
+
+    let getCurrentPixelSizeCalls = 0;
+    let appliedBounds = null;
+    const ctx = buildBaseCtx({
+      getCurrentPixelSize: () => {
+        getCurrentPixelSizeCalls += 1;
+        return { width: 286, height: 286 };
+      },
+      getEffectiveCurrentPixelSize: () => ({ width: 120, height: 120 }),
+      applyPetWindowBounds: (bounds) => { appliedBounds = bounds; },
+    });
+
+    const menu = initMenu(ctx);
+    menu.buildContextMenu();
+
+    const sendToDisplay = ctx.contextMenu.template.find((item) => item.label === "Send to Display");
+    sendToDisplay.submenu[1].click();
+
+    assert.strictEqual(getCurrentPixelSizeCalls, 0);
+    assert.deepStrictEqual(appliedBounds, {
+      x: 2277,
+      y: 517,
+      width: 120,
+      height: 120,
+    });
+  });
 });
