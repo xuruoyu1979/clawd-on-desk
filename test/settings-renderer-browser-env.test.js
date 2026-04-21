@@ -31,4 +31,17 @@ describe("settings renderer browser environment", () => {
     assert.ok(!/transition:\s*left\b/.test(match[1]));
     assert.ok(/transition:\s*transform 0\.14s ease,\s*box-shadow 0\.18s ease;/.test(match[1]));
   });
+
+  it("renders the size bubble tail as a separated double-layer callout instead of overlapping the pill", () => {
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    assert.ok(/--size-bubble-tail-size:\s*4px;/.test(html));
+    assert.ok(/--size-bubble-tail-inner-size:\s*3px;/.test(html));
+    assert.ok(/--size-bubble-tail-gap:\s*1px;/.test(html));
+    assert.ok(/padding-top:\s*29px;/.test(html));
+    assert.ok(/\.size-bubble\s*\{[\s\S]*top:\s*6px;[\s\S]*border-radius:\s*9px;[\s\S]*padding:\s*0 7px;[\s\S]*line-height:\s*1\.2;[\s\S]*\}/.test(html));
+    assert.ok(/\.size-bubble::before,\s*\.size-bubble::after\s*\{/.test(html));
+    assert.ok(/\.size-bubble::before\s*\{[\s\S]*top:\s*calc\(100%\s*\+\s*var\(--size-bubble-tail-gap\)\);[\s\S]*border-top:\s*var\(--size-bubble-tail-size\)\s+solid\s+var\(--accent\);[\s\S]*\}/.test(html));
+    assert.ok(/\.size-bubble::after\s*\{[\s\S]*top:\s*calc\(100%\s*\+\s*var\(--size-bubble-tail-gap\)\);[\s\S]*border-top:\s*var\(--size-bubble-tail-inner-size\)\s+solid\s+var\(--panel-bg\);[\s\S]*\}/.test(html));
+    assert.ok(!/\.size-bubble::after\s*\{[\s\S]*margin-top:\s*-1px;/.test(html));
+  });
 });
