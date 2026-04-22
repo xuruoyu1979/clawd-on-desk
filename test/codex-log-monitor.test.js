@@ -327,6 +327,79 @@ describe("CodexLogMonitor", () => {
     }, 200);
   });
 
+  it("emits the current thinking state once when attaching to a stale in-progress turn", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+    ].join("\n") + "\n");
+    const recent = new Date(Date.now() - 60 * 1000);
+    fs.utimesSync(testFile, recent, recent);
+
+    const config = makeConfig(tmpDir);
+    const seen = [];
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      seen.push(state);
+    });
+    monitor.start();
+
+    setTimeout(() => {
+      assert.deepStrictEqual(seen, ["thinking"]);
+      done();
+    }, 250);
+  });
+
+  it("emits codex-permission before attention when attaching mid-turn to a stale pending shell call", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"echo hi\\"}"}}',
+    ].join("\n") + "\n");
+    const recent = new Date(Date.now() - 60 * 1000);
+    fs.utimesSync(testFile, recent, recent);
+
+    const config = makeConfig(tmpDir);
+    const seen = [];
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      seen.push(state);
+      if (state === "attention") {
+        assert.deepStrictEqual(seen, ["codex-permission", "attention"]);
+        done();
+      }
+    });
+    monitor.start();
+
+    setTimeout(() => {
+      fs.appendFileSync(testFile, '{"type":"event_msg","payload":{"type":"task_complete"}}\n');
+    }, 200);
+  });
+
+  it("drops history-only backfills silently on stale cleanup", () => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+    const recent = new Date(Date.now() - 60 * 1000);
+    fs.utimesSync(testFile, recent, recent);
+
+    const config = makeConfig(tmpDir);
+    const seen = [];
+    monitor = new CodexLogMonitor(config, (sid, state) => {
+      seen.push(state);
+    });
+    monitor.start();
+
+    for (const tracked of monitor._tracked.values()) {
+      tracked.lastEventTime = Date.now() - 301000;
+    }
+    monitor._cleanStaleFiles();
+
+    assert.deepStrictEqual(seen, []);
+    assert.strictEqual(monitor._tracked.size, 0);
+  });
+
   it("should handle corrupted JSON lines gracefully", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [

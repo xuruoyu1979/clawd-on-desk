@@ -7,8 +7,10 @@
 //      older than monitor start. Only helps lines that carry a timestamp.
 //   2. File-level: _pollFile sets tracked.backfilling when attaching to a
 //      file whose mtime predates monitor start. _processLine then suppresses
-//      every emit + deferred timer until the first read drains. Works for
-//      any line shape, covers what layer 1 can't.
+//      historical emits + deferred timers until the first read drains, then
+//      _emitBackfillSnapshot may synthesize ONE current sustained state
+//      (thinking / working / codex-permission). Works for any line shape,
+//      covers what layer 1 can't.
 // The two overlap but don't duplicate each other — collapsing them takes a
 // refactor, not a tweak.
 
@@ -30,6 +32,7 @@ const ACTIVE_SESSION_WINDOW_MS = 5 * 60 * 1000;
 // replay it silently (backfill) instead of emitting stale transitions. A
 // file written within the grace window is a live session and emits normally.
 const BACKFILL_GRACE_MS = 5 * 1000;
+const BACKFILL_SNAPSHOT_STATES = new Set(["thinking", "working", "codex-permission"]);
 
 class CodexLogMonitor {
   /**
@@ -279,9 +282,12 @@ class CodexLogMonitor {
         sessionTitle: null,
         lastEventTime: Date.now(),
         lastState: null,
+        lastStateEvent: null,
+        hasEmittedState: false,
         partial: "",
         hadToolUse: false,
         agentPid: null,
+        pendingApprovalDetail: null,
         // Backfill mode: only a file whose last write predates monitor
         // start (by more than BACKFILL_GRACE_MS) is treated as stale
         // history — we replay it silently to advance offset + pick up
@@ -328,7 +334,10 @@ class CodexLogMonitor {
 
     // First pass drained the historical bytes we picked up on attach;
     // subsequent writes to this file are live and must emit normally.
-    if (tracked.backfilling) tracked.backfilling = false;
+    if (tracked.backfilling) {
+      this._emitBackfillSnapshot(tracked);
+      tracked.backfilling = false;
+    }
   }
 
   _processLine(line, tracked) {
@@ -375,6 +384,10 @@ class CodexLogMonitor {
         clearTimeout(tracked.approvalTimer);
         tracked.approvalTimer = null;
       }
+      tracked.pendingApprovalDetail = null;
+      if (tracked.backfilling && tracked.lastState === "codex-permission") {
+        tracked.lastState = "working";
+      }
     }
 
     // Look up state mapping
@@ -382,6 +395,7 @@ class CodexLogMonitor {
     const state = map[key];
     if (state === undefined) return; // unmapped event, skip
     if (state === null) return; // explicitly ignored
+    tracked.lastStateEvent = key;
 
     // Track tool use per turn — reset on task_started, set on function_call
     if (key === "event_msg:task_started") {
@@ -391,30 +405,18 @@ class CodexLogMonitor {
       tracked.hadToolUse = true;
     }
 
-    // Backfill gate: first-pass replay of a file's historical content skips
-    // every callback and every deferred approval timer. Side-effect fields
-    // (cwd / sessionTitle / hadToolUse) were already updated above so live
-    // state stays correct. Independent of the timestamp-based replay guard,
-    // which only helps lines that carry a timestamp field.
-    if (tracked.backfilling) return;
-
     // Turn-end: happy if tools were used this turn, idle otherwise
     if (state === "codex-turn-end") {
       if (tracked.approvalTimer) {
         clearTimeout(tracked.approvalTimer);
         tracked.approvalTimer = null;
       }
+      tracked.pendingApprovalDetail = null;
       const resolved = tracked.hadToolUse ? "attention" : "idle";
       tracked.hadToolUse = false;
       tracked.lastState = resolved;
-      tracked.lastEventTime = Date.now();
-      const agentPid = this._resolveTrackedAgentPid(tracked);
-      this._onStateChange(tracked.sessionId, resolved, key, {
-        cwd: tracked.cwd,
-        sourcePid: agentPid,
-        agentPid,
-        sessionTitle: tracked.sessionTitle,
-      });
+      if (tracked.backfilling) return;
+      this._emitStateChange(tracked, resolved, key);
       return;
     }
 
@@ -424,46 +426,46 @@ class CodexLogMonitor {
     if (key === "response_item:function_call") {
       if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
       const cmd = this._extractShellCommand(payload);
+      tracked.pendingApprovalDetail = cmd
+        ? { command: cmd, rawPayload: payload }
+        : null;
       if (cmd) {
         if (this._isExplicitApprovalRequest(payload)) {
-          const agentPid = this._resolveTrackedAgentPid(tracked);
-          tracked.lastEventTime = Date.now();
-          this._onStateChange(tracked.sessionId, "codex-permission", key, {
-            cwd: tracked.cwd,
-            sourcePid: agentPid,
-            agentPid,
-            sessionTitle: tracked.sessionTitle,
-            permissionDetail: { command: cmd, rawPayload: payload },
+          tracked.lastState = "codex-permission";
+          if (tracked.backfilling) return;
+          this._emitStateChange(tracked, "codex-permission", key, {
+            permissionDetail: tracked.pendingApprovalDetail,
           });
+          return;
+        }
+        if (tracked.backfilling) {
+          tracked.lastState = "codex-permission";
           return;
         }
         tracked.approvalTimer = setTimeout(() => {
           tracked.approvalTimer = null;
-          const agentPid = this._resolveTrackedAgentPid(tracked);
-          tracked.lastEventTime = Date.now();
-          this._onStateChange(tracked.sessionId, "codex-permission", key, {
-            cwd: tracked.cwd,
-            sourcePid: agentPid,
-            agentPid,
-            sessionTitle: tracked.sessionTitle,
-            permissionDetail: { command: cmd, rawPayload: payload },
+          tracked.lastState = "codex-permission";
+          this._emitStateChange(tracked, "codex-permission", key, {
+            permissionDetail: tracked.pendingApprovalDetail,
           });
         }, APPROVAL_HEURISTIC_MS);
       }
     }
 
+    // Backfill gate: first-pass replay of a file's historical content skips
+    // every callback and every deferred approval timer, but it still updates
+    // internal state so attach can synthesize the current visible state once.
+    // Independent of the timestamp-based replay guard, which only helps lines
+    // that carry a timestamp field.
+    if (tracked.backfilling) {
+      tracked.lastState = state;
+      return;
+    }
+
     // Avoid spamming same state
     if (state === tracked.lastState && state === "working") return;
     tracked.lastState = state;
-    tracked.lastEventTime = Date.now();
-
-    const agentPid = this._resolveTrackedAgentPid(tracked);
-    this._onStateChange(tracked.sessionId, state, key, {
-      cwd: tracked.cwd,
-      sourcePid: agentPid,
-      agentPid,
-      sessionTitle: tracked.sessionTitle,
-    });
+    this._emitStateChange(tracked, state, key);
   }
 
   // Codex-authored session summary, extracted from turn_context.summary.
@@ -575,17 +577,50 @@ class CodexLogMonitor {
     for (const [filePath, tracked] of this._tracked) {
       const age = now - tracked.lastEventTime;
       if (age > 300000) {
-        // 5 min stale — notify session end and stop tracking
+        // Pure history-only backfills were never visible in the UI, so drop
+        // them silently instead of synthesizing a fake "sleeping" event.
         if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
-        this._onStateChange(tracked.sessionId, "sleeping", "stale-cleanup", {
-          cwd: tracked.cwd,
-          sourcePid: tracked.agentPid,
-          agentPid: tracked.agentPid,
-          sessionTitle: tracked.sessionTitle,
-        });
+        if (tracked.hasEmittedState) {
+          this._emitStateChange(tracked, "sleeping", "stale-cleanup", {
+            sourcePid: tracked.agentPid,
+            agentPid: tracked.agentPid,
+          });
+        }
         this._tracked.delete(filePath);
       }
     }
+  }
+
+  _emitBackfillSnapshot(tracked) {
+    const snapshotState = tracked.lastState;
+    if (!BACKFILL_SNAPSHOT_STATES.has(snapshotState)) return;
+    const extra = snapshotState === "codex-permission" && tracked.pendingApprovalDetail
+      ? { permissionDetail: tracked.pendingApprovalDetail }
+      : null;
+    this._emitStateChange(
+      tracked,
+      snapshotState,
+      tracked.lastStateEvent || "session_meta",
+      extra
+    );
+  }
+
+  _emitStateChange(tracked, state, event, extra = null) {
+    tracked.lastState = state;
+    tracked.lastEventTime = Date.now();
+    tracked.hasEmittedState = true;
+    const agentPid = this._resolveTrackedAgentPid(tracked);
+    this._onStateChange(tracked.sessionId, state, event, {
+      cwd: tracked.cwd,
+      sourcePid: extra && Object.prototype.hasOwnProperty.call(extra, "sourcePid")
+        ? extra.sourcePid
+        : agentPid,
+      agentPid: extra && Object.prototype.hasOwnProperty.call(extra, "agentPid")
+        ? extra.agentPid
+        : agentPid,
+      sessionTitle: tracked.sessionTitle,
+      ...(extra || {}),
+    });
   }
 }
 
