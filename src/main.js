@@ -1912,7 +1912,7 @@ ipcMain.handle("settings:end-size-preview", (_event, value) => {
   return settingsSizePreviewSession.end(value || null);
 });
 ipcMain.handle("settings:get-preview-sound-url", () => {
-  try { return themeLoader.getSoundUrl("confirm") || null; }
+  try { return themeLoader.getPreviewSoundUrl(); }
   catch { return null; }
 });
 ipcMain.handle("settings:command", async (_event, payload) => {
