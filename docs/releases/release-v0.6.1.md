@@ -23,6 +23,16 @@
 - **Settings renderer split into focused modules** — the large settings renderer was split into bootstrap/i18n/core plus tab modules, making future panel work easier to review and safer to change without cross-tab regressions
 - **Docs refresh** — AGENTS/runtime notes, supported-agent guidance, and Codex/WSL clarification were updated to match the current integration model
 
+### Contributors
+
+Huge thanks to everyone who shipped code, reviewed behavior, or improved release quality for v0.6.1:
+
+- **@hhhzxyhhh** — Kimi CLI support groundwork (#138)
+- **@Rladmsrl** — per-theme sound effect overrides (#148)
+- **@zeus6768** — sound effect volume slider (#151)
+- **@YOIMIYA66** — Windows Settings window/taskbar polish and size bubble UI follow-ups (#130, #131, #133, #134, #144)
+- **@JaeHyeon-KAIST** — keep-size-across-displays and related Settings/runtime polish (#135, #136, #137)
+
 ### Known Limitations
 
 - **Kimi permission classification is partly heuristic** — explicit approval flags are honored directly, but some Kimi tool runs still rely on a short delay-then-promote heuristic to decide whether the pet should switch from `working` to `notification`
