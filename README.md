@@ -108,9 +108,10 @@ Full event-to-state mapping, mini mode, and click reactions: **[docs/guides/stat
 
 Clawd adapts to multi-monitor setups: proportional sizing uses the display Clawd launches on, portrait monitors get a bounded boost so the pet stays readable on tall narrow screens, and you can drag Clawd across displays.
 
-https://github.com/user-attachments/assets/dc5041a8-a952-4f97-b78d-c7f82b863b23
-
-<sub>Demo video contributed alongside <a href="https://github.com/rullerzhou-afk/clawd-on-desk/pull/103">PR #103</a>.</sub>
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/dc5041a8-a952-4f97-b78d-c7f82b863b23" width="480" controls muted playsinline></video>
+</p>
+<p align="center"><sub>Demo video contributed alongside <a href="https://github.com/rullerzhou-afk/clawd-on-desk/pull/103">PR #103</a>.</sub></p>
 
 ## Quick Start
 
