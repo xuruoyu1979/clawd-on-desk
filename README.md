@@ -8,6 +8,9 @@
   <a href="README.ko-KR.md">한국어</a>
 </p>
 <p align="center">
+  <sub>🌏 Don't see your language? <a href="https://github.com/rullerzhou-afk/clawd-on-desk/pulls">Open a PR</a> to add one — 日本語, Español, Français, etc. all welcome.</sub>
+</p>
+<p align="center">
   <a href="https://github.com/rullerzhou-afk/clawd-on-desk/releases"><img src="https://img.shields.io/github/v/release/rullerzhou-afk/clawd-on-desk" alt="Version"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
 </p>
@@ -100,6 +103,14 @@ Thinking when you prompt, typing when tools run, juggling subagents, reviewing p
 </table>
 
 Full event-to-state mapping, mini mode, and click reactions: **[docs/guides/state-mapping.md](docs/guides/state-mapping.md)**
+
+## Multi-display
+
+Clawd adapts to multi-monitor setups: proportional sizing uses the display Clawd launches on, portrait monitors get a bounded boost so the pet stays readable on tall narrow screens, and you can drag Clawd across displays.
+
+https://github.com/user-attachments/assets/dc5041a8-a952-4f97-b78d-c7f82b863b23
+
+<sub>Demo video contributed alongside <a href="https://github.com/rullerzhou-afk/clawd-on-desk/pull/103">PR #103</a>.</sub>
 
 ## Quick Start
 
