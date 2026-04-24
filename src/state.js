@@ -1186,8 +1186,9 @@ function resolveDisplayState() {
     best = "notification";
   }
 
-  // Update overlay participates in priority — won't override higher-priority agent states
-  if (updateVisualState && (updateVisualPriority || (STATE_PRIORITY[updateVisualState] || 0)) >= (STATE_PRIORITY[best] || 0)) {
+  // Update overlay participates in priority, but equal-priority live states
+  // such as notification/permission locks must remain visible.
+  if (updateVisualState && (updateVisualPriority || (STATE_PRIORITY[updateVisualState] || 0)) > (STATE_PRIORITY[best] || 0)) {
     return updateVisualState;
   }
   return best;

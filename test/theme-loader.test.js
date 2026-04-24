@@ -87,6 +87,22 @@ describe("theme-loader strict mode", () => {
     fixture = makeFixture([
       { id: "clawd", builtin: true, json: validThemeJson({ name: "Clawd" }) },
       { id: "good", builtin: true, json: validThemeJson({ name: "Good" }) },
+      {
+        id: "updatevisuals",
+        builtin: true,
+        json: validThemeJson({
+          name: "Update Visuals",
+          updateVisuals: { checking: "../nested/checking-special.svg" },
+        }),
+      },
+      {
+        id: "badupdatevisuals",
+        builtin: true,
+        json: validThemeJson({
+          name: "Bad Update Visuals",
+          updateVisuals: { checking: 42 },
+        }),
+      },
       // Missing required fields (no schemaVersion, no viewBox) → validateTheme fails.
       { id: "broken", builtin: false, json: { name: "Bad", version: "1", states: {} } },
     ]);
@@ -120,6 +136,18 @@ describe("theme-loader strict mode", () => {
   it("strict load succeeds on a valid theme", () => {
     const theme = themeLoader.loadTheme("good", { strict: true });
     assert.strictEqual(theme._id, "good");
+  });
+
+  it("normalizes updateVisuals file references", () => {
+    const theme = themeLoader.loadTheme("updatevisuals", { strict: true });
+    assert.strictEqual(theme.updateVisuals.checking, "checking-special.svg");
+  });
+
+  it("strict load rejects malformed updateVisuals", () => {
+    assert.throws(
+      () => themeLoader.loadTheme("badupdatevisuals", { strict: true }),
+      /updateVisuals\.checking/
+    );
   });
 });
 

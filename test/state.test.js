@@ -191,6 +191,10 @@ describe("resolveDisplayState()", () => {
     api.setUpdateVisualState("checking"); // → thinking(2)
     assert.strictEqual(api.resolveDisplayState(), "error");
 
+    // notification(7) == checking overlay priority(7) — live notification wins ties
+    api.sessions.set("s1", rawSession("notification"));
+    assert.strictEqual(api.resolveDisplayState(), "notification");
+
     // notification(7) == notification(7)
     api.setUpdateVisualState("available");
     api.sessions.set("s1", rawSession("notification"));
@@ -201,6 +205,26 @@ describe("resolveDisplayState()", () => {
     assert.strictEqual(api.resolveDisplayState(), "notification");
 
     api.setUpdateVisualState(null);
+  });
+
+  it("checking overlay does not override an active Kimi permission lock", () => {
+    api.cleanup();
+    const ctx = makeCtx({
+      isAgentPermissionsEnabled: () => true,
+      showKimiNotifyBubble: () => {},
+      clearKimiNotifyBubbles: () => {},
+    });
+    api = require("../src/state")(ctx);
+
+    update(api, {
+      id: "kimi-perm",
+      state: "notification",
+      event: "PermissionRequest",
+      agentId: "kimi-cli",
+    });
+    api.setUpdateVisualState("checking");
+
+    assert.strictEqual(api.resolveDisplayState(), "notification");
   });
 
   it("update overlay wins when no sessions exist", () => {
