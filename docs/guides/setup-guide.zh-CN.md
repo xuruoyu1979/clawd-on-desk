@@ -130,6 +130,11 @@ node hooks/opencode-install.js
 
 > 提示：如果仓库克隆在 WSL 内（如 `~/clawd-on-desk`），hook 脚本会自动使用 WSL 的 Node.js 路径。如果仓库放在 Windows 盘里（如 `/mnt/c/...`），请确保 WSL 的 PATH 中有 `node`。
 
+## Windows 说明
+
+- **安装包**：GitHub Releases 提供独立的 Windows x64 和 Windows ARM64 NSIS 安装包。Intel / AMD Windows 设备下载 `Clawd-on-Desk-Setup-<version>-x64.exe`，Windows on ARM 设备下载 `Clawd-on-Desk-Setup-<version>-arm64.exe`。
+- **自动更新**：Windows 安装包使用 `electron-updater`，更新时会保持当前匹配的架构。
+
 ## macOS 说明
 
 - **源码运行**（`npm start`）：Intel 和 Apple Silicon 均可直接使用。

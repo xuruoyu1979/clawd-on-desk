@@ -130,6 +130,11 @@ node hooks/opencode-install.js
 
 > **Tip:** If the repo is cloned inside WSL (e.g. `~/clawd-on-desk`), hook scripts will automatically use WSL's Node.js path. If the repo is on a Windows drive (e.g. `/mnt/c/...`), make sure `node` is in WSL's `PATH`.
 
+## Windows Notes
+
+- **Installer**: GitHub Releases provide separate NSIS installers for Windows x64 and Windows ARM64. Use `Clawd-on-Desk-Setup-<version>-x64.exe` on Intel/AMD Windows, and `Clawd-on-Desk-Setup-<version>-arm64.exe` on Windows on ARM.
+- **Auto-update**: packaged Windows installs use `electron-updater`; updates keep the matching architecture.
+
 ## macOS Notes
 
 - **From source** (`npm start`): works out of the box on Intel and Apple Silicon.

@@ -23,7 +23,7 @@ Clawd lives on your desktop and reacts to what your AI coding agent is doing —
 
 Thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, sleeping when you step away. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (三花猫), with full support for custom themes.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, and **opencode**.
+> Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, and **opencode**.
 
 ## Features
 
