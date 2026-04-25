@@ -50,6 +50,9 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.sessionHudEnabled, true);
     assert.strictEqual(d.savedPixelWidth, 0);
     assert.strictEqual(d.savedPixelHeight, 0);
+    assert.strictEqual(d.permissionBubblesEnabled, true);
+    assert.strictEqual(d.notificationBubbleAutoCloseSeconds, 3);
+    assert.strictEqual(d.updateBubbleAutoCloseSeconds, 9);
     assert.deepStrictEqual(d.sessionAliases, {});
   });
 
@@ -82,6 +85,9 @@ describe("prefs.validate", () => {
       bubbleFollowPet: true, // ok
       sessionHudEnabled: "yes",
       hideBubbles: 0,        // wrong type
+      permissionBubblesEnabled: "yes",
+      notificationBubbleAutoCloseSeconds: -1,
+      updateBubbleAutoCloseSeconds: 3601,
       allowEdgePinning: "yes",
       savedPixelWidth: -1,
       savedPixelHeight: "286",
@@ -94,9 +100,40 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.sessionHudEnabled, true);
     assert.strictEqual(v.hideBubbles, false);
+    assert.strictEqual(v.permissionBubblesEnabled, true);
+    assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 3);
+    assert.strictEqual(v.updateBubbleAutoCloseSeconds, 9);
     assert.strictEqual(v.allowEdgePinning, false);
     assert.strictEqual(v.savedPixelWidth, 0);
     assert.strictEqual(v.savedPixelHeight, 0);
+  });
+
+  it("backfills split bubble prefs from legacy hideBubbles=true", () => {
+    const v = prefs.validate(prefs.migrate({ hideBubbles: true }));
+    assert.strictEqual(v.hideBubbles, true);
+    assert.strictEqual(v.permissionBubblesEnabled, false);
+    assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 0);
+    assert.strictEqual(v.updateBubbleAutoCloseSeconds, 0);
+  });
+
+  it("backfills split bubble prefs from legacy hideBubbles=false", () => {
+    const v = prefs.validate(prefs.migrate({ hideBubbles: false }));
+    assert.strictEqual(v.hideBubbles, false);
+    assert.strictEqual(v.permissionBubblesEnabled, true);
+    assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 3);
+    assert.strictEqual(v.updateBubbleAutoCloseSeconds, 9);
+  });
+
+  it("preserves explicit split bubble prefs during legacy backfill", () => {
+    const v = prefs.validate(prefs.migrate({
+      hideBubbles: true,
+      permissionBubblesEnabled: true,
+      notificationBubbleAutoCloseSeconds: 12,
+      updateBubbleAutoCloseSeconds: 8,
+    }));
+    assert.strictEqual(v.permissionBubblesEnabled, true);
+    assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 12);
+    assert.strictEqual(v.updateBubbleAutoCloseSeconds, 8);
   });
 
   it("keeps valid fields verbatim", () => {

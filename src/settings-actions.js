@@ -51,6 +51,11 @@
 const { CURRENT_VERSION, AGENT_FLAGS, normalizeThemeOverrides } = require("./prefs");
 const { isValidDisplaySnapshot } = require("./work-area");
 const {
+  MAX_AUTO_CLOSE_SECONDS,
+  buildAggregateHideCommit,
+  buildCategoryEnabledCommit,
+} = require("./bubble-policy");
+const {
   normalizeSessionAliases,
   pruneExpiredSessionAliases,
   sanitizeSessionAlias,
@@ -101,6 +106,15 @@ function requireNumberInRange(key, min, max) {
   return function (value) {
     if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
       return { status: "error", message: `${key} must be a finite number between ${min} and ${max}` };
+    }
+    return { status: "ok" };
+  };
+}
+
+function requireIntegerInRange(key, min, max) {
+  return function (value) {
+    if (!Number.isInteger(value) || value < min || value > max) {
+      return { status: "error", message: `${key} must be an integer between ${min} and ${max}` };
     }
     return { status: "ok" };
   };
@@ -279,6 +293,17 @@ const updateRegistry = {
   bubbleFollowPet: requireBoolean("bubbleFollowPet"),
   sessionHudEnabled: requireBoolean("sessionHudEnabled"),
   hideBubbles: requireBoolean("hideBubbles"),
+  permissionBubblesEnabled: requireBoolean("permissionBubblesEnabled"),
+  notificationBubbleAutoCloseSeconds: requireIntegerInRange(
+    "notificationBubbleAutoCloseSeconds",
+    0,
+    MAX_AUTO_CLOSE_SECONDS
+  ),
+  updateBubbleAutoCloseSeconds: requireIntegerInRange(
+    "updateBubbleAutoCloseSeconds",
+    0,
+    MAX_AUTO_CLOSE_SECONDS
+  ),
   allowEdgePinning: requireBoolean("allowEdgePinning"),
   keepSizeAcrossDisplays: requireBoolean("keepSizeAcrossDisplays"),
 
@@ -839,6 +864,24 @@ function setAgentFlag(payload, deps) {
   const nextEntry = { ...(currentEntry || {}), [flag]: value };
   const nextAgents = { ...currentAgents, [agentId]: nextEntry };
   return { status: "ok", commit: { agents: nextAgents } };
+}
+
+function setAllBubblesHidden(payload, deps) {
+  const hidden = typeof payload === "boolean" ? payload : payload && payload.hidden;
+  if (typeof hidden !== "boolean") {
+    return { status: "error", message: "setAllBubblesHidden.hidden must be a boolean" };
+  }
+  return { status: "ok", commit: buildAggregateHideCommit(hidden) };
+}
+
+function setBubbleCategoryEnabled(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "setBubbleCategoryEnabled: payload must be an object" };
+  }
+  const { category, enabled } = payload;
+  const result = buildCategoryEnabledCommit((deps && deps.snapshot) || {}, category, enabled);
+  if (result.error) return { status: "error", message: result.error };
+  return { status: "ok", commit: result.commit };
 }
 
 function sessionAliasMapEqual(a, b) {
@@ -1573,6 +1616,8 @@ const commandRegistry = {
   resetShortcut,
   resetAllShortcuts,
   setAgentFlag,
+  setAllBubblesHidden,
+  setBubbleCategoryEnabled,
   setSessionAlias,
   setAnimationOverride,
   setSoundOverride,
@@ -1594,4 +1639,5 @@ module.exports = {
   requireEnum,
   requireString,
   requirePlainObject,
+  requireIntegerInRange,
 };
