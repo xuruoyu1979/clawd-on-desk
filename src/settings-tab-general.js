@@ -5,6 +5,7 @@
     "size",
     "soundMuted",
     "soundVolume",
+    "lowPowerIdleMode",
     "sessionHudEnabled",
     "allowEdgePinning",
     "keepSizeAcrossDisplays",
@@ -56,6 +57,11 @@
         invert: true,
       }),
       buildVolumeSliderRow(),
+      helpers.buildSwitchRow({
+        key: "lowPowerIdleMode",
+        labelKey: "rowLowPowerIdleMode",
+        descKey: "rowLowPowerIdleModeDesc",
+      }),
       helpers.buildSwitchRow({
         key: "allowEdgePinning",
         labelKey: "rowAllowEdgePinning",
