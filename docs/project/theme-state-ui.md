@@ -164,7 +164,7 @@ Mini 状态映射：
 - Windows 前台窗口锁通过 ALT trick + `koffi` FFI 绕过，仍有边缘失败可能
 - hook 脚本依赖 Node.js
 - Windows 终端聚焦依赖 `koffi`；macOS 依赖 `osascript`
-- Codex CLI 只有 JSONL 轮询，约 1.5s 延迟，且 Windows 下 hooks 被硬编码禁用
+- Codex CLI 以 official hooks 为主、JSONL 轮询为 fallback；WebSearch / compaction / abort 等 hook 未覆盖事件仍可能有轮询延迟
 - Copilot CLI 需要手动创建 `~/.copilot/hooks/hooks.json`
 - Gemini 无权限气泡；Cursor 权限走 stdout；Kiro 没有 global hooks；opencode 权限只能走 event hook + bridge
 - opencode 子会话会短暂出现在 Sessions 菜单里

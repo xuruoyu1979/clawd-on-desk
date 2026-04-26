@@ -4,8 +4,8 @@
 
 | Limitation | Details |
 |---|---|
-| **Codex CLI: no terminal focus** | Codex sessions use JSONL log polling which doesn't carry terminal PID info. Clicking Clawd won't jump to the Codex terminal. Claude Code and Copilot CLI work fine. |
-| **Codex CLI: Windows hooks disabled** | Codex hardcodes hooks off on Windows, so we poll log files instead. This means ~1.5s latency vs near-instant for hook-based agents. |
+| **Codex CLI: no terminal focus** | Codex official hooks and JSONL fallback do not carry a usable terminal PID. Clicking Clawd still won't jump to the Codex terminal. Claude Code and Copilot CLI work fine. |
+| **Codex CLI: partial hook coverage** | Official hooks cover live state and `PermissionRequest` bubbles, but not every runtime signal. Clawd keeps JSONL polling active for hook-disabled sessions and fallback-only events such as web search, compaction, and aborted turns, so those events can still have polling latency. |
 | **Copilot CLI: manual hook setup** | Copilot is the one supported agent that still requires manually creating `~/.copilot/hooks/hooks.json`. |
 | **Copilot CLI: no permission bubble** | Copilot's `preToolUse` hook only supports deny, not the full allow/deny flow. Permission bubbles currently work with Claude Code, CodeBuddy, and opencode. |
 | **Gemini CLI: no working state** | Gemini's session JSON only records completed messages, not in-progress tool execution. The pet jumps from thinking straight to happy/error — no typing animation during work. |

@@ -43,6 +43,33 @@ function buildCodexHookCommand(nodeBin, hookScript, platform = process.platform)
   });
 }
 
+function quotePosixEnvValue(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function quotePowerShellEnvValue(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function withCommandEnv(command, env, platform = process.platform) {
+  if (!env || typeof env !== "object") return command;
+  const entries = Object.entries(env)
+    .filter(([key, value]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && value !== undefined && value !== null);
+  if (!entries.length) return command;
+
+  if (platform === "win32") {
+    const prefix = entries
+      .map(([key, value]) => `$env:${key}=${quotePowerShellEnvValue(value)}`)
+      .join("; ");
+    return `${prefix}; ${command}`;
+  }
+
+  const prefix = entries
+    .map(([key, value]) => `${key}=${quotePosixEnvValue(value)}`)
+    .join(" ");
+  return `${prefix} ${command}`;
+}
+
 function readJsonIfPresent(filePath, label) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -180,9 +207,18 @@ function registerCodexCommandHooks(options = {}) {
   const nodeBin = resolved
     || extractExistingNodeBin(settings, marker, { nested: true })
     || "node";
-  const desiredCommand = buildCodexHookCommand(
+  const baseCommand = buildCodexHookCommand(
     nodeBin,
     hookScript,
+    options.platform || process.platform
+  );
+  const commandEnv = {
+    ...(options.env || {}),
+    ...(options.remote ? { CLAWD_REMOTE: "1" } : {}),
+  };
+  const desiredCommand = withCommandEnv(
+    baseCommand,
+    commandEnv,
     options.platform || process.platform
   );
 
@@ -295,4 +331,5 @@ module.exports = {
   registerCodexCommandHooks,
   timeoutForCodexEvent,
   unregisterCodexCommandHooks,
+  withCommandEnv,
 };

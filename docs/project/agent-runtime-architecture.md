@@ -23,10 +23,14 @@ Cursor Agent 状态同步（command hook，stdin JSON，非阻塞）：
     → hooks/cursor-hook.js（hook_event_name → 映射为 PascalCase event + HTTP POST，stdout 返回 allow/continue 以满足 preToolUse 等 hook）
     → 同上状态机（agent_id: cursor-agent）
 
-Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
+Codex CLI 状态同步（official hooks primary + JSONL fallback）：
+  Codex 触发 SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / Stop
+    → hooks/codex-hook.js（stdin JSON，session_id 优先与 transcript_path 的 rollout UUID 对齐）
+    → HTTP POST 127.0.0.1:23333/state { state, session_id, event, turn_id, hook_source }
+    → 同上状态机（agent_id: codex）
   Codex 写入 ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
-    → agents/codex-log-monitor.js（增量读取，事件类型 → agents/codex.js 映射）
-    → 同上状态机
+    → agents/codex-log-monitor.js（fallback：hook 未覆盖事件、hook 禁用/不可用、历史兼容）
+    → main.js wrapper 对 hook-active session 做事件级 suppression，避免重复状态/重复气泡
 
 Gemini CLI 状态同步（session JSON 轮询，~1.5s 延迟 + 4s 完成延迟窗口）：
   Gemini 写入 ~/.gemini/tmp/<project>/chats/session-*.json
@@ -79,6 +83,13 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
     → main.js 创建 bubble 窗口（bubble.html）显示权限卡片
     → 用户点击 Allow / Deny / suggestion → HTTP 响应 { behavior }
     → Claude Code 执行对应行为
+
+权限决策流（Codex official PermissionRequest command hook，阻塞）：
+  Codex PermissionRequest
+    → hooks/codex-hook.js POST /permission { tool_name, tool_input, tool_input_description, session_id, turn_id }
+    → main.js 创建普通 Allow / Deny bubble
+    → 用户点击 Allow / Deny → codex-hook.js stdout 输出官方 JSON decision
+    → DND / disabled / Clawd unavailable 时 stdout "{}"，Codex 回到原生审批提示
 ```
 
 ## Multi-Agent Registry
@@ -86,7 +97,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 每个 agent 定义为一个配置模块，导出事件映射、进程名、能力声明（`capabilities` 含 `httpHook` / `permissionApproval` / `sessionEnd` / `subagent`）：
 
 - `agents/claude-code.js` — Claude Code 事件映射 + 能力（hooks、permission、terminal focus）
-- `agents/codex.js` — Codex CLI JSONL 事件映射 + 轮询配置
+- `agents/codex.js` — Codex CLI official hook 事件映射 + JSONL fallback 轮询配置
 - `agents/copilot-cli.js` — Copilot CLI camelCase 事件映射
 - `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
 - `agents/gemini-cli.js` — Gemini CLI 事件映射 + JSON 轮询配置
@@ -95,7 +106,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 - `agents/codebuddy.js` — CodeBuddy 事件映射（PascalCase，Claude Code 兼容），支持权限
 - `agents/opencode.js` — opencode 事件映射 + 能力（plugin、permission、terminal focus）
 - `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
-- `agents/codex-log-monitor.js` — Codex JSONL 增量轮询器（文件监视 + 增量读取 + 事件去重）
+- `agents/codex-log-monitor.js` — Codex JSONL fallback 增量轮询器（文件监视 + 增量读取 + approval heuristic）
 - `agents/gemini-log-monitor.js` — Gemini session JSON 轮询器（消息数组 diff + 4s 完成延迟窗口）
 
 运行时的 agent 启停 / 权限气泡开关通过 `src/agent-gate.js` 读 `prefs.agents[id].enabled` / `.permissionsEnabled`（默认 true，snapshot 缺字段时也 true 以兼容旧版），供 `state.js` 和 `server.js` 判断是否处理该 agent 的事件。
@@ -105,21 +116,34 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 启动链路会自动补齐缺失集成：
 
 - `main.js` 会先调用 `registerHooks({ silent: true, autoStart: true, port })`
-- `server.js` 启动后异步同步 Claude / Gemini / Cursor / CodeBuddy / Kiro / Kimi hooks 和 opencode plugin
+- `server.js` 启动后异步同步 Claude / Codex / Gemini / Cursor / CodeBuddy / Kiro / Kimi hooks 和 opencode plugin
 - Claude hook 同步时还会扫 `DEPRECATED_CORE_HOOKS`（当前含 `WorktreeCreate`）清掉旧版本留下的过时 clawd hook 条目，仅删 command 指向 `clawd-hook.js` 的那条，用户自己写的同事件 hook 不动
 
 手动安装命令主要用于调试、重装或远程机部署。
 
 ## Permission Bubble
 
-- PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）
-- `POST /permission` 接收 `{ tool_name, tool_input, session_id, permission_suggestions }`
+- Claude Code / CodeBuddy 的 PermissionRequest 用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）
+- Codex 的 PermissionRequest 是 official command hook；hook 脚本挂起等待 `/permission`，再把 sanitized allow/deny JSON 写到 stdout
+- `POST /permission` 接收 `{ tool_name, tool_input, session_id, permission_suggestions }`；Codex 额外带 `turn_id`、`tool_input_description`、`tool_input_fingerprint`
 - 每个权限请求都会创建独立 `BrowserWindow`，多个 bubble 从右下向上堆叠
 - bubble 会通过 IPC `bubble-height` 回报真实高度，主进程据此重排
 - 支持 Allow / Deny / suggestion 决策，以及 `addRules` / `setMode` suggestion 类型
-- DND 只负责“不弹 bubble”，不替用户决定权限：opencode 分支 silent drop，让 TUI 内置权限提示接管；Claude Code 分支 `res.destroy()`，让 CC 回到内置聊天/终端确认
-- Codex CLI 没有阻塞式 HTTP hook，只能通过 JSONL 检测 approval 请求并显示通知 bubble
+- DND 只负责“不弹 bubble”，不替用户决定权限：opencode 分支 silent drop，让 TUI 内置权限提示接管；Claude Code 分支 `res.destroy()`，让 CC 回到内置聊天/终端确认；Codex 分支返回 no-decision `{}`，让 Codex 原生审批接管
+- Codex JSONL approval 通知 bubble 只保留给 official hook 不可用的 fallback session；hook-active session 的旧 passive notify 会被 main.js wrapper 压掉
 - 涉及 Claude Code 权限 payload 的改动（`permission_suggestions`、`updatedPermissions`、elicitation 输入等）必须至少用一次真实 Claude Code 验证；`curl` 自编请求历史上掩盖过字段结构 bug
+
+### Codex official hook notes
+
+P0 spike（2026-04-26，Windows native Codex CLI）采到的实际 payload 边界：
+
+- `session_id` 与 `transcript_path` 文件名里的 rollout UUID 一致；`codex-hook.js` 仍优先从 `transcript_path` 提取 UUID 作为防御。
+- `permission_mode` 在采样到的 SessionStart / UserPromptSubmit / PreToolUse / PermissionRequest / PostToolUse / Stop 中都存在，值为 `default`。
+- `SessionStart.source` 采到 `startup`；其他事件不带 `source`。
+- `Stop.stop_hook_active` 采到 `false`；`true` 时 hook 直接 no-op，避免 Codex stop continuation 边界抖动。
+- 普通 `PreToolUse` / `PostToolUse` 的 `tool_input` 不保证有 `description`；Bash 和 `apply_patch` 样本只有 `command`。
+- `PermissionRequest.tool_input.description` 在真实审批样本中存在，作为 bubble 文案首选；缺失时回退格式化 `tool_input`。
+- Codex PermissionRequest 输出必须 omit `updatedInput` / `updatedPermissions` / `interrupt`，不能写 `null`；这些字段今天 fail closed。
 
 ## Opencode Notes
 

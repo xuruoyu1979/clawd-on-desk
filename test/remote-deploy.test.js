@@ -39,4 +39,11 @@ describe("scripts/remote-deploy.sh FILES manifest", () => {
       }
     }
   });
+
+  it("registers Codex official hooks in remote mode", () => {
+    const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+    assert.match(script, /codex-install\.js/);
+    assert.match(script, /node ~\/\.claude\/hooks\/codex-install\.js --remote/);
+  });
 });

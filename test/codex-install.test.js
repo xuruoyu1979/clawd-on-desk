@@ -131,6 +131,44 @@ describe("Codex official hook installer", () => {
     assert.strictEqual(command, '& "C:\\Program Files\\nodejs\\node.exe" "D:/animation/hooks/codex-hook.js"');
   });
 
+  it("registers remote hooks with CLAWD_REMOTE in the command environment", () => {
+    const codexDir = makeTempCodexDir({});
+    const result = registerCodexHooks({
+      silent: true,
+      codexDir,
+      nodeBin: "/usr/local/bin/node",
+      platform: "linux",
+      remote: true,
+    });
+
+    assert.strictEqual(result.added, CODEX_OFFICIAL_HOOK_EVENTS.length);
+    const settings = readJson(path.join(codexDir, "hooks.json"));
+    const command = settings.hooks.SessionStart[0].hooks[0].command;
+    assert.strictEqual(
+      command,
+      "CLAWD_REMOTE='1' \"/usr/local/bin/node\" \"" + path.resolve(__dirname, "..", "hooks", "codex-hook.js").replace(/\\/g, "/") + "\""
+    );
+  });
+
+  it("registers Windows remote hooks with a PowerShell env prefix", () => {
+    const codexDir = makeTempCodexDir({});
+    const result = registerCodexHooks({
+      silent: true,
+      codexDir,
+      nodeBin: "C:\\node.exe",
+      platform: "win32",
+      remote: true,
+    });
+
+    assert.strictEqual(result.added, CODEX_OFFICIAL_HOOK_EVENTS.length);
+    const settings = readJson(path.join(codexDir, "hooks.json"));
+    const command = settings.hooks.SessionStart[0].hooks[0].command;
+    assert.strictEqual(
+      command,
+      "$env:CLAWD_REMOTE='1'; & \"C:\\node.exe\" \"" + path.resolve(__dirname, "..", "hooks", "codex-hook.js").replace(/\\/g, "/") + "\""
+    );
+  });
+
   it("unregisters only official state hooks", () => {
     const codexDir = makeTempCodexDir({});
     registerCodexDebugHooks({ silent: true, codexDir, nodeBin: "/usr/local/bin/node", platform: "linux" });

@@ -47,6 +47,9 @@ FILES=(
   "$HOOKS_DIR/shared-process.js"
   "$HOOKS_DIR/clawd-hook.js"
   "$HOOKS_DIR/install.js"
+  "$HOOKS_DIR/codex-hook.js"
+  "$HOOKS_DIR/codex-install.js"
+  "$HOOKS_DIR/codex-install-utils.js"
   "$HOOKS_DIR/codex-remote-monitor.js"
 )
 
@@ -122,6 +125,11 @@ ssh "$SSH_TARGET" "node ~/.claude/hooks/install.js --remote" || {
   echo "WARNING: Hook registration failed (Claude Code may not be installed on remote)"
 }
 
+echo "Registering Codex official hooks (remote mode)..."
+ssh "$SSH_TARGET" "node ~/.claude/hooks/codex-install.js --remote" || {
+  echo "WARNING: Codex official hook registration failed (Codex CLI may not be installed on remote)"
+}
+
 # ── Print SSH configuration ──
 
 # Extract host and user from SSH target
@@ -150,10 +158,12 @@ echo ""
 echo "Then connect with:  ssh ${SSH_HOST}"
 echo ""
 echo "=========================================="
-echo "  Codex Remote Monitor"
+echo "  Codex Remote Fallback"
 echo "=========================================="
 echo ""
-echo "On the remote server, start the Codex log monitor:"
+echo "Codex official hooks were registered when ~/.codex exists."
+echo "If hooks are unavailable or disabled on the remote Codex install,"
+echo "you can still start the fallback Codex log monitor:"
 echo ""
 echo "  node ~/.claude/hooks/codex-remote-monitor.js"
 echo ""
@@ -161,7 +171,7 @@ echo "Or run in background:"
 echo ""
 echo "  nohup node ~/.claude/hooks/codex-remote-monitor.js > /dev/null 2>&1 &"
 echo ""
-echo "The monitor will automatically sync Codex CLI states"
+echo "The fallback monitor polls Codex JSONL logs and syncs states"
 echo "back to your local Clawd through the SSH tunnel."
 echo "If the tunnel disconnects, it keeps running silently"
 echo "and resumes syncing when you reconnect."

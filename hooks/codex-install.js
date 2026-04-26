@@ -48,7 +48,7 @@ module.exports = {
 if (require.main === module) {
   try {
     if (process.argv.includes("--uninstall")) unregisterCodexHooks({});
-    else registerCodexHooks({});
+    else registerCodexHooks({ remote: process.argv.includes("--remote") });
   } catch (err) {
     console.error(err.message);
     process.exit(1);
