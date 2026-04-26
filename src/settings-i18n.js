@@ -226,6 +226,7 @@
       aboutRepositoryLabel: "Repository",
       aboutLicenseLabel: "License",
       aboutAuthorLabel: "Made by",
+      aboutMaintainersLabel: "Maintainers",
       aboutContributorsLabel: "Contributors",
       aboutContributorsShowAll: "Show all",
       aboutContributorsHide: "Hide",
@@ -455,6 +456,7 @@
       aboutRepositoryLabel: "代码仓库",
       aboutLicenseLabel: "开源协议",
       aboutAuthorLabel: "作者",
+      aboutMaintainersLabel: "维护者",
       aboutContributorsLabel: "贡献者",
       aboutContributorsShowAll: "展开全部",
       aboutContributorsHide: "收起",
@@ -684,6 +686,7 @@
       aboutRepositoryLabel: "저장소",
       aboutLicenseLabel: "라이선스",
       aboutAuthorLabel: "제작",
+      aboutMaintainersLabel: "메인테이너",
       aboutContributorsLabel: "기여자",
       aboutContributorsShowAll: "모두 보기",
       aboutContributorsHide: "접기",
@@ -692,6 +695,10 @@
       aboutOpenExternalFailed: "링크를 브라우저에서 열 수 없습니다.",
     },
   };
+
+  const MAINTAINERS = [
+    "rullerzhou-afk", "YOIMIYA66",
+  ];
 
   const CONTRIBUTORS = [
     "PixelCookie-zyf", "yujiachen-y", "AooooooZzzz", "purefkh", "Tobeabellwether", "Jasonhonghh", "crashchen",
@@ -703,6 +710,7 @@
 
   root.ClawdSettingsI18n = {
     STRINGS,
+    MAINTAINERS,
     CONTRIBUTORS,
   };
 })(globalThis);

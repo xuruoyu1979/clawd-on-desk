@@ -86,6 +86,31 @@
     infoSection.className = "section";
     parent.appendChild(infoSection);
 
+    const maintainersRow = document.createElement("div");
+    maintainersRow.className = "about-info-row";
+    const maintainersLabel = document.createElement("div");
+    maintainersLabel.className = "about-info-label";
+    maintainersLabel.textContent = t("aboutMaintainersLabel");
+    const maintainersValue = document.createElement("div");
+    maintainersValue.className = "about-info-value";
+    maintainersValue.style.display = "flex";
+    maintainersValue.style.flexWrap = "wrap";
+    maintainersValue.style.gap = "12px";
+    maintainersValue.style.justifyContent = "flex-end";
+    for (const name of i18n.MAINTAINERS) {
+      const link = document.createElement("a");
+      link.className = "about-contributor-link";
+      link.textContent = "@" + name;
+      link.href = "#";
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        helpers.openExternalSafe("https://github.com/" + name);
+      });
+      maintainersValue.appendChild(link);
+    }
+    maintainersRow.appendChild(maintainersLabel);
+    maintainersRow.appendChild(maintainersValue);
+
     const contribRow = document.createElement("div");
     contribRow.className = "about-info-row";
     const contribLabel = document.createElement("div");
@@ -192,6 +217,7 @@
         ));
       }
 
+      infoSection.appendChild(maintainersRow);
       infoSection.appendChild(contribRow);
       infoSection.appendChild(contribList);
     });
