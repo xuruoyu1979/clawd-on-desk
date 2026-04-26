@@ -100,7 +100,7 @@ describe("Agent Registry", () => {
 
     const codex = registry.getAgent("codex");
     assert.strictEqual(codex.capabilities.httpHook, false);
-    assert.strictEqual(codex.capabilities.permissionApproval, false);
+    assert.strictEqual(codex.capabilities.permissionApproval, true);
     assert.strictEqual(codex.capabilities.sessionEnd, false);
     assert.strictEqual(codex.capabilities.subagent, false);
 

@@ -11,6 +11,7 @@ module.exports = {
     SessionStart: "idle",
     UserPromptSubmit: "thinking",
     PreToolUse: "working",
+    PermissionRequest: "notification",
     PostToolUse: "working",
     Stop: "codex-turn-end",
   },
@@ -33,9 +34,9 @@ module.exports = {
   },
   capabilities: {
     httpHook: false,
-    permissionApproval: false,
-    // Read-only "Got it" notification, not an approval prompt — kept
-    // separate from permissionApproval so UI doesn't mislabel it.
+    permissionApproval: true,
+    // Official PermissionRequest is a real approval path. JSONL fallback still
+    // keeps interactiveBubble=true for older/no-hook sessions.
     interactiveBubble: true,
     sessionEnd: false, // no SessionEnd event, rely on task_complete + timeout
     subagent: false,

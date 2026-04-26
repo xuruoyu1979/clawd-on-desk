@@ -1,24 +1,19 @@
 #!/usr/bin/env node
-// Merge Clawd Codex official state hooks into ~/.codex/hooks.json.
+// Merge Clawd Codex official hooks into ~/.codex/hooks.json.
 //
-// Phase 1 only registers lifecycle/state hooks. PermissionRequest remains on
-// JSONL fallback/passive notification until the Codex-specific sanitizer and
-// long-poll /permission path land in Phase 2.
+// PermissionRequest is registered in Phase 2. Keep its output path constrained
+// to behavior/message only; Codex currently fail-closes on several future
+// decision fields.
 
 const {
+  CODEX_HOOK_EVENTS,
   buildCodexHookCommand,
   registerCodexCommandHooks,
   unregisterCodexCommandHooks,
 } = require("./codex-install-utils");
 
 const MARKER = "codex-hook.js";
-const CODEX_STATE_HOOK_EVENTS = [
-  "SessionStart",
-  "UserPromptSubmit",
-  "PreToolUse",
-  "PostToolUse",
-  "Stop",
-];
+const CODEX_OFFICIAL_HOOK_EVENTS = CODEX_HOOK_EVENTS;
 
 function buildCodexStateHookCommand(nodeBin, hookScript, platform = process.platform) {
   return buildCodexHookCommand(nodeBin, hookScript, platform);
@@ -29,7 +24,7 @@ function registerCodexHooks(options = {}) {
     ...options,
     marker: MARKER,
     scriptName: MARKER,
-    events: CODEX_STATE_HOOK_EVENTS,
+    events: CODEX_OFFICIAL_HOOK_EVENTS,
     label: "Codex official hooks",
   });
 }
@@ -38,12 +33,13 @@ function unregisterCodexHooks(options = {}) {
   return unregisterCodexCommandHooks({
     ...options,
     marker: MARKER,
-    events: CODEX_STATE_HOOK_EVENTS,
+    events: CODEX_OFFICIAL_HOOK_EVENTS,
   });
 }
 
 module.exports = {
-  CODEX_STATE_HOOK_EVENTS,
+  CODEX_OFFICIAL_HOOK_EVENTS,
+  CODEX_STATE_HOOK_EVENTS: CODEX_OFFICIAL_HOOK_EVENTS,
   buildCodexStateHookCommand,
   registerCodexHooks,
   unregisterCodexHooks,

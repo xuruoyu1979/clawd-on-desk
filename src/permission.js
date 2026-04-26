@@ -64,8 +64,8 @@ function deferMacFloatingVisibility(ctx, win) {
   }, MAC_FLOATING_TOPMOST_DELAY_MS);
 }
 
-// Codex doesn't come through /permission, so its sub-gate is checked at
-// the bubble-creation callsite instead of at the route entrance.
+// Legacy Codex JSONL notifications have no /permission connection, so their
+// sub-gate is checked at the bubble-creation callsite instead of route entry.
 function shouldSuppressCodexNotifyBubble(ctx) {
   const codexBubblesEnabled =
     typeof ctx.isAgentPermissionsEnabled !== "function" ||
@@ -92,6 +92,34 @@ function getPolicy(ctx, kind) {
   if (kind === "permission") return { enabled: !ctx.hideBubbles, autoCloseMs: null };
   if (kind === "notification") return { enabled: !ctx.hideBubbles, autoCloseMs: 30000 };
   return { enabled: !ctx.hideBubbles, autoCloseMs: 0 };
+}
+
+function sanitizeCodexPermissionDecision(decisionOrBehavior, message) {
+  const source = typeof decisionOrBehavior === "string"
+    ? { behavior: decisionOrBehavior, message }
+    : (decisionOrBehavior && typeof decisionOrBehavior === "object" ? decisionOrBehavior : null);
+  if (!source) return null;
+
+  const behavior = source.behavior === "deny" ? "deny"
+    : (source.behavior === "allow" ? "allow" : null);
+  if (!behavior) return null;
+
+  const decision = { behavior };
+  if (behavior === "deny" && typeof source.message === "string" && source.message) {
+    decision.message = source.message;
+  }
+  return decision;
+}
+
+function buildCodexPermissionResponseBody(decisionOrBehavior, message) {
+  const decision = sanitizeCodexPermissionDecision(decisionOrBehavior, message);
+  if (!decision) return "{}";
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision,
+    },
+  });
 }
 
 function isPassiveNotifyEntry(permEntry) {
@@ -583,6 +611,18 @@ function syncPermissionBubbleContent(permEntry) {
   // Guard: client may have disconnected
   if (!res || res.writableEnded || res.destroyed) return;
 
+  if (permEntry.isCodex) {
+    if (behavior === "no-decision") {
+      sendCodexNoDecisionResponse(res, message || "fallback");
+    } else {
+      sendCodexPermissionResponse(res, {
+        behavior: behavior === "deny" ? "deny" : "allow",
+        message,
+      });
+    }
+    return;
+  }
+
   if (permEntry.isElicitation) {
     if (behavior === "allow" && permEntry.resolvedUpdatedInput) {
       sendPermissionResponse(res, {
@@ -692,6 +732,29 @@ function sendPermissionResponse(res, decisionOrBehavior, message, hookEventName 
     [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
   });
   res.end(responseBody);
+}
+
+function sendCodexNoDecisionResponse(res, reason = "") {
+  if (!res || res.writableEnded || res.destroyed || res.headersSent) return false;
+  if (reason) permLog(`codex no-decision: ${reason}`);
+  res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+  res.end();
+  return true;
+}
+
+function sendCodexPermissionResponse(res, decisionOrBehavior, message) {
+  if (!res || res.writableEnded || res.destroyed || res.headersSent) return false;
+  const responseBody = buildCodexPermissionResponseBody(decisionOrBehavior, message);
+  if (responseBody === "{}") {
+    return sendCodexNoDecisionResponse(res, "invalid decision");
+  }
+  permLog(`codex response: ${responseBody}`);
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+  });
+  res.end(responseBody);
+  return true;
 }
 
 function handleBubbleHeight(event, height) {
@@ -915,10 +978,13 @@ function dismissPermissionsByAgent(agentId) {
       }, 250);
     }
     // opencode: skip bridge reply — TUI has its own fallback prompt.
+    // Codex: close with no decision so the native approval prompt continues.
     // CC / codebuddy / elicitation: destroy the connection so CC falls back
     //   to its built-in chat permission prompt (same pattern as DND, see
     //   commit 9f90... spike 2026-04-07).
-    if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
+    if (perm.isCodex) {
+      sendCodexNoDecisionResponse(perm.res, `dismiss-by-agent:${agentId}`);
+    } else if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
       try { perm.res.destroy(); } catch {}
     }
   }
@@ -948,9 +1014,11 @@ function dismissInteractivePermissionBubbles() {
       }, 250);
     }
     // Do not answer approval requests on the user's behalf. Dropping the UI
-    // means CC/CodeBuddy fall back via socket close, and opencode falls back
-    // by receiving no bridge reply.
-    if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
+    // means Codex receives no decision, CC/CodeBuddy fall back via socket
+    // close, and opencode falls back by receiving no bridge reply.
+    if (perm.isCodex) {
+      sendCodexNoDecisionResponse(perm.res, "interactive-bubbles-dismissed");
+    } else if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
       try { perm.res.destroy(); } catch {}
     }
   }
@@ -990,11 +1058,14 @@ function cleanup() {
   if (typeof unsubscribeShortcuts === "function") {
     try { unsubscribeShortcuts(); } catch {}
   }
-  // Clean up all pending permission requests — send explicit deny so Claude Code doesn't hang
+  // Clean up all pending permission requests. Codex gets no-decision so its
+  // native approval flow can continue; Claude/CodeBuddy get explicit deny so
+  // they don't hang while the app is quitting.
   for (const perm of [...pendingPermissions]) {
     if (perm._delayTimer) clearTimeout(perm._delayTimer);
     if (perm.autoExpireTimer) clearTimeout(perm.autoExpireTimer);
-    resolvePermissionEntry(perm, "deny", "Clawd is quitting");
+    if (perm.isCodex) resolvePermissionEntry(perm, "no-decision", "Clawd is quitting");
+    else resolvePermissionEntry(perm, "deny", "Clawd is quitting");
   }
 }
 
@@ -1020,5 +1091,7 @@ module.exports.__test = {
   computePassiveNotifyRemainingMs,
   clampBubbleHeight,
   shouldSuppressCodexNotifyBubble,
+  sanitizeCodexPermissionDecision,
+  buildCodexPermissionResponseBody,
   buildElicitationUpdatedInput,
 };

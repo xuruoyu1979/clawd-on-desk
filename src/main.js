@@ -321,9 +321,7 @@ function markCodexOfficialHookSession(sessionId) {
   codexOfficialHookSessions.set(String(sessionId), Date.now());
 }
 
-function shouldSuppressCodexLogEvent(sessionId, state, event) {
-  if (state === "codex-permission") return false;
-  if (!CODEX_LOG_EVENTS_COVERED_BY_OFFICIAL_HOOKS.has(event)) return false;
+function hasRecentCodexOfficialHookSession(sessionId) {
   const lastHookAt = codexOfficialHookSessions.get(String(sessionId));
   if (!lastHookAt) return false;
   if (Date.now() - lastHookAt > CODEX_OFFICIAL_LOG_SUPPRESS_TTL_MS) {
@@ -331,6 +329,15 @@ function shouldSuppressCodexLogEvent(sessionId, state, event) {
     return false;
   }
   return true;
+}
+
+function shouldSuppressCodexLogEvent(sessionId, state, event) {
+  // P2: official PermissionRequest owns the interactive bubble. Drop the
+  // legacy JSONL codex-permission notification for hook-active sessions so the
+  // user does not see both the real approval bubble and the old "Got it" hint.
+  if (state === "codex-permission") return hasRecentCodexOfficialHookSession(sessionId);
+  if (!CODEX_LOG_EVENTS_COVERED_BY_OFFICIAL_HOOKS.has(event)) return false;
+  return hasRecentCodexOfficialHookSession(sessionId);
 }
 
 function updateSessionFromServer(sessionId, state, event, opts = {}) {

@@ -274,6 +274,65 @@ function postStateToRunningServer(body, options, callback) {
   tryDirect();
 }
 
+function postPermissionToPort(port, payload, timeoutMs, callback, options = {}) {
+  const httpRequest = options.httpRequest || http.request;
+  let settled = false;
+  const finish = (ok, responseBody = "", statusCode = 0) => {
+    if (settled) return;
+    settled = true;
+    callback(ok, port, responseBody, statusCode);
+  };
+
+  const req = httpRequest(
+    {
+      hostname: "127.0.0.1",
+      port,
+      path: PERMISSION_PATH,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: timeoutMs,
+    },
+    (res) => {
+      let responseBody = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        if (responseBody.length < 262144) responseBody += chunk;
+      });
+      res.on("end", () => {
+        finish(readHeader(res, CLAWD_SERVER_HEADER) === CLAWD_SERVER_ID, responseBody, res.statusCode || 0);
+      });
+    }
+  );
+
+  req.on("error", () => finish(false));
+  req.on("timeout", () => {
+    req.destroy();
+    finish(false);
+  });
+  req.end(payload);
+}
+
+function postPermissionToRunningServer(body, options, callback) {
+  const timeoutMs = options && options.timeoutMs ? options.timeoutMs : 590000;
+  const probeTimeoutMs = options && options.probeTimeoutMs ? options.probeTimeoutMs : 100;
+  const payload = typeof body === "string" ? body : JSON.stringify(body);
+  const discover = options && options.discoverClawdPort ? options.discoverClawdPort : discoverClawdPort;
+  const post = options && options.postPermissionToPort ? options.postPermissionToPort : postPermissionToPort;
+
+  discover({ ...options, timeoutMs: probeTimeoutMs }, (port) => {
+    if (!port) {
+      callback(false, null, "", 0);
+      return;
+    }
+    post(port, payload, timeoutMs, (ok, confirmedPort, responseBody, statusCode) => {
+      callback(ok, confirmedPort, responseBody, statusCode);
+    }, options);
+  });
+}
+
 /**
  * Resolve the absolute path to the Node.js binary for hook commands.
  * On macOS/Linux, Claude Code runs hooks with a minimal PATH (/usr/bin:/bin)
@@ -362,6 +421,8 @@ module.exports = {
   clearRuntimeConfig,
   discoverClawdPort,
   getPortCandidates,
+  postPermissionToPort,
+  postPermissionToRunningServer,
   postStateToRunningServer,
   probePort,
   readHostPrefix,

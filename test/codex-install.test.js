@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const {
+  CODEX_OFFICIAL_HOOK_EVENTS,
   CODEX_STATE_HOOK_EVENTS,
   buildCodexStateHookCommand,
   registerCodexHooks,
@@ -40,7 +41,7 @@ afterEach(() => {
 });
 
 describe("Codex official hook installer", () => {
-  it("registers state hook events on fresh install without PermissionRequest", () => {
+  it("registers official hook events on fresh install including PermissionRequest", () => {
     const codexDir = makeTempCodexDir({});
     const result = registerCodexHooks({
       silent: true,
@@ -53,20 +54,20 @@ describe("Codex official hook installer", () => {
     assert.strictEqual(result.updated, 0);
     assert.strictEqual(result.skipped, 0);
     assert.strictEqual(result.configChanged, true);
+    assert.deepStrictEqual(CODEX_STATE_HOOK_EVENTS, CODEX_OFFICIAL_HOOK_EVENTS);
 
     const settings = readJson(path.join(codexDir, "hooks.json"));
-    for (const event of CODEX_STATE_HOOK_EVENTS) {
+    for (const event of CODEX_OFFICIAL_HOOK_EVENTS) {
       assert.ok(Array.isArray(settings.hooks[event]), `missing ${event}`);
       assert.strictEqual(settings.hooks[event].length, 1);
       const entry = settings.hooks[event][0];
       assert.strictEqual(Object.prototype.hasOwnProperty.call(entry, "matcher"), false);
       const hook = entry.hooks[0];
       assert.strictEqual(hook.type, "command");
-      assert.strictEqual(hook.timeout, 30);
+      assert.strictEqual(hook.timeout, event === "PermissionRequest" ? 600 : 30);
       assert.ok(hook.command.includes(MARKER));
       assert.ok(hook.command.includes("/usr/local/bin/node"));
     }
-    assert.strictEqual(Object.prototype.hasOwnProperty.call(settings.hooks, "PermissionRequest"), false);
   });
 
   it("is idempotent on second run", () => {
@@ -78,7 +79,7 @@ describe("Codex official hook installer", () => {
 
     assert.strictEqual(result.added, 0);
     assert.strictEqual(result.updated, 0);
-    assert.strictEqual(result.skipped, CODEX_STATE_HOOK_EVENTS.length);
+    assert.strictEqual(result.skipped, CODEX_OFFICIAL_HOOK_EVENTS.length);
     assert.strictEqual(fs.readFileSync(path.join(codexDir, "hooks.json"), "utf8"), before);
   });
 
@@ -93,9 +94,9 @@ describe("Codex official hook installer", () => {
       platform: "linux",
     });
 
-    assert.strictEqual(result.added, CODEX_STATE_HOOK_EVENTS.length);
+    assert.strictEqual(result.added, CODEX_OFFICIAL_HOOK_EVENTS.length);
     const settings = readJson(path.join(codexDir, "hooks.json"));
-    for (const event of CODEX_STATE_HOOK_EVENTS) {
+    for (const event of CODEX_OFFICIAL_HOOK_EVENTS) {
       const commands = settings.hooks[event].flatMap((entry) => entry.hooks.map((hook) => hook.command));
       assert.ok(commands.some((command) => command.includes(MARKER)));
       assert.ok(commands.some((command) => command.includes(DEBUG_MARKER)));
@@ -137,9 +138,9 @@ describe("Codex official hook installer", () => {
 
     const result = unregisterCodexHooks({ silent: true, codexDir });
 
-    assert.strictEqual(result.removed, CODEX_STATE_HOOK_EVENTS.length);
+    assert.strictEqual(result.removed, CODEX_OFFICIAL_HOOK_EVENTS.length);
     const settings = readJson(path.join(codexDir, "hooks.json"));
-    for (const event of CODEX_STATE_HOOK_EVENTS) {
+    for (const event of CODEX_OFFICIAL_HOOK_EVENTS) {
       const commands = settings.hooks[event].flatMap((entry) => entry.hooks.map((hook) => hook.command));
       assert.ok(!commands.some((command) => command.includes(MARKER)));
       assert.ok(commands.some((command) => command.includes(DEBUG_MARKER)));

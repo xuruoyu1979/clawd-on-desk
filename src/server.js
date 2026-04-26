@@ -39,6 +39,12 @@ function shouldBypassOpencodeBubble(ctx) {
   return !ctx.isAgentPermissionsEnabled("opencode");
 }
 
+function shouldBypassCodexBubble(ctx) {
+  if (!arePermissionBubblesEnabled(ctx)) return true;
+  if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
+  return !ctx.isAgentPermissionsEnabled("codex");
+}
+
 function arePermissionBubblesEnabled(ctx) {
   if (typeof ctx.getBubblePolicy === "function") {
     try {
@@ -181,6 +187,23 @@ function buildToolInputFingerprint(toolInput) {
     .createHash("sha1")
     .update(JSON.stringify(normalized))
     .digest("hex");
+}
+
+function normalizeCodexPermissionToolInput(rawInput, description) {
+  const base = rawInput && typeof rawInput === "object" ? truncateDeep(rawInput) : {};
+  const trimmedDescription = typeof description === "string" && description.trim()
+    ? description.trim()
+    : null;
+  if (!trimmedDescription) return base;
+  return {
+    ...base,
+    description: trimmedDescription,
+  };
+}
+
+function sendCodexPermissionNoDecision(res) {
+  res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+  res.end();
 }
 
 function findPendingPermissionForStateEvent(pendingPermissions, options) {
@@ -792,6 +815,88 @@ function startHttpServer() {
             return;
           }
 
+          // ── Codex official PermissionRequest branch ──
+          // The hook is blocking, but fallback must be no-decision rather than
+          // Deny: Codex will then continue to its native approval prompt.
+          if (data.agent_id === "codex") {
+            const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "Unknown";
+            const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+            const description = typeof data.tool_input_description === "string" && data.tool_input_description
+              ? data.tool_input_description
+              : (typeof rawInput.description === "string" ? rawInput.description : "");
+            const toolInput = normalizeCodexPermissionToolInput(rawInput, description);
+            const sessionId = typeof data.session_id === "string" && data.session_id ? data.session_id : "codex:default";
+            const toolUseId = normalizeHookToolUseId(
+              data.tool_use_id ?? data.toolUseId ?? data.toolUseID
+            );
+            const toolInputFingerprint = typeof data.tool_input_fingerprint === "string" && data.tool_input_fingerprint
+              ? data.tool_input_fingerprint
+              : buildToolInputFingerprint(rawInput);
+
+            if (ctx.doNotDisturb) {
+              ctx.permLog(`codex DND -> no decision, native prompt fallback (tool=${toolName})`);
+              sendCodexPermissionNoDecision(res);
+              return;
+            }
+
+            if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("codex")) {
+              ctx.permLog(`codex disabled -> no decision, native prompt fallback (tool=${toolName})`);
+              sendCodexPermissionNoDecision(res);
+              return;
+            }
+
+            if (shouldBypassCodexBubble(ctx)) {
+              const reason = !arePermissionBubblesEnabled(ctx)
+                ? "permission bubbles disabled"
+                : "codex bubbles disabled";
+              ctx.permLog(`${reason} -> no decision, native prompt fallback (tool=${toolName})`);
+              sendCodexPermissionNoDecision(res);
+              return;
+            }
+
+            const permEntry = {
+              res,
+              abortHandler: null,
+              suggestions: [],
+              sessionId,
+              bubble: null,
+              hideTimer: null,
+              toolName,
+              toolInput,
+              toolUseId,
+              toolInputFingerprint,
+              resolvedSuggestion: null,
+              createdAt: Date.now(),
+              agentId: "codex",
+              isCodex: true,
+            };
+            const abortHandler = () => {
+              if (res.writableFinished) return;
+              ctx.permLog("abortHandler fired (codex)");
+              ctx.resolvePermissionEntry(permEntry, "no-decision", "Client disconnected");
+            };
+            permEntry.abortHandler = abortHandler;
+            res.on("close", abortHandler);
+
+            ctx.pendingPermissions.push(permEntry);
+            ctx.updateSession(sessionId, "notification", "PermissionRequest", {
+              agentId: "codex",
+              hookSource: CODEX_OFFICIAL_HOOK_SOURCE,
+            });
+
+            ctx.permLog(`codex showing bubble: tool=${toolName} session=${sessionId} stack=${ctx.pendingPermissions.length}`);
+            try {
+              ctx.showPermissionBubble(permEntry);
+            } catch (bubbleErr) {
+              ctx.permLog(`codex bubble failed: ${bubbleErr && bubbleErr.message} -> no decision`);
+              const popIdx = ctx.pendingPermissions.indexOf(permEntry);
+              if (popIdx !== -1) ctx.pendingPermissions.splice(popIdx, 1);
+              if (permEntry.abortHandler) res.removeListener("close", permEntry.abortHandler);
+              sendCodexPermissionNoDecision(res);
+            }
+            return;
+          }
+
           // ── Claude Code branch ──
           // DND: destroy connection — do NOT send deny on the user's behalf.
           // CC falls back to its built-in chat permission prompt so the user
@@ -1011,9 +1116,11 @@ module.exports.__test = {
   entriesContainHttpHookUrl,
   settingsNeedClaudeHookResync,
   shouldBypassCCBubble,
+  shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
   normalizePermissionSuggestions,
   normalizeElicitationToolInput,
+  normalizeCodexPermissionToolInput,
   normalizeToolMatchValue,
   buildToolInputFingerprint,
   findPendingPermissionForStateEvent,
