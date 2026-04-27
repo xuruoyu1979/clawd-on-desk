@@ -2370,6 +2370,10 @@ const SOUND_OVERRIDE_DIALOG_STRINGS = {
   ko: { title: "음향 파일 선택", filterName: "오디오" },
 };
 
+function _getSettingsDialogParent(event) {
+  return BrowserWindow.fromWebContents(event.sender) || settingsWindow || null;
+}
+
 function _cleanupSiblingSoundOverrides(overridesDir, soundName, keepExt) {
   // Replacing a sound with a different extension would otherwise leave the old
   // file as orphaned junk in the overrides dir (not referenced from prefs, but
@@ -2698,79 +2702,6 @@ ipcMain.handle("settings:confirm-remove-theme", async (event, themeId) => {
   }
 });
 
-const CLAUDE_HOOKS_DIALOG_STRINGS = {
-  en: {
-    disableTitle: "Turn off automatic Claude hook management?",
-    disableDetail: "Existing Claude hooks in ~/.claude/settings.json stay in place unless you remove them now.",
-    disableOnly: "Disable automatic management only",
-    disableAndRemove: "Disable and remove installed hooks",
-    cancel: "Cancel",
-    disconnectTitle: "Disconnect Claude hooks?",
-    disconnectDetail: "This removes Clawd-managed Claude hooks from ~/.claude/settings.json and turns off automatic management. Your Start with Claude preference will be kept for later re-enable.",
-    disconnect: "Disconnect hooks",
-  },
-  zh: {
-    disableTitle: "关闭 Claude hooks 自动管理？",
-    disableDetail: "如果不选择立即移除，`~/.claude/settings.json` 里当前已安装的 Claude hooks 会继续保留。",
-    disableOnly: "只关闭自动管理",
-    disableAndRemove: "关闭并移除当前 hooks",
-    cancel: "取消",
-    disconnectTitle: "断开 Claude hooks？",
-    disconnectDetail: "这会从 `~/.claude/settings.json` 移除 Clawd 管理的 Claude hooks，并关闭自动管理。`随 Claude Code 启动` 的偏好会保留，方便以后重新启用。",
-    disconnect: "断开 hooks",
-  },
-  ko: {
-    disableTitle: "Claude hooks 자동 관리를 끌까요?",
-    disableDetail: "지금 제거하지 않으면 `~/.claude/settings.json`에 설치된 Claude hooks는 그대로 유지됩니다.",
-    disableOnly: "자동 관리만 끄기",
-    disableAndRemove: "끄고 설치된 hooks 제거",
-    cancel: "취소",
-    disconnectTitle: "Claude hooks 연결을 해제할까요?",
-    disconnectDetail: "`~/.claude/settings.json`에서 Clawd가 관리하는 Claude hooks를 제거하고 자동 관리를 끕니다. `Claude Code와 함께 시작` 설정은 나중에 다시 켤 수 있도록 유지됩니다.",
-    disconnect: "hooks 연결 해제",
-  },
-};
-function _getSettingsDialogParent(event) {
-  return BrowserWindow.fromWebContents(event.sender) || settingsWindow || null;
-}
-ipcMain.handle("settings:confirm-disable-claude-hooks", async (event) => {
-  const s = CLAUDE_HOOKS_DIALOG_STRINGS[lang] || CLAUDE_HOOKS_DIALOG_STRINGS.en;
-  try {
-    const { response } = await dialog.showMessageBox(_getSettingsDialogParent(event), {
-      type: "warning",
-      buttons: [s.disableAndRemove, s.disableOnly, s.cancel],
-      defaultId: 1,
-      cancelId: 2,
-      message: s.disableTitle,
-      detail: s.disableDetail,
-      noLink: true,
-    });
-    if (response === 0) return { choice: "disconnect" };
-    if (response === 1) return { choice: "disable" };
-    return { choice: "cancel" };
-  } catch (err) {
-    console.warn("Clawd: confirm-disable-claude-hooks dialog failed:", err && err.message);
-    return { choice: "cancel" };
-  }
-});
-ipcMain.handle("settings:confirm-disconnect-claude-hooks", async (event) => {
-  const s = CLAUDE_HOOKS_DIALOG_STRINGS[lang] || CLAUDE_HOOKS_DIALOG_STRINGS.en;
-  try {
-    const { response } = await dialog.showMessageBox(_getSettingsDialogParent(event), {
-      type: "warning",
-      buttons: [s.disconnect, s.cancel],
-      defaultId: 1,
-      cancelId: 1,
-      message: s.disconnectTitle,
-      detail: s.disconnectDetail,
-      noLink: true,
-    });
-    return { confirmed: response === 0 };
-  } catch (err) {
-    console.warn("Clawd: confirm-disconnect-claude-hooks dialog failed:", err && err.message);
-    return { confirmed: false };
-  }
-});
 
 ipcMain.handle("settings:list-agents", () => {
   try {

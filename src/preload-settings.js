@@ -66,10 +66,6 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
   confirmRemoveTheme: (themeId) =>
     ipcRenderer.invoke("settings:confirm-remove-theme", themeId),
-  confirmDisableClaudeHooks: () =>
-    ipcRenderer.invoke("settings:confirm-disable-claude-hooks"),
-  confirmDisconnectClaudeHooks: () =>
-    ipcRenderer.invoke("settings:confirm-disconnect-claude-hooks"),
   onChanged: (cb) => {
     if (typeof cb === "function") listeners.add(cb);
   },

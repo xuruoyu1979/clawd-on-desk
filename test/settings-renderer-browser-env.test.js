@@ -178,10 +178,44 @@ describe("settings renderer browser environment", () => {
     assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-update-bubbles"'));
     assert.ok(i18nSource.includes("Hide update bubbles"));
     assert.ok(i18nSource.includes("隐藏更新气泡"));
-    assert.ok(generalSource.includes('confirmBtn.className = "soft-btn";'));
-    assert.ok(generalSource.includes('cancelBtn.className = "soft-btn accent";'));
-    assert.ok(generalSource.indexOf("actions.appendChild(confirmBtn);") < generalSource.indexOf("actions.appendChild(cancelBtn);"));
-    assert.ok(generalSource.includes("cancelBtn.focus();"));
+    assert.ok(generalSource.includes('{ id: "confirm", label: t("updateBubbleDisableConfirmAction"), tone: "danger" }'));
+    assert.ok(generalSource.includes('{ id: "cancel", label: t("updateBubbleDisableConfirmCancel"), tone: "accent", defaultFocus: true }'));
+    assert.ok(generalSource.includes('if (actionId === "confirm") runToggleCommit(nextEnabled);'));
+    assert.ok(generalSource.includes('tone === "accent"'));
+    assert.ok(generalSource.includes('tone === "danger"'));
+  });
+
+  it("keeps Claude hooks confirmations inside the Settings renderer", () => {
+    const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
+    const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
+    const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    assert.ok(generalSource.includes("confirmDisableClaudeHookManagement"));
+    assert.ok(generalSource.includes("runDisconnectClaudeHooks"));
+    assert.ok(generalSource.includes("showSettingsConfirmModal({"));
+    assert.ok(generalSource.includes("claudeHooksDisableConfirmTitle"));
+    assert.ok(generalSource.includes("claudeHooksDisconnectConfirmTitle"));
+    assert.ok(generalSource.includes("buttons.find((action) => action.action && action.action.defaultFocus)"));
+    assert.ok(generalSource.includes('button.className = `soft-btn${toneClass ? ` ${toneClass}` : ""}`;'));
+    assert.ok(generalSource.includes('tone === "accent"'));
+    assert.ok(generalSource.includes('tone === "danger"'));
+    assert.ok(html.includes(".settings-confirm-danger"));
+    assert.ok(!preloadSource.includes("confirmDisableClaudeHooks"));
+    assert.ok(!preloadSource.includes("confirmDisconnectClaudeHooks"));
+    assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-claude-hooks"'));
+    assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disconnect-claude-hooks"'));
+    assert.ok(!mainSource.includes("CLAUDE_HOOKS_DIALOG_STRINGS"));
+    assert.ok(i18nSource.includes("claudeHooksDisableConfirmTitle"));
+    assert.ok(i18nSource.includes("claudeHooksDisableConfirmKeep"));
+    assert.ok(i18nSource.includes("claudeHooksDisconnectConfirmKeep"));
+  });
+
+  it("uses a roomier grid layout for Settings confirmation buttons", () => {
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    assert.ok(/\.settings-confirm-modal\s*\{[\s\S]*width:\s*min\(480px,\s*100%\);/.test(html));
+    assert.ok(/\.settings-confirm-actions\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(136px,\s*1fr\)\);[\s\S]*gap:\s*9px;/.test(html));
+    assert.ok(/\.settings-confirm-actions\s+\.soft-btn\s*\{[\s\S]*min-height:\s*42px;[\s\S]*padding:\s*6px 10px;[\s\S]*white-space:\s*normal;[\s\S]*text-align:\s*center;/.test(html));
   });
 
   it("provides a persisted collapsible Settings group helper with smart default collapse", () => {
