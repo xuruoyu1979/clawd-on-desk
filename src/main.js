@@ -308,6 +308,7 @@ const CODEX_LOG_EVENTS_COVERED_BY_OFFICIAL_HOOKS = new Set([
   "session_meta",
   "event_msg:task_started",
   "event_msg:user_message",
+  "event_msg:guardian_assessment",
   "response_item:function_call",
   "response_item:custom_tool_call",
   "event_msg:exec_command_end",
