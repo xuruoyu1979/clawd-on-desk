@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  createConnectionTestDeduper,
   evaluateConnectionTest,
   runConnectionTest,
   scanFileMtimeActivity,
@@ -89,5 +90,35 @@ describe("doctor hook activity connection test", () => {
     assert.strictEqual(waited, 1000);
     assert.strictEqual(result.status, "http-verified");
     assert.strictEqual(result.events.length, 1);
+  });
+
+  it("deduplicates concurrent connection tests and resets after completion", async () => {
+    let calls = 0;
+    const resolvers = [];
+    const completed = [];
+    const runGuarded = createConnectionTestDeduper((input) => {
+      calls++;
+      return new Promise((resolve) => {
+        resolvers.push(() => resolve({ status: "ok", marker: input.marker }));
+      });
+    }, {
+      onResult: (result) => completed.push(result.marker),
+    });
+
+    const first = runGuarded({ marker: "first" });
+    const second = runGuarded({ marker: "second" });
+    assert.strictEqual(first, second);
+    assert.strictEqual(calls, 1);
+
+    resolvers.shift()();
+    assert.deepStrictEqual(await second, { status: "ok", marker: "first" });
+    assert.deepStrictEqual(completed, ["first"]);
+
+    const third = runGuarded({ marker: "third" });
+    assert.notStrictEqual(third, first);
+    assert.strictEqual(calls, 2);
+    resolvers.shift()();
+    assert.deepStrictEqual(await third, { status: "ok", marker: "third" });
+    assert.deepStrictEqual(completed, ["first", "third"]);
   });
 });

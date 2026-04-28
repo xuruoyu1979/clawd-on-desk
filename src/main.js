@@ -2759,11 +2759,23 @@ const _updater = require("./updater")(_updaterCtx);
 const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel } = _updater;
 const { runDoctorChecks } = require("./doctor");
 const { formatDiagnosticReport, redactDoctorResult } = require("./doctor-report");
-const { runConnectionTest } = require("./doctor-hook-activity");
+const { createConnectionTestDeduper, runConnectionTest } = require("./doctor-hook-activity");
 const { openClawdLog } = require("./doctor-logs");
 
 let lastDoctorResult = null;
 let lastDoctorConnectionTest = null;
+const runDedupedDoctorConnectionTest = createConnectionTestDeduper(
+  (payload) => runConnectionTest({
+    server: _server,
+    durationMs: payload && payload.durationMs,
+    homeDir: os.homedir(),
+  }),
+  {
+    onResult: (result) => {
+      lastDoctorConnectionTest = result;
+    },
+  }
+);
 
 function buildDoctorResult() {
   lastDoctorResult = runDoctorChecks({
@@ -2827,12 +2839,8 @@ ipcMain.handle("settings:open-external", async (_event, url) => {
 });
 ipcMain.handle("doctor:run-checks", () => redactDoctorResult(buildDoctorResult()));
 ipcMain.handle("doctor:test-connection", async (_event, payload) => {
-  lastDoctorConnectionTest = await runConnectionTest({
-    server: _server,
-    durationMs: payload && payload.durationMs,
-    homeDir: os.homedir(),
-  });
-  return redactDoctorResult(lastDoctorConnectionTest);
+  const result = await runDedupedDoctorConnectionTest(payload);
+  return redactDoctorResult(result);
 });
 ipcMain.handle("doctor:open-clawd-log", async (_event, payload) => openClawdLog({
   requested: payload && payload.name,

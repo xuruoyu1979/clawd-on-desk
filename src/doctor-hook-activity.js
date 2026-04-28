@@ -211,10 +211,36 @@ async function runConnectionTest(options = {}) {
   };
 }
 
+function createConnectionTestDeduper(runTest = runConnectionTest, options = {}) {
+  const onResult = typeof options.onResult === "function" ? options.onResult : null;
+  let pending = null;
+  return function runDedupedConnectionTest(input = {}) {
+    // Single-flight: concurrent calls share the first invocation's result.
+    if (pending) return pending;
+    try {
+      pending = Promise.resolve(runTest(input))
+        .then((result) => {
+          if (onResult) onResult(result);
+          return result;
+        })
+        .finally(() => {
+          pending = null;
+        });
+    } catch (err) {
+      pending = Promise.reject(err)
+        .finally(() => {
+          pending = null;
+        });
+    }
+    return pending;
+  };
+}
+
 module.exports = {
   DEFAULT_CONNECTION_TEST_DURATION_MS,
   MAX_CONNECTION_TEST_DURATION_MS,
   clampDurationMs,
+  createConnectionTestDeduper,
   evaluateConnectionTest,
   findRecentMatchingFiles,
   runConnectionTest,

@@ -124,6 +124,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(mainSource.includes('ipcMain.handle("doctor:get-report"'));
     assert.ok(mainSource.includes('ipcMain.handle("doctor:test-connection"'));
     assert.ok(mainSource.includes('ipcMain.handle("doctor:open-clawd-log"'));
+    assert.ok(mainSource.includes("createConnectionTestDeduper"));
+    assert.ok(mainSource.includes("runDedupedDoctorConnectionTest"));
     assert.ok(mainSource.includes("runConnectionTest"));
     assert.ok(mainSource.includes("openClawdLog"));
     assert.ok(mainSource.includes("formatDiagnosticReport"));
