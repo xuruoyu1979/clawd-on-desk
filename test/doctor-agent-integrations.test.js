@@ -74,6 +74,7 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.status, "not-connected");
     assert.strictEqual(detail.level, "warning");
     assert.strictEqual(detail.configFileExists, false);
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "test-agent" });
   });
 
   it("returns config-corrupt when JSON parsing fails", () => {
@@ -84,6 +85,7 @@ describe("checkAgentIntegrations", () => {
     const detail = runOne(descriptor);
     assert.strictEqual(detail.status, "config-corrupt");
     assert.strictEqual(detail.level, "warning");
+    assert.strictEqual(detail.fixAction, undefined);
   });
 
   it("validates flat hook commands and marks ok", () => {
@@ -131,6 +133,7 @@ describe("checkAgentIntegrations", () => {
     });
     assert.strictEqual(detail.status, "broken-path");
     assert.strictEqual(detail.hookCommandIssue, "scriptPath-missing");
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "test-agent" });
   });
 
   it("extracts Kimi TOML commands and validates scriptPath", () => {
@@ -189,6 +192,7 @@ describe("checkAgentIntegrations", () => {
     const detail = runOne(descriptor);
     assert.strictEqual(detail.status, "not-connected");
     assert.strictEqual(detail.supplementary.value, "disabled");
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "codex" });
   });
 
   it("scans Kiro agent configs and reports fully-valid files", () => {
@@ -229,6 +233,7 @@ describe("checkAgentIntegrations", () => {
     const detail = runOne(descriptor);
     assert.strictEqual(detail.status, "broken-path");
     assert.strictEqual(detail.opencodeEntryIssue, "directory-missing");
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "opencode" });
   });
 
   it("adds a non-failing note when per-agent permission bubbles are disabled", () => {

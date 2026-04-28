@@ -160,6 +160,11 @@ function _deferredSyncIntegrationForAgent(id) {
     ? _server.syncIntegrationForAgent(id)
     : false;
 }
+function _deferredRepairIntegrationForAgent(id) {
+  return _server && typeof _server.repairIntegrationForAgent === "function"
+    ? _server.repairIntegrationForAgent(id)
+    : false;
+}
 function _deferredStopIntegrationForAgent(id) {
   return _server && typeof _server.stopIntegrationForAgent === "function"
     ? _server.stopIntegrationForAgent(id)
@@ -211,7 +216,11 @@ const _settingsController = createSettingsController({
     startMonitorForAgent: _deferredStartMonitorForAgent,
     stopMonitorForAgent: _deferredStopMonitorForAgent,
     syncIntegrationForAgent: _deferredSyncIntegrationForAgent,
+    repairIntegrationForAgent: _deferredRepairIntegrationForAgent,
     stopIntegrationForAgent: _deferredStopIntegrationForAgent,
+    repairLocalServer: () => _server && typeof _server.repairRuntimeStatus === "function"
+      ? _server.repairRuntimeStatus()
+      : false,
     clearSessionsByAgent: _deferredClearSessionsByAgent,
     dismissPermissionsByAgent: _deferredDismissPermissionsByAgent,
     resizePet: _deferredResizePet,

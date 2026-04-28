@@ -19,6 +19,7 @@ describe("checkPermissionBubblePolicy", () => {
     const result = checkPermissionBubblePolicy({ prefs: { permissionBubblesEnabled: false } });
     assert.strictEqual(result.status, "fail");
     assert.strictEqual(result.level, "warning");
+    assert.deepStrictEqual(result.fixAction, { type: "permission-bubble-policy" });
   });
 
   it("warns when legacy hideBubbles disables all bubbles", () => {

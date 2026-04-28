@@ -17,6 +17,7 @@ const INFO_ONLY_STATUSES = new Set([
   "manual-only",
   "not-installed",
 ]);
+const REPAIRABLE_AGENT_STATUSES = new Set(["not-connected", "broken-path"]);
 
 function dirExists(fsImpl, dirPath) {
   try {
@@ -47,6 +48,14 @@ function withAgentBubbleNote(detail, prefs, agentId) {
     };
   }
   return detail;
+}
+
+function withAgentFixAction(detail, descriptor) {
+  if (!descriptor.autoInstall || !REPAIRABLE_AGENT_STATUSES.has(detail.status)) return detail;
+  return {
+    ...detail,
+    fixAction: { type: "agent-integration", agentId: descriptor.agentId },
+  };
 }
 
 function makeDetail(descriptor, status, fields = {}) {
@@ -403,7 +412,7 @@ function checkAgent(descriptor, options) {
     });
   }
 
-  return withAgentBubbleNote(detail, prefs, descriptor.agentId);
+  return withAgentFixAction(withAgentBubbleNote(detail, prefs, descriptor.agentId), descriptor);
 }
 
 function summarize(details) {

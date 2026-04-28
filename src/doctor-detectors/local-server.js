@@ -13,6 +13,7 @@ function checkLocalServer(serverApi) {
       detail: "Local server is not listening",
       textHint: "Restart Clawd. If the issue persists, check ~/.clawd/ permissions.",
       runtime: status,
+      fixAction: { type: "local-server" },
     };
   }
 
@@ -24,6 +25,7 @@ function checkLocalServer(serverApi) {
       detail: `Listening on 127.0.0.1:${status.port}; runtime port is ${status.runtimePort || "missing"}`,
       textHint: "Restart Clawd to regenerate the runtime file.",
       runtime: status,
+      fixAction: { type: "local-server" },
     };
   }
 

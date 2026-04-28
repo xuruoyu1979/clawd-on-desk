@@ -18,6 +18,7 @@ function checkPermissionBubblePolicy(options = {}) {
       level: "warning",
       detail: "Permission bubbles are globally disabled",
       textHint: "Open Settings -> General and turn on permission bubbles.",
+      fixAction: { type: "permission-bubble-policy" },
     };
   }
 

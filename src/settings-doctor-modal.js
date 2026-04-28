@@ -14,6 +14,7 @@
     connectionTesting: false,
     connectionRemainingSeconds: 0,
     connectionTimer: null,
+    repairingKey: null,
   };
 
   function t(core, key) {
@@ -131,6 +132,28 @@
     return lines.filter(Boolean).join("; ");
   }
 
+  function fixActionKey(action) {
+    if (!action || typeof action !== "object") return "";
+    return `${action.type || "unknown"}:${action.agentId || ""}`;
+  }
+
+  function renderFixButton(core, action) {
+    if (!action || typeof action !== "object" || !action.type) return "";
+    const key = fixActionKey(action);
+    const busy = state.repairingKey === key;
+    const disabled = state.repairingKey ? " disabled" : "";
+    const agentAttr = action.agentId ? ` data-agent-id="${escape(core, action.agentId)}"` : "";
+    const label = busy ? t(core, "doctorFixing") : t(core, "doctorFix");
+    return `<button type="button" class="doctor-fix-button" data-action="fix" data-fix-type="${escape(core, action.type)}"${agentAttr}${disabled}>${escape(core, label)}</button>`;
+  }
+
+  function confirmFixAction(core, action) {
+    if (!action || action.type !== "agent-integration" || action.agentId !== "codex") return true;
+    const confirmFn = typeof root.confirm === "function" ? root.confirm.bind(root) : null;
+    if (!confirmFn) return true;
+    return confirmFn(t(core, "doctorFixConfirmCodex"));
+  }
+
   function renderCheckList(core, result) {
     const checks = result && Array.isArray(result.checks) ? result.checks : [];
     if (!checks.length) {
@@ -143,11 +166,13 @@
         agentRows = `<div class="doctor-agent-list">${
           check.details.map((detail) => {
             const agentDetail = agentDetailText(detail);
+            const fixButton = renderFixButton(core, detail.fixAction);
             return (
               `<div class="doctor-agent-item">` +
-                `<div class="doctor-agent-row">` +
+                `<div class="doctor-agent-row${fixButton ? " with-action" : ""}">` +
                   `<span>${escape(core, detail.agentName || detail.agentId)}</span>` +
                   `<span>${escape(core, detail.status || "")}</span>` +
+                  fixButton +
                 `</div>` +
                 (agentDetail ? `<div class="doctor-agent-detail">${escape(core, agentDetail)}</div>` : "") +
               `</div>`
@@ -155,12 +180,14 @@
           }).join("")
         }</div>`;
       }
+      const fixButton = renderFixButton(core, check.fixAction);
       return (
         `<div class="doctor-check-row ${cls}">` +
-          `<div class="doctor-check-main">` +
+          `<div class="doctor-check-main${fixButton ? " with-action" : ""}">` +
             `<span class="doctor-check-dot"></span>` +
             `<span class="doctor-check-label">${escape(core, checkLabel(core, check))}</span>` +
             `<span class="doctor-check-status">${escape(core, checkStatusLabel(core, check))}</span>` +
+            fixButton +
           `</div>` +
           (check.detail ? `<div class="doctor-check-detail">${escape(core, check.detail)}</div>` : "") +
           agentRows +
@@ -248,6 +275,7 @@
     const rerun = rootEl.querySelector('[data-action="rerun"]');
     const testConnection = rootEl.querySelector('[data-action="test-connection"]');
     const openLog = rootEl.querySelector('[data-action="open-log"]');
+    const fixButtons = rootEl.querySelectorAll('[data-action="fix"]');
     if (backdrop) {
       backdrop.addEventListener("click", (ev) => {
         if (ev.target === backdrop) closeModal();
@@ -283,6 +311,42 @@
           core.helpers.showToast((err && err.message) || t(core, "doctorOpenLogFailed"), { error: true });
         }
       });
+    }
+    for (const button of fixButtons) {
+      button.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const action = {
+          type: button.getAttribute("data-fix-type") || "",
+        };
+        const agentId = button.getAttribute("data-agent-id");
+        if (agentId) action.agentId = agentId;
+        startFixAction(core, action);
+      });
+    }
+  }
+
+  async function startFixAction(core, action) {
+    if (state.repairingKey) return;
+    if (!root.settingsAPI || typeof root.settingsAPI.command !== "function") {
+      core.helpers.showToast(t(core, "doctorFixFailed"), { error: true });
+      return;
+    }
+    if (!confirmFixAction(core, action)) return;
+    state.repairingKey = fixActionKey(action);
+    refreshModal(core);
+    try {
+      const result = await root.settingsAPI.command("repairDoctorIssue", action);
+      if (!result || result.status !== "ok") {
+        throw new Error((result && result.message) || t(core, "doctorFixFailed"));
+      }
+      core.helpers.showToast(t(core, "doctorFixApplied"));
+      await runChecks(core);
+    } catch (err) {
+      core.helpers.showToast((err && err.message) || t(core, "doctorFixFailed"), { error: true });
+    } finally {
+      state.repairingKey = null;
+      refreshModal(core);
     }
   }
 

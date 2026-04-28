@@ -172,5 +172,7 @@ describe("checkThemeHealth", () => {
     assert.strictEqual(result.status, "fail");
     assert.strictEqual(result.level, "warning");
     assert.match(result.detail, /missing asset/);
+    assert.strictEqual(result.fixAction, undefined);
+    assert.match(result.textHint, /Settings -> Theme/);
   });
 });

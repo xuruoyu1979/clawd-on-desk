@@ -1439,6 +1439,9 @@ html, body {
   align-items: center;
   gap: 8px;
 }
+.doctor-check-main.with-action {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
 .doctor-check-label {
   min-width: 0;
   font-weight: 600;
@@ -1470,11 +1473,34 @@ html, body {
   color: var(--text-secondary);
   font-size: 12px;
 }
+.doctor-agent-row.with-action {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
 .doctor-agent-row span:first-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.doctor-fix-button {
+  min-width: 46px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.doctor-fix-button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #ffffff;
+}
+.doctor-fix-button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 .doctor-agent-detail {
   color: var(--text-tertiary);

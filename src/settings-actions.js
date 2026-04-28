@@ -74,6 +74,17 @@ const {
 const ANIMATION_OVERRIDES_EXPORT_VERSION = 1;
 const { isPlainObject } = require("./theme-loader");
 
+const AUTO_REPAIRABLE_AGENT_IDS = new Set([
+  "claude-code",
+  "codex",
+  "cursor-agent",
+  "gemini-cli",
+  "codebuddy",
+  "kiro-cli",
+  "kimi-cli",
+  "opencode",
+]);
+
 // ── Validator helpers ──
 
 function requireBoolean(key) {
@@ -1596,6 +1607,121 @@ function uninstallHooks(_payload, deps) {
   }
 }
 
+async function repairAgentIntegration(payload, deps) {
+  const agentId = typeof payload === "string" ? payload : payload && payload.agentId;
+  const idCheck = _validateAgentFlagId(agentId);
+  if (idCheck.status !== "ok") return idCheck;
+
+  if (!AUTO_REPAIRABLE_AGENT_IDS.has(agentId)) {
+    return {
+      status: "error",
+      message: agentId === "copilot-cli"
+        ? "Copilot CLI uses manual project-level hooks and cannot be auto-repaired"
+        : `No automatic integration repair is available for ${agentId}`,
+    };
+  }
+
+  const snapshot = deps && deps.snapshot;
+  if (!isAgentEnabled(snapshot, agentId)) {
+    return {
+      status: "error",
+      message: `${agentId} is disabled in Settings; enable it before repairing the integration`,
+    };
+  }
+
+  if (agentId === "claude-code" && snapshot && snapshot.manageClaudeHooksAutomatically === false) {
+    return {
+      status: "error",
+      message: "Claude hook management is disabled in Settings",
+    };
+  }
+
+  const repairFn =
+    deps && typeof deps.repairIntegrationForAgent === "function"
+      ? deps.repairIntegrationForAgent
+      : deps && typeof deps.syncIntegrationForAgent === "function"
+        ? deps.syncIntegrationForAgent
+        : null;
+  if (!repairFn) {
+    return {
+      status: "error",
+      message: "repairAgentIntegration requires repairIntegrationForAgent or syncIntegrationForAgent dep",
+    };
+  }
+
+  try {
+    const result = await repairFn(agentId);
+    if (result === false) {
+      return { status: "error", message: `No automatic integration repair is available for ${agentId}` };
+    }
+    if (result && typeof result === "object" && result.status && result.status !== "ok") {
+      return {
+        status: "error",
+        message: result.message || `Failed to repair ${agentId}`,
+      };
+    }
+    return { status: "ok" };
+  } catch (err) {
+    return {
+      status: "error",
+      message: `repairAgentIntegration: ${err && err.message}`,
+    };
+  }
+}
+
+async function repairLocalServer(_payload, deps) {
+  if (!deps || typeof deps.repairLocalServer !== "function") {
+    return {
+      status: "error",
+      message: "repairLocalServer requires repairLocalServer dep",
+    };
+  }
+  try {
+    const result = await deps.repairLocalServer();
+    if (result === false) {
+      return { status: "error", message: "Local server repair failed" };
+    }
+    if (result && typeof result === "object" && result.status && result.status !== "ok") {
+      return {
+        status: "error",
+        message: result.message || "Local server repair failed",
+      };
+    }
+    return { status: "ok" };
+  } catch (err) {
+    return {
+      status: "error",
+      message: `repairLocalServer: ${err && err.message}`,
+    };
+  }
+}
+
+async function repairDoctorIssue(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "repairDoctorIssue payload must be an object" };
+  }
+  const { type } = payload;
+  if (type === "agent-integration") {
+    return repairAgentIntegration(payload, deps);
+  }
+  if (type === "permission-bubble-policy") {
+    return setBubbleCategoryEnabled({ category: "permission", enabled: true }, deps);
+  }
+  if (type === "theme-health") {
+    return {
+      status: "error",
+      message: "Theme health issues must be fixed manually in Settings -> Theme",
+    };
+  }
+  if (type === "local-server") {
+    return repairLocalServer(payload, deps);
+  }
+  return {
+    status: "error",
+    message: `Unknown Doctor repair target: ${type || "missing"}`,
+  };
+}
+
 function resizePet(payload, deps) {
   // Settings panel slider entry point. Routes to menu.resizeWindow via
   // deps.resizePet so it picks up the full side-effect chain (actual window
@@ -1620,6 +1746,9 @@ const commandRegistry = {
   removeTheme,
   installHooks,
   uninstallHooks,
+  repairAgentIntegration,
+  repairLocalServer,
+  repairDoctorIssue,
   resizePet,
   registerShortcut,
   resetShortcut,

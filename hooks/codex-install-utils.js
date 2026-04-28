@@ -123,7 +123,8 @@ function isFeaturesTableHeader(header) {
   return !!header && !header.array && header.name.replace(/\s+/g, "") === "features";
 }
 
-function ensureCodexHooksFeature(configPath) {
+function ensureCodexHooksFeature(configPath, options = {}) {
+  const force = !!options.force;
   let text = "";
   let existed = true;
   try {
@@ -158,6 +159,13 @@ function ensureCodexHooksFeature(configPath) {
       const match = lines[i].match(/^\s*codex_hooks\s*=\s*(true|false)\s*(?:#.*)?$/i);
       if (!match) continue;
       if (match[1].toLowerCase() === "false") {
+        if (force) {
+          lines[i] = lines[i].replace(/=\s*false/i, "= true");
+          const nextText = `${lines.join(newline).replace(/\s*$/, "")}${newline}`;
+          fs.mkdirSync(path.dirname(configPath), { recursive: true });
+          fs.writeFileSync(configPath, nextText, "utf-8");
+          return { changed: true, warning: null };
+        }
         return {
           changed: false,
           warning: "config.toml already has [features].codex_hooks = false; leaving it unchanged.",
@@ -202,7 +210,9 @@ function registerCodexCommandHooks(options = {}) {
   }
 
   const warnings = [];
-  const feature = ensureCodexHooksFeature(configPath);
+  const feature = ensureCodexHooksFeature(configPath, {
+    force: options.forceCodexHooksFeature === true,
+  });
   if (feature.warning) warnings.push(feature.warning);
 
   const hookScript = asarUnpackedPath(path.resolve(__dirname, scriptName).replace(/\\/g, "/"));

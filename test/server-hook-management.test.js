@@ -114,6 +114,7 @@ function makeServer(overrides = {}) {
     syncKiroHooksImpl: () => syncCalls.push("kiro"),
     syncKimiHooksImpl: () => syncCalls.push("kimi"),
     syncCodexHooksImpl: () => syncCalls.push("codex"),
+    repairCodexHooksImpl: () => syncCalls.push("codex-repair"),
     syncOpencodePluginImpl: () => syncCalls.push("opencode"),
     ...overrides,
   };
@@ -282,6 +283,17 @@ describe("server Claude hook management", () => {
 
     assert.deepStrictEqual(first.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
     assert.deepStrictEqual(second.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+  });
+
+  it("repairIntegrationForAgent uses the Codex official hook repair path", () => {
+    const { api, syncCalls } = makeServer();
+
+    const repaired = api.repairIntegrationForAgent("codex");
+    const unsupported = api.repairIntegrationForAgent("copilot-cli");
+
+    assert.strictEqual(repaired, true);
+    assert.strictEqual(unsupported, false);
+    assert.deepStrictEqual(syncCalls, ["codex-repair"]);
   });
 });
 

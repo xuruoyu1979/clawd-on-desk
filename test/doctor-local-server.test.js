@@ -45,6 +45,7 @@ describe("checkLocalServer", () => {
     const result = checkLocalServer(api);
     assert.strictEqual(result.status, "fail");
     assert.strictEqual(result.level, "warning");
+    assert.deepStrictEqual(result.fixAction, { type: "local-server" });
   });
 
   it("is critical before the server starts listening", () => {
@@ -53,5 +54,6 @@ describe("checkLocalServer", () => {
     const result = checkLocalServer(api);
     assert.strictEqual(result.status, "fail");
     assert.strictEqual(result.level, "critical");
+    assert.deepStrictEqual(result.fixAction, { type: "local-server" });
   });
 });

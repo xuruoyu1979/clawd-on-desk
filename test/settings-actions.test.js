@@ -478,6 +478,89 @@ describe("hook commands", () => {
   });
 });
 
+describe("doctor repair commands", () => {
+  it("repairs an enabled auto-managed agent through repairIntegrationForAgent without committing prefs", async () => {
+    const calls = [];
+    const r = await commandRegistry.repairAgentIntegration({ agentId: "codex" }, {
+      snapshot: prefs.getDefaults(),
+      repairIntegrationForAgent: (agentId) => calls.push(agentId),
+    });
+
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(calls, ["codex"]);
+    assert.strictEqual(r.commit, undefined);
+  });
+
+  it("rejects Copilot CLI because it is manual-only", async () => {
+    const calls = [];
+    const r = await commandRegistry.repairAgentIntegration({ agentId: "copilot-cli" }, {
+      snapshot: prefs.getDefaults(),
+      repairIntegrationForAgent: (agentId) => calls.push(agentId),
+    });
+
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /manual/i);
+    assert.deepStrictEqual(calls, []);
+  });
+
+  it("does not repair disabled agents", async () => {
+    const snapshot = prefs.getDefaults();
+    snapshot.agents.codex = { ...snapshot.agents.codex, enabled: false };
+    const calls = [];
+
+    const r = await commandRegistry.repairAgentIntegration({ agentId: "codex" }, {
+      snapshot,
+      repairIntegrationForAgent: (agentId) => calls.push(agentId),
+    });
+
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /disabled/i);
+    assert.deepStrictEqual(calls, []);
+  });
+
+  it("does not repair Claude hooks while automatic management is disabled", async () => {
+    const calls = [];
+    const r = await commandRegistry.repairAgentIntegration({ agentId: "claude-code" }, {
+      snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: false },
+      repairIntegrationForAgent: (agentId) => calls.push(agentId),
+    });
+
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /disabled/i);
+    assert.deepStrictEqual(calls, []);
+  });
+
+  it("routes Doctor permission-bubble repair through a validated commit", async () => {
+    const r = await commandRegistry.repairDoctorIssue({ type: "permission-bubble-policy" }, {
+      snapshot: {
+        ...prefs.getDefaults(),
+        hideBubbles: true,
+        permissionBubblesEnabled: false,
+      },
+    });
+
+    assert.strictEqual(r.status, "ok");
+    assert.strictEqual(r.commit.hideBubbles, false);
+    assert.strictEqual(r.commit.permissionBubblesEnabled, true);
+  });
+
+  it("rejects Doctor theme repair so Doctor does not reset user themes", async () => {
+    const calls = [];
+    const r = await commandRegistry.repairDoctorIssue({ type: "theme-health" }, {
+      snapshot: { ...prefs.getDefaults(), theme: "broken", themeVariant: {}, themeOverrides: {} },
+      activateTheme: (themeId, variantId, overrideMap) => {
+        calls.push({ themeId, variantId, overrideMap });
+        return { themeId, variantId: "default" };
+      },
+    });
+
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /manually/i);
+    assert.deepStrictEqual(calls, []);
+    assert.strictEqual(r.commit, undefined);
+  });
+});
+
 describe("setSessionAlias command", () => {
   it("stores a sanitized alias under the normalized session key", () => {
     const snapshot = { ...prefs.getDefaults(), sessionAliases: {} };

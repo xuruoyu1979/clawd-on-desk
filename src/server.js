@@ -583,6 +583,27 @@ function syncCodexHooks() {
   }
 }
 
+function repairCodexHooks() {
+  try {
+    if (typeof ctx.repairCodexHooksImpl === "function") return ctx.repairCodexHooksImpl();
+    const { registerCodexHooks } = require("../hooks/codex-install.js");
+    const { added, updated, configChanged, warnings } = registerCodexHooks({
+      silent: true,
+      forceCodexHooksFeature: true,
+    });
+    if (added > 0 || updated > 0 || configChanged) {
+      console.log(`Clawd: repaired Codex hooks (added ${added}, updated ${updated}, configChanged=${!!configChanged})`);
+    }
+    if (Array.isArray(warnings)) {
+      for (const warning of warnings) console.warn(`Clawd: Codex hook repair warning: ${warning}`);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to repair Codex hooks:", err.message);
+    return { status: "error", message: err && err.message };
+  }
+  return { status: "ok" };
+}
+
 function syncCursorHooks() {
   try {
     if (typeof ctx.syncCursorHooksImpl === "function") return ctx.syncCursorHooksImpl();
@@ -619,6 +640,11 @@ const AGENT_INTEGRATION_SYNCERS = Object.freeze({
   opencode: syncOpencodePlugin,
 });
 
+const AGENT_INTEGRATION_REPAIRERS = Object.freeze({
+  ...AGENT_INTEGRATION_SYNCERS,
+  codex: repairCodexHooks,
+});
+
 function syncIntegrationForAgent(agentId) {
   if (agentId === "claude-code") {
     if (!shouldManageClaudeHooks()) return false;
@@ -632,9 +658,38 @@ function syncIntegrationForAgent(agentId) {
   return true;
 }
 
+function repairIntegrationForAgent(agentId) {
+  if (agentId === "claude-code") {
+    return syncIntegrationForAgent(agentId);
+  }
+  const repair = AGENT_INTEGRATION_REPAIRERS[agentId];
+  if (typeof repair !== "function") return false;
+  const result = repair();
+  if (result && typeof result === "object" && result.status === "error") return result;
+  return true;
+}
+
 function stopIntegrationForAgent(agentId) {
   if (agentId !== "claude-code") return false;
   return stopClaudeSettingsWatcher();
+}
+
+function repairRuntimeStatus() {
+  const status = getRuntimeStatus();
+  if (status && status.listening && Number.isInteger(status.port)) {
+    const written = writeRuntimeConfigFn(status.port);
+    return written
+      ? { status: "ok" }
+      : { status: "error", message: "Failed to write runtime config" };
+  }
+  if (!httpServer) {
+    startHttpServer();
+    return { status: "ok" };
+  }
+  return {
+    status: "error",
+    message: "Local server is not listening; restart Clawd",
+  };
 }
 
 function syncEnabledStartupIntegrations() {
@@ -1263,6 +1318,8 @@ return {
   syncCodexHooks,
   syncOpencodePlugin,
   syncIntegrationForAgent,
+  repairIntegrationForAgent,
+  repairRuntimeStatus,
   stopIntegrationForAgent,
   startClaudeSettingsWatcher,
   stopClaudeSettingsWatcher,
