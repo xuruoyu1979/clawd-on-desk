@@ -1733,10 +1733,25 @@ async function repairDoctorIssue(payload, deps) {
   if (type === "local-server") {
     return repairLocalServer(payload, deps);
   }
+  if (type === "restart-clawd") {
+    return restartClawd(payload, deps);
+  }
   return {
     status: "error",
     message: `Unknown Doctor repair target: ${type || "missing"}`,
   };
+}
+
+function restartClawd(_payload, deps) {
+  if (!deps || typeof deps.restartClawd !== "function") {
+    return { status: "error", message: "restartClawd requires deps.restartClawd" };
+  }
+  try {
+    deps.restartClawd();
+    return { status: "ok", message: "Clawd is restarting" };
+  } catch (err) {
+    return { status: "error", message: `restartClawd: ${err && err.message}` };
+  }
 }
 
 function resizePet(payload, deps) {

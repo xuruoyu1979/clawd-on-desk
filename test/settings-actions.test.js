@@ -562,6 +562,24 @@ describe("doctor repair commands", () => {
     assert.strictEqual(r.commit.permissionBubblesEnabled, true);
   });
 
+  it("routes Doctor restart-clawd repair through deps.restartClawd", async () => {
+    const calls = [];
+    const r = await commandRegistry.repairDoctorIssue(
+      { type: "restart-clawd" },
+      { restartClawd: () => calls.push("restart") }
+    );
+
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(calls, ["restart"]);
+  });
+
+  it("returns an error when restart-clawd is dispatched without deps.restartClawd", async () => {
+    const r = await commandRegistry.repairDoctorIssue({ type: "restart-clawd" }, {});
+
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /restartClawd/);
+  });
+
   it("rejects Doctor theme repair so Doctor does not reset user themes", async () => {
     const calls = [];
     const r = await commandRegistry.repairDoctorIssue({ type: "theme-health" }, {

@@ -159,14 +159,19 @@
     const key = rememberFixAction(action);
     const busy = state.repairingKey === key;
     const disabled = state.repairingKey ? " disabled" : "";
-    const label = busy ? t(core, "doctorFixing") : t(core, "doctorFix");
-    return `<button type="button" class="doctor-fix-button" data-action="fix" data-fix-key="${escape(core, key)}"${disabled}>${escape(core, label)}</button>`;
+    const restart = action.type === "restart-clawd";
+    const label = busy
+      ? (restart ? t(core, "doctorRestarting") : t(core, "doctorFixing"))
+      : (restart ? t(core, "doctorRestartButton") : t(core, "doctorFix"));
+    const cls = restart ? "doctor-fix-button doctor-restart-button" : "doctor-fix-button";
+    return `<button type="button" class="${cls}" data-action="fix" data-fix-key="${escape(core, key)}"${disabled}>${escape(core, label)}</button>`;
   }
 
   function requiresFixConfirmation(action) {
+    if (!action || typeof action !== "object") return false;
+    if (action.type === "restart-clawd") return true;
     return !!(
-      action
-      && action.type === "agent-integration"
+      action.type === "agent-integration"
       && action.agentId === "codex"
       && action.forceCodexHooksFeature === true
     );
@@ -183,15 +188,19 @@
   function renderFixConfirm(core) {
     const action = state.pendingConfirmAction;
     if (!requiresFixConfirmation(action)) return "";
+    const restart = action.type === "restart-clawd";
+    const titleKey = restart ? "doctorRestartConfirmTitle" : "doctorFixConfirmCodexTitle";
+    const detailKey = restart ? "doctorRestartConfirmDetail" : "doctorFixConfirmCodexDetail";
+    const actionKey = restart ? "doctorRestartConfirmAction" : "doctorFixConfirmCodexAction";
     return (
       `<div class="doctor-fix-confirm">` +
         `<div>` +
-          `<div class="doctor-fix-confirm-title">${escape(core, t(core, "doctorFixConfirmCodexTitle"))}</div>` +
-          `<div class="doctor-fix-confirm-detail">${escape(core, t(core, "doctorFixConfirmCodexDetail"))}</div>` +
+          `<div class="doctor-fix-confirm-title">${escape(core, t(core, titleKey))}</div>` +
+          `<div class="doctor-fix-confirm-detail">${escape(core, t(core, detailKey))}</div>` +
         `</div>` +
         `<div class="doctor-fix-confirm-actions">` +
           `<button type="button" class="soft-btn" data-action="cancel-fix-confirm">${escape(core, t(core, "doctorFixConfirmCancel"))}</button>` +
-          `<button type="button" class="soft-btn accent" data-action="confirm-fix">${escape(core, t(core, "doctorFixConfirmCodexAction"))}</button>` +
+          `<button type="button" class="soft-btn accent" data-action="confirm-fix">${escape(core, t(core, actionKey))}</button>` +
         `</div>` +
       `</div>`
     );
@@ -291,6 +300,7 @@
         `<div class="doctor-check-list">${checkList}</div>` +
         fixConfirm +
         renderConnectionTest(core) +
+        `<div class="doctor-privacy-inline">${escape(core, t(core, "doctorPrivacyShort"))}</div>` +
         `<div class="doctor-actions">` +
           `<button type="button" class="soft-btn" data-action="copy">${escape(core, t(core, "doctorCopyReport"))}</button>` +
           `<button type="button" class="soft-btn" data-action="open-log">${escape(core, t(core, "doctorOpenLog"))}</button>` +
@@ -426,6 +436,10 @@
       state.repairFeedback[state.repairingKey] = { status: "ok", message };
       state.lastRepairFeedback = { status: "ok", message };
       showToast(core, message);
+      // restart-clawd tears the main process down right after this IPC reply,
+      // so re-running the checks would race the process exit and surface a
+      // spurious error toast. The new process re-renders Doctor on launch.
+      if (action && action.type === "restart-clawd") return;
       await runChecks(core);
     } catch (err) {
       const message = (err && err.message) || t(core, "doctorFixFailed");

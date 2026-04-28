@@ -202,6 +202,18 @@ function _deferredResizePet(sizeKey) {
   }
 }
 
+function _restartClawdNow() {
+  // Triggered by Doctor's restart-clawd repair. relaunch() queues a fresh
+  // process; exit(0) tears the current one down without prompting other
+  // windows for confirmation (Doctor already confirmed with the user).
+  // setImmediate so the IPC reply for repairDoctorIssue lands in the
+  // renderer before the main process tears itself down.
+  setImmediate(() => {
+    app.relaunch();
+    app.exit(0);
+  });
+}
+
 const _settingsController = createSettingsController({
   prefsPath: PREFS_PATH,
   loadResult: _initialPrefsLoad,
@@ -221,6 +233,7 @@ const _settingsController = createSettingsController({
     repairLocalServer: () => _server && typeof _server.repairRuntimeStatus === "function"
       ? _server.repairRuntimeStatus()
       : false,
+    restartClawd: _restartClawdNow,
     clearSessionsByAgent: _deferredClearSessionsByAgent,
     dismissPermissionsByAgent: _deferredDismissPermissionsByAgent,
     resizePet: _deferredResizePet,

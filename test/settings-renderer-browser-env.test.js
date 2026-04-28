@@ -111,6 +111,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes("requiresFixConfirmation"));
     assert.ok(doctorModalSource.includes("renderFixConfirm"));
     assert.ok(doctorModalSource.includes("doctorFixConfirmCodexDetail"));
+    assert.ok(doctorModalSource.includes("doctorRestartConfirmDetail"));
+    assert.ok(doctorModalSource.includes("doctorRestartButton"));
     assert.ok(doctorModalSource.includes("repairFeedback"));
     assert.ok(doctorModalSource.includes("lastRepairFeedback"));
     assert.ok(doctorModalSource.includes("core.ops.showToast"));
@@ -121,6 +123,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(html.includes(".doctor-connection-panel"));
     assert.ok(html.includes(".doctor-fix-button"));
     assert.ok(html.includes(".doctor-fix-confirm"));
+    assert.ok(html.includes(".doctor-privacy-inline"));
+    assert.ok(doctorModalSource.includes("doctorPrivacyShort"));
     assert.ok(html.includes(".doctor-repair-feedback"));
     assert.ok(html.includes(".doctor-repair-summary"));
     assert.ok(/\.doctor-agent-list\s*\{[\s\S]*max-height:\s*min\(34vh,\s*270px\);[\s\S]*overflow-y:\s*auto;/.test(html));
@@ -144,6 +148,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("doctorRunFailed"));
     assert.ok(i18nSource.includes("doctorFixApplied"));
     assert.ok(i18nSource.includes("doctorFixConfirmCodexDetail"));
+    assert.ok(i18nSource.includes("doctorRestartConfirmDetail"));
+    assert.ok(i18nSource.includes("doctorPrivacyShort"));
     assert.ok(i18nSource.includes("doctorConnectionHttpVerified"));
     assert.ok(i18nSource.includes("doctorOpenLog"));
   });

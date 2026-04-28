@@ -48,12 +48,15 @@ describe("checkLocalServer", () => {
     assert.deepStrictEqual(result.fixAction, { type: "local-server" });
   });
 
-  it("is critical before the server starts listening", () => {
+  it("is critical before the server starts listening and surfaces a restart action", () => {
     const api = makeServer({ runtimePort: null });
 
     const result = checkLocalServer(api);
     assert.strictEqual(result.status, "fail");
     assert.strictEqual(result.level, "critical");
-    assert.deepStrictEqual(result.fixAction, { type: "local-server" });
+    // Critical fail can't be repaired by repairRuntimeStatus (httpServer is
+    // already non-null but not listening), so surface a restart-clawd action
+    // instead of a misleading Fix button.
+    assert.deepStrictEqual(result.fixAction, { type: "restart-clawd" });
   });
 });

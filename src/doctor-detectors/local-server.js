@@ -13,7 +13,7 @@ function checkLocalServer(serverApi) {
       detail: "Local server is not listening",
       textHint: "Restart Clawd. If the issue persists, check ~/.clawd/ permissions.",
       runtime: status,
-      fixAction: { type: "local-server" },
+      fixAction: { type: "restart-clawd" },
     };
   }
 
