@@ -208,7 +208,7 @@ Clawd on Desk is a community-driven project. Bug reports, feature ideas, and pul
 Thanks to everyone who has helped make Clawd better:
 
 <details>
-<summary>Show all 37 contributors</summary>
+<summary>Show all 39 contributors</summary>
 
 <table>
   <tr>
@@ -259,6 +259,8 @@ Thanks to everyone who has helped make Clawd better:
   <tr>
     <td align="center" valign="top" width="110"><a href="https://github.com/Ziy1-Tan"><img src="https://github.com/Ziy1-Tan.png" width="50" style="border-radius:50%" /><br /><sub>Ziy1-Tan</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/tatsuyanakanogaroinc"><img src="https://github.com/tatsuyanakanogaroinc.png" width="50" style="border-radius:50%" /><br /><sub>tatsuyanakanogaroinc</sub></a></td>
+    <td align="center" valign="top" width="110"><a href="https://github.com/yeonhub"><img src="https://github.com/yeonhub.png" width="50" style="border-radius:50%" /><br /><sub>yeonhub</sub></a></td>
+    <td align="center" valign="top" width="110"><a href="https://github.com/joshua-wu"><img src="https://github.com/joshua-wu.png" width="50" style="border-radius:50%" /><br /><sub>joshua-wu</sub></a></td>
   </tr>
 </table>
 
