@@ -91,4 +91,16 @@ describe("built-in Cloudling prototype theme", () => {
 
     assert.ok(crabwalk.w > bounds.width, "mini-crabwalk should use normal normalized layout");
   });
+
+  it("exposes temporary pointer bridge shims in the prototype idle assets", () => {
+    for (const file of ["cloudling-idle.svg", "cloudling-mini-idle.svg"]) {
+      const assetPath = path.join(__dirname, "..", "themes", "cloudling", "assets", file);
+      const sourcePath = path.join(__dirname, "..", "assets", "source", "cloudling-pointer-bridge", file);
+      const asset = fs.readFileSync(assetPath, "utf8");
+      const source = fs.readFileSync(sourcePath, "utf8");
+
+      assert.ok(asset.includes("window.__cloudlingSetPointer = payload =>"), `${file} should expose the bridge API`);
+      assert.ok(source.includes("window.__cloudlingSetPointer = payload =>"), `${file} source copy should mirror the bridge API`);
+    }
+  });
 });
