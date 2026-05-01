@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "name": "Cloudling",
   "author": "stlabslogo",
-  "version": "0.1.0",
-  "description": "Minimal built-in Cloudling prototype using trusted scripted SVG object-channel assets",
+  "version": "0.2.0",
+  "description": "Built-in Cloudling theme using trusted scripted SVG object-channel assets",
   "viewBox": {
     "x": -32,
     "y": -24,
@@ -38,11 +38,33 @@
   },
   "trustedRuntime": {
     "scriptedSvgFiles": [
-      "cloudling-idle.svg",
+      "cloudling-attention.svg",
       "cloudling-building.svg",
+      "cloudling-carrying.svg",
+      "cloudling-conducting.svg",
+      "cloudling-dozing-to-sleeping.svg",
+      "cloudling-dozing.svg",
+      "cloudling-error.svg",
+      "cloudling-idle-reading.svg",
+      "cloudling-idle-to-dozing.svg",
+      "cloudling-idle-to-sleeping.svg",
+      "cloudling-idle.svg",
+      "cloudling-juggling.svg",
+      "cloudling-mini-alert.svg",
+      "cloudling-mini-crabwalk.svg",
       "cloudling-mini-enter-roll-in.svg",
+      "cloudling-mini-enter-sleep.svg",
+      "cloudling-mini-happy.svg",
       "cloudling-mini-idle.svg",
-      "cloudling-mini-crabwalk.svg"
+      "cloudling-mini-peek.svg",
+      "cloudling-mini-sleep.svg",
+      "cloudling-mini-typing.svg",
+      "cloudling-notification.svg",
+      "cloudling-sleeping-to-idle.svg",
+      "cloudling-sleeping.svg",
+      "cloudling-sweeping.svg",
+      "cloudling-thinking.svg",
+      "cloudling-typing.svg"
     ]
   },
   "eyeTracking": {
@@ -53,56 +75,112 @@
     "idle": [
       "cloudling-idle.svg"
     ],
+    "yawning": [
+      "cloudling-idle-to-dozing.svg"
+    ],
+    "dozing": [
+      "cloudling-dozing.svg"
+    ],
+    "collapsing": [
+      "cloudling-dozing-to-sleeping.svg"
+    ],
     "thinking": [
-      "cloudling-idle.svg"
+      "cloudling-thinking.svg"
     ],
     "working": [
-      "cloudling-building.svg"
+      "cloudling-typing.svg"
     ],
     "juggling": [
-      "cloudling-building.svg"
+      "cloudling-juggling.svg"
     ],
-    "attention": {
-      "fallbackTo": "idle"
-    },
-    "notification": {
-      "fallbackTo": "idle"
-    },
-    "error": {
-      "fallbackTo": "idle"
-    },
-    "sweeping": {
-      "fallbackTo": "working"
-    },
-    "carrying": {
-      "fallbackTo": "working"
-    },
-    "sleeping": {
-      "fallbackTo": "idle"
-    }
+    "attention": [
+      "cloudling-attention.svg"
+    ],
+    "notification": [
+      "cloudling-notification.svg"
+    ],
+    "error": [
+      "cloudling-error.svg"
+    ],
+    "sweeping": [
+      "cloudling-sweeping.svg"
+    ],
+    "carrying": [
+      "cloudling-carrying.svg"
+    ],
+    "sleeping": [
+      "cloudling-sleeping.svg"
+    ],
+    "waking": [
+      "cloudling-sleeping-to-idle.svg"
+    ]
   },
   "sleepSequence": {
-    "mode": "direct"
+    "mode": "full"
   },
   "workingTiers": [
     {
-      "minSessions": 1,
+      "minSessions": 3,
       "file": "cloudling-building.svg"
+    },
+    {
+      "minSessions": 2,
+      "file": "cloudling-juggling.svg"
+    },
+    {
+      "minSessions": 1,
+      "file": "cloudling-typing.svg"
+    }
+  ],
+  "jugglingTiers": [
+    {
+      "minSessions": 2,
+      "file": "cloudling-conducting.svg"
+    },
+    {
+      "minSessions": 1,
+      "file": "cloudling-juggling.svg"
+    }
+  ],
+  "idleAnimations": [
+    {
+      "file": "cloudling-idle-reading.svg",
+      "duration": 14000
     }
   ],
   "displayHintMap": {
     "clawd-working-building.svg": "cloudling-building.svg",
-    "clawd-working-typing.svg": "cloudling-building.svg",
-    "clawd-working-juggling.svg": "cloudling-building.svg",
-    "clawd-working-conducting.svg": "cloudling-building.svg",
-    "clawd-working-thinking.svg": "cloudling-idle.svg"
+    "clawd-working-typing.svg": "cloudling-typing.svg",
+    "clawd-working-juggling.svg": "cloudling-juggling.svg",
+    "clawd-working-conducting.svg": "cloudling-conducting.svg",
+    "clawd-working-thinking.svg": "cloudling-thinking.svg"
+  },
+  "updateVisuals": {
+    "checking": "cloudling-thinking.svg"
   },
   "timings": {
     "minDisplay": {
+      "attention": 3600,
+      "error": 5000,
+      "sweeping": 5500,
+      "notification": 2600,
+      "carrying": 3000,
       "working": 1000,
       "thinking": 1000
     },
-    "autoReturn": {}
+    "autoReturn": {
+      "attention": 3600,
+      "error": 5000,
+      "sweeping": 300000,
+      "notification": 2600,
+      "carrying": 3000
+    },
+    "yawnDuration": 9030,
+    "collapseDuration": 4700,
+    "wakeDuration": 3650,
+    "deepSleepTimeout": 600000,
+    "mouseIdleTimeout": 20000,
+    "mouseSleepTimeout": 60000
   },
   "hitBoxes": {
     "default": {
@@ -124,6 +202,27 @@
       "h": 32
     }
   },
+  "wideHitboxFiles": [
+    "cloudling-attention.svg",
+    "cloudling-carrying.svg",
+    "cloudling-conducting.svg",
+    "cloudling-error.svg",
+    "cloudling-notification.svg",
+    "cloudling-sweeping.svg"
+  ],
+  "sleepingHitboxFiles": [
+    "cloudling-dozing-to-sleeping.svg",
+    "cloudling-dozing.svg",
+    "cloudling-idle-to-dozing.svg",
+    "cloudling-idle-to-sleeping.svg",
+    "cloudling-sleeping-to-idle.svg",
+    "cloudling-sleeping.svg"
+  ],
+  "reactions": {
+    "drag": {
+      "file": "cloudling-react-drag.svg"
+    }
+  },
   "miniMode": {
     "supported": true,
     "offsetRatio": 0.486,
@@ -138,36 +237,39 @@
         "cloudling-mini-idle.svg"
       ],
       "mini-alert": [
-        "cloudling-mini-idle.svg"
+        "cloudling-mini-alert.svg"
       ],
       "mini-happy": [
-        "cloudling-mini-idle.svg"
+        "cloudling-mini-happy.svg"
       ],
       "mini-enter": [
         "cloudling-mini-enter-roll-in.svg"
       ],
       "mini-peek": [
-        "cloudling-mini-idle.svg"
+        "cloudling-mini-peek.svg"
+      ],
+      "mini-working": [
+        "cloudling-mini-typing.svg"
       ],
       "mini-crabwalk": [
         "cloudling-mini-crabwalk.svg"
       ],
       "mini-enter-sleep": [
-        "cloudling-mini-enter-roll-in.svg"
+        "cloudling-mini-enter-sleep.svg"
       ],
       "mini-sleep": [
-        "cloudling-mini-idle.svg"
+        "cloudling-mini-sleep.svg"
       ]
     },
     "timings": {
       "minDisplay": {
-        "mini-alert": 4000,
-        "mini-happy": 4000,
+        "mini-alert": 2600,
+        "mini-happy": 3600,
         "mini-peek": 1500
       },
       "autoReturn": {
-        "mini-alert": 4000,
-        "mini-happy": 4000,
+        "mini-alert": 2600,
+        "mini-happy": 3600,
         "mini-peek": 1500
       }
     },

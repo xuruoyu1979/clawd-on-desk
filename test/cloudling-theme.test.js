@@ -10,30 +10,93 @@ const hitGeometry = require("../src/hit-geometry");
 
 themeLoader.init(path.join(__dirname, "..", "src"));
 
-describe("built-in Cloudling prototype theme", () => {
+const CLOUDLING_ASSETS = [
+  "cloudling-attention.svg",
+  "cloudling-building.svg",
+  "cloudling-carrying.svg",
+  "cloudling-conducting.svg",
+  "cloudling-dozing-to-sleeping.svg",
+  "cloudling-dozing.svg",
+  "cloudling-error.svg",
+  "cloudling-idle-reading.svg",
+  "cloudling-idle-to-dozing.svg",
+  "cloudling-idle-to-sleeping.svg",
+  "cloudling-idle.svg",
+  "cloudling-juggling.svg",
+  "cloudling-mini-alert.svg",
+  "cloudling-mini-crabwalk.svg",
+  "cloudling-mini-enter-roll-in.svg",
+  "cloudling-mini-enter-sleep.svg",
+  "cloudling-mini-happy.svg",
+  "cloudling-mini-idle.svg",
+  "cloudling-mini-peek.svg",
+  "cloudling-mini-sleep.svg",
+  "cloudling-mini-typing.svg",
+  "cloudling-notification.svg",
+  "cloudling-react-drag.svg",
+  "cloudling-sleeping-to-idle.svg",
+  "cloudling-sleeping.svg",
+  "cloudling-sweeping.svg",
+  "cloudling-thinking.svg",
+  "cloudling-typing.svg",
+];
+
+const CLOUDLING_SCRIPTED_FILES = CLOUDLING_ASSETS.filter((file) => file !== "cloudling-react-drag.svg");
+
+describe("built-in Cloudling theme", () => {
   it("loads as schema v1 with trusted scripted SVG files scoped to the built-in theme", () => {
     const theme = themeLoader.loadTheme("cloudling", { strict: true });
     const rendererConfig = themeLoader.getRendererConfig();
-    const expectedScriptedFiles = [
-      "cloudling-idle.svg",
-      "cloudling-building.svg",
-      "cloudling-mini-enter-roll-in.svg",
-      "cloudling-mini-idle.svg",
-      "cloudling-mini-crabwalk.svg",
-    ];
 
     assert.strictEqual(theme.schemaVersion, 1);
     assert.strictEqual(theme._builtin, true);
-    assert.deepStrictEqual(theme.trustedRuntime.scriptedSvgFiles, expectedScriptedFiles);
-    assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, expectedScriptedFiles);
+    assert.deepStrictEqual(theme.trustedRuntime.scriptedSvgFiles, CLOUDLING_SCRIPTED_FILES);
+    assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, CLOUDLING_SCRIPTED_FILES);
     assert.strictEqual(theme.miniMode.states["mini-crabwalk"][0], "cloudling-mini-crabwalk.svg");
+    assert.strictEqual(theme.trustedRuntime.scriptedSvgFiles.includes("cloudling-react-drag.svg"), false);
 
-    for (const file of expectedScriptedFiles) {
+    for (const file of CLOUDLING_ASSETS) {
       assert.ok(
         fs.existsSync(path.join(__dirname, "..", "themes", "cloudling", "assets", file)),
-        `${file} should exist in the Cloudling prototype asset folder`
+        `${file} should exist in the Cloudling asset folder`
       );
     }
+  });
+
+  it("maps the full Cloudling Phase 2 state set", () => {
+    const theme = themeLoader.loadTheme("cloudling", { strict: true });
+
+    assert.deepStrictEqual(theme.states.idle, ["cloudling-idle.svg"]);
+    assert.deepStrictEqual(theme.states.thinking, ["cloudling-thinking.svg"]);
+    assert.deepStrictEqual(theme.states.working, ["cloudling-typing.svg"]);
+    assert.deepStrictEqual(theme.states.juggling, ["cloudling-juggling.svg"]);
+    assert.deepStrictEqual(theme.states.attention, ["cloudling-attention.svg"]);
+    assert.deepStrictEqual(theme.states.notification, ["cloudling-notification.svg"]);
+    assert.deepStrictEqual(theme.states.error, ["cloudling-error.svg"]);
+    assert.deepStrictEqual(theme.states.sweeping, ["cloudling-sweeping.svg"]);
+    assert.deepStrictEqual(theme.states.carrying, ["cloudling-carrying.svg"]);
+    assert.deepStrictEqual(theme.states.sleeping, ["cloudling-sleeping.svg"]);
+    assert.deepStrictEqual(theme.states.yawning, ["cloudling-idle-to-dozing.svg"]);
+    assert.deepStrictEqual(theme.states.dozing, ["cloudling-dozing.svg"]);
+    assert.deepStrictEqual(theme.states.collapsing, ["cloudling-dozing-to-sleeping.svg"]);
+    assert.deepStrictEqual(theme.states.waking, ["cloudling-sleeping-to-idle.svg"]);
+    assert.strictEqual(theme.sleepSequence.mode, "full");
+
+    assert.deepStrictEqual(theme.workingTiers.map((tier) => tier.file), [
+      "cloudling-building.svg",
+      "cloudling-juggling.svg",
+      "cloudling-typing.svg",
+    ]);
+    assert.deepStrictEqual(theme.jugglingTiers.map((tier) => tier.file), [
+      "cloudling-conducting.svg",
+      "cloudling-juggling.svg",
+    ]);
+    assert.deepStrictEqual(theme.idleAnimations, [
+      { file: "cloudling-idle-reading.svg", duration: 14000 },
+    ]);
+    assert.deepStrictEqual(theme.miniMode.states["mini-working"], ["cloudling-mini-typing.svg"]);
+    assert.deepStrictEqual(theme.reactions.drag, { file: "cloudling-react-drag.svg" });
+    assert.strictEqual(theme.updateVisuals.checking, "cloudling-thinking.svg");
   });
 
   it("resolves Cloudling viewBoxes for normal, mini, and mini-crabwalk files", () => {
@@ -63,6 +126,10 @@ describe("built-in Cloudling prototype theme", () => {
     );
     assert.strictEqual(
       hitGeometry.usesObjectChannel(externalLikeTheme, "working", "cloudling-building.svg"),
+      false
+    );
+    assert.strictEqual(
+      hitGeometry.usesObjectChannel(theme, "drag", "cloudling-react-drag.svg"),
       false
     );
   });
