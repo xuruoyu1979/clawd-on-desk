@@ -12,7 +12,6 @@ const SUBAGENT_ROLE_VALUES = new Set([
   "delegated",
   "explorer",
   "worker",
-  "default",
 ]);
 
 function isObject(value) {

@@ -48,6 +48,9 @@ describe("codex-subagent-fields", () => {
   it("normalizes unknown values conservatively", () => {
     assert.strictEqual(normalizeRole("explorer"), "subagent");
     assert.strictEqual(normalizeRole("main"), "root");
+    assert.strictEqual(normalizeRole("default"), "unknown");
+    assert.strictEqual(classifyHookPayload({ agent_type: "default" }), "unknown");
+    assert.strictEqual(classifySessionMeta({ agent_type: "default" }), "unknown");
     assert.strictEqual(normalizeRole("unexpected-new-role"), "unknown");
   });
 });
