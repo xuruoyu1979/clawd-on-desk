@@ -30,6 +30,7 @@ docs/**
 !docs/guides/codex-wsl-clarification.ko-KR.md
 !docs/investigations/
 !docs/investigations/permission-hook-fail-deny-investigation.md
+!docs/investigations/codex-subagent-session-meta.md
 !docs/project/
 !docs/project/agent-runtime-architecture.md
 !docs/project/theme-state-ui.md

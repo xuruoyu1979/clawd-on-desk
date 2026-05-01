@@ -339,6 +339,12 @@ function captureCurrentDisplaySnapshot(bounds) {
   }
 }
 
+const CodexSubagentClassifier = require("../agents/codex-subagent-classifier");
+const {
+  buildCodexMonitorUpdateOptions,
+  isCodexMonitorPermissionEvent,
+} = require("./codex-monitor-callback");
+const _codexSubagentClassifier = new CodexSubagentClassifier();
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
 let _geminiMonitor = null;         // Gemini CLI session JSON polling instance
 const CODEX_OFFICIAL_LOG_SUPPRESS_TTL_MS = 10 * 60 * 1000;
@@ -1234,6 +1240,7 @@ const _serverCtx = {
   isAgentEnabled: (agentId) => _isAgentEnabled({ agents: _settingsController.get("agents") }, agentId),
   isAgentPermissionsEnabled: (agentId) => _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
   isCodexPermissionInterceptEnabled: () => _isCodexPermissionInterceptEnabled({ agents: _settingsController.get("agents") }),
+  codexSubagentClassifier: _codexSubagentClassifier,
   setState,
   updateSession: updateSessionFromServer,
   resolvePermissionEntry,
@@ -3855,25 +3862,21 @@ if (!gotTheLock) {
       const codexAgent = require("../agents/codex");
       _codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
         if (shouldSuppressCodexLogEvent(sid, state, event)) return;
-        if (state === "codex-permission") {
-          updateSession(sid, "notification", event, {
-            cwd: extra.cwd,
-            agentId: "codex",
-            sessionTitle: extra.sessionTitle,
-          });
+        if (isCodexMonitorPermissionEvent(state)) {
+          updateSession(sid, "notification", event, buildCodexMonitorUpdateOptions(extra, {
+            includeHeadless: false,
+          }));
           showCodexNotifyBubble({
             sessionId: sid,
-            command: extra.permissionDetail?.command || "",
+            command: (extra && extra.permissionDetail && extra.permissionDetail.command) || "",
           });
           return;
         }
         clearCodexNotifyBubbles(sid, `codex-state-transition:${state}`);
-        updateSession(sid, state, event, {
-          cwd: extra.cwd,
-          agentId: "codex",
-          sessionTitle: extra.sessionTitle,
-        });
-      });
+        updateSession(sid, state, event, buildCodexMonitorUpdateOptions(extra, {
+          includeHeadless: true,
+        }));
+      }, { classifier: _codexSubagentClassifier });
       if (_isAgentEnabled(_settingsController.getSnapshot(), "codex")) {
         _codexMonitor.start();
       }

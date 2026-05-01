@@ -234,3 +234,39 @@ describe("/state MAX_STATE_BODY_BYTES (4KB cap)", () => {
     assert.strictEqual(updateSessionCalls.length, 1);
   });
 });
+
+describe("/state Codex subagent role handling", () => {
+  it("passes headless for official subagent state signals", async () => {
+    const { handler, updateSessionCalls } = startServer({
+      codexSubagentClassifier: {
+        registerSession: () => "subagent",
+      },
+    });
+
+    await callHandler(handler, makeReq("POST", "/state", JSON.stringify({
+      state: "working",
+      agent_id: "codex",
+      hook_source: "codex-official",
+      session_id: "codex:sub",
+      event: "PreToolUse",
+      turn_id: "turn-1",
+      codex_session_role: "subagent",
+    })));
+    const res = await callHandler(handler, makeReq("POST", "/state", JSON.stringify({
+      state: "idle",
+      agent_id: "codex",
+      hook_source: "codex-official",
+      session_id: "codex:sub",
+      event: "Stop",
+      turn_id: "turn-1",
+      codex_session_role: "subagent",
+    })));
+
+    assert.strictEqual(res.statusCode, 200);
+    const last = updateSessionCalls[updateSessionCalls.length - 1];
+    assert.strictEqual(last[0], "codex:sub");
+    assert.strictEqual(last[1], "idle");
+    assert.strictEqual(last[2], "Stop");
+    assert.strictEqual(last[3].headless, true);
+  });
+});

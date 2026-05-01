@@ -352,7 +352,7 @@ describe("Codex official hook turn tracking", () => {
     }, "idle", turns);
 
     assert.deepStrictEqual(result, { state: "attention", drop: false });
-    assert.strictEqual(turns.has("turn-1"), false);
+    assert.strictEqual(turns.size, 0);
   });
 
   it("resolves Stop to idle when no tool was seen", () => {
@@ -377,7 +377,7 @@ describe("Codex official hook turn tracking", () => {
   });
 
   it("drops stop_hook_active continuations without updating state", () => {
-    const turns = new Map([["turn-1", { sessionId: "codex:s1", hadToolUse: true }]]);
+    const turns = new Map([["codex:s1|turn-1", { sessionId: "codex:s1", hadToolUse: true }]]);
 
     const result = resolveCodexOfficialHookState({
       agent_id: "codex",
@@ -389,6 +389,87 @@ describe("Codex official hook turn tracking", () => {
     }, "idle", turns);
 
     assert.deepStrictEqual(result, { state: "idle", drop: true });
-    assert.strictEqual(turns.has("turn-1"), false);
+    assert.strictEqual(turns.size, 0);
+  });
+
+  it("resolves subagent Stop to idle and marks it headless", () => {
+    const turns = new Map();
+    const classifier = {
+      registerSession: () => "subagent",
+    };
+
+    resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "UserPromptSubmit",
+      session_id: "codex:sub",
+      turn_id: "turn-1",
+      codex_session_role: "subagent",
+    }, "thinking", turns, classifier);
+    resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "PreToolUse",
+      session_id: "codex:sub",
+      turn_id: "turn-1",
+      codex_session_role: "subagent",
+    }, "working", turns, classifier);
+
+    const result = resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "Stop",
+      session_id: "codex:sub",
+      turn_id: "turn-1",
+      codex_session_role: "subagent",
+    }, "idle", turns, classifier);
+
+    assert.deepStrictEqual(result, { state: "idle", drop: false, headless: true });
+    assert.strictEqual(turns.size, 0);
+  });
+
+  it("keeps turns scoped by session id when turn_id overlaps", () => {
+    const turns = new Map();
+
+    resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "UserPromptSubmit",
+      session_id: "codex:root",
+      turn_id: "same-turn",
+    }, "thinking", turns);
+    resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "PreToolUse",
+      session_id: "codex:root",
+      turn_id: "same-turn",
+    }, "working", turns);
+    resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "UserPromptSubmit",
+      session_id: "codex:sub",
+      turn_id: "same-turn",
+    }, "thinking", turns);
+
+    const subStop = resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "Stop",
+      session_id: "codex:sub",
+      turn_id: "same-turn",
+    }, "idle", turns);
+    const rootStop = resolveCodexOfficialHookState({
+      agent_id: "codex",
+      hook_source: "codex-official",
+      event: "Stop",
+      session_id: "codex:root",
+      turn_id: "same-turn",
+    }, "idle", turns);
+
+    assert.deepStrictEqual(subStop, { state: "idle", drop: false });
+    assert.deepStrictEqual(rootStop, { state: "attention", drop: false });
+    assert.strictEqual(turns.size, 0);
   });
 });

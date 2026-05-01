@@ -3,6 +3,7 @@
 // Registered in ~/.codex/hooks.json by hooks/codex-install.js
 
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 const {
   postPermissionToRunningServer,
@@ -10,12 +11,19 @@ const {
   readHostPrefix,
 } = require("./server-config");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
+const {
+  ROLE_UNKNOWN,
+  classifyHookPayload,
+  classifySessionMeta,
+} = require("./codex-subagent-fields");
 
 const TOOL_MATCH_STRING_MAX = 240;
 const TOOL_MATCH_ARRAY_MAX = 16;
 const TOOL_MATCH_OBJECT_KEYS_MAX = 32;
 const TOOL_MATCH_DEPTH_MAX = 6;
 const CODEX_PERMISSION_TIMEOUT_MS = 590000;
+const SESSION_META_READ_CHUNK_BYTES = 8192;
+const SESSION_META_READ_MAX_BYTES = 256 * 1024;
 
 const EVENT_TO_STATE = {
   SessionStart: "idle",
@@ -84,6 +92,72 @@ function buildToolInputFingerprint(toolInput) {
     .createHash("sha1")
     .update(JSON.stringify(normalized))
     .digest("hex");
+}
+
+function readFirstSessionMeta(transcriptPath) {
+  if (typeof transcriptPath !== "string" || !transcriptPath.trim()) return null;
+  let fd;
+  try {
+    fd = fs.openSync(transcriptPath, "r");
+    const chunks = [];
+    let offset = 0;
+    let foundNewline = false;
+
+    while (offset < SESSION_META_READ_MAX_BYTES && !foundNewline) {
+      const readLen = Math.min(SESSION_META_READ_CHUNK_BYTES, SESSION_META_READ_MAX_BYTES - offset);
+      const buf = Buffer.allocUnsafe(readLen);
+      const bytesRead = fs.readSync(fd, buf, 0, readLen, offset);
+      if (bytesRead <= 0) break;
+
+      const slice = buf.subarray(0, bytesRead);
+      const newline = slice.indexOf(0x0a);
+      if (newline >= 0) {
+        chunks.push(slice.subarray(0, newline));
+        offset += newline;
+        foundNewline = true;
+        break;
+      }
+
+      chunks.push(slice);
+      offset += bytesRead;
+      if (bytesRead < readLen) break;
+    }
+
+    if (!chunks.length) return null;
+    const firstLine = Buffer.concat(chunks).toString("utf8").replace(/\r$/, "");
+    if (!firstLine.trim()) return null;
+    const parsed = JSON.parse(firstLine);
+    if (parsed && parsed.type === "session_meta" && parsed.payload && typeof parsed.payload === "object") {
+      return parsed.payload;
+    }
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch {}
+    }
+  }
+  return null;
+}
+
+function applyCodexUpstreamFields(body, payload, sessionMeta) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const meta = sessionMeta && typeof sessionMeta === "object" ? sessionMeta : {};
+  const upstreamAgentId = typeof source.agent_id === "string" && source.agent_id
+    ? source.agent_id
+    : (typeof meta.agent_id === "string" && meta.agent_id ? meta.agent_id : null);
+  const upstreamAgentType = typeof source.agent_type === "string" && source.agent_type
+    ? source.agent_type
+    : (typeof meta.agent_type === "string" && meta.agent_type ? meta.agent_type : null);
+
+  if (upstreamAgentId) body.codex_subagent_id = upstreamAgentId;
+  if (upstreamAgentType) body.codex_agent_type = upstreamAgentType;
+}
+
+function resolveCodexSessionRole(payload, sessionMeta) {
+  const hookRole = classifyHookPayload(payload);
+  if (hookRole !== ROLE_UNKNOWN) return hookRole;
+  return classifySessionMeta(sessionMeta);
 }
 
 function sanitizeCodexPermissionDecision(decision) {
@@ -213,6 +287,11 @@ function buildStateBody(payload, resolve) {
     body.stop_hook_active = payload.stop_hook_active;
   }
 
+  const sessionMeta = readFirstSessionMeta(payload.transcript_path);
+  const codexRole = resolveCodexSessionRole(payload, sessionMeta);
+  if (codexRole !== ROLE_UNKNOWN) body.codex_session_role = codexRole;
+  applyCodexUpstreamFields(body, payload, sessionMeta);
+
   const toolName = typeof payload.tool_name === "string" && payload.tool_name ? payload.tool_name : null;
   const toolUseId = normalizeToolUseId(payload.tool_use_id ?? payload.toolUseId ?? payload.toolUseID);
   const toolInput = payload.tool_input && typeof payload.tool_input === "object" ? payload.tool_input : null;
@@ -281,6 +360,7 @@ module.exports = {
   buildToolInputFingerprint,
   extractCodexSessionIdFromTranscriptPath,
   normalizeCodexSessionId,
+  readFirstSessionMeta,
   sanitizeCodexPermissionDecision,
   sanitizeCodexPermissionOutput,
 };

@@ -152,6 +152,37 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
+  it("marks subagent emits headless and resolves task_complete to idle", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      JSON.stringify({
+        type: "session_meta",
+        payload: {
+          cwd: "/projects/sub",
+          source: { subagent: { thread_spawn: { parent_thread_id: "root", agent_role: "explorer" } } },
+          agent_role: "explorer",
+        },
+      }),
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"ls\\"}"}}',
+      '{"type":"event_msg","payload":{"type":"exec_command_end"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const events = [];
+    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
+      events.push({ state, event, headless: extra.headless, cwd: extra.cwd });
+      if (event === "event_msg:task_complete") {
+        assert.deepStrictEqual(events.map((entry) => entry.state), ["idle", "thinking", "working", "idle"]);
+        assert.ok(events.every((entry) => entry.headless === true));
+        assert.ok(events.every((entry) => entry.cwd === "/projects/sub"));
+        done();
+      }
+    });
+    monitor.start();
+  });
+
   it("should map turn_aborted to idle", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [

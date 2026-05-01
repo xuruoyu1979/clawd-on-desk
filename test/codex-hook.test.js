@@ -1,5 +1,7 @@
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
+const fs = require("fs");
+const os = require("os");
 const { spawnSync } = require("child_process");
 const path = require("path");
 const {
@@ -10,6 +12,7 @@ const {
   buildToolInputFingerprint,
   extractCodexSessionIdFromTranscriptPath,
   normalizeCodexSessionId,
+  readFirstSessionMeta,
   sanitizeCodexPermissionOutput,
 } = require("../hooks/codex-hook");
 
@@ -19,6 +22,17 @@ const mockResolve = () => ({
   detectedEditor: "code",
   pidChain: [789, 456, 123],
 });
+
+function withTempTranscript(lines, fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-hook-"));
+  const file = path.join(dir, "rollout-2026-03-25T15-10-51-019d23d4-f1a9-7633-b9c7-758327137228.jsonl");
+  fs.writeFileSync(file, lines.join("\n") + "\n", "utf8");
+  try {
+    return fn(file);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("Codex official hook", () => {
   it("normalizes session ids with the codex prefix", () => {
@@ -99,6 +113,58 @@ describe("Codex official hook", () => {
     assert.strictEqual(body.stop_hook_active, false);
   });
 
+  it("reads long first-line session_meta and marks subagent state payloads", () => {
+    withTempTranscript([
+      JSON.stringify({
+        type: "session_meta",
+        payload: {
+          source: { subagent: { thread_spawn: { parent_thread_id: "root", agent_role: "explorer" } } },
+          agent_role: "explorer",
+          base_instructions: { text: "x".repeat(12000) },
+        },
+      }),
+    ], (transcriptPath) => {
+      const meta = readFirstSessionMeta(transcriptPath);
+      assert.strictEqual(meta.agent_role, "explorer");
+
+      const body = buildStateBody({
+        hook_event_name: "SessionStart",
+        session_id: "official-session",
+        transcript_path: transcriptPath,
+      }, mockResolve);
+
+      assert.strictEqual(body.session_id, "codex:019d23d4-f1a9-7633-b9c7-758327137228");
+      assert.strictEqual(body.agent_id, "codex");
+      assert.strictEqual(body.codex_session_role, "subagent");
+    });
+  });
+
+  it("renames upstream Codex agent fields without polluting Clawd agent_id", () => {
+    const body = buildStateBody({
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      agent_id: "upstream-subagent-id",
+      agent_type: "explorer",
+      source: { subagent: { thread_spawn: { agent_role: "explorer" } } },
+    }, mockResolve);
+
+    assert.strictEqual(body.agent_id, "codex");
+    assert.strictEqual(body.codex_subagent_id, "upstream-subagent-id");
+    assert.strictEqual(body.codex_agent_type, "explorer");
+    assert.strictEqual(body.codex_session_role, "subagent");
+  });
+
+  it("fails open when transcript_path cannot be read", () => {
+    const body = buildStateBody({
+      hook_event_name: "SessionStart",
+      session_id: "s1",
+      transcript_path: path.join(os.tmpdir(), "missing-codex-transcript.jsonl"),
+    }, mockResolve);
+
+    assert.strictEqual(body.agent_id, "codex");
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(body, "codex_session_role"), false);
+  });
+
   it("no-ops stop_hook_active continuations", () => {
     const body = buildStateBody({
       hook_event_name: "Stop",
@@ -139,6 +205,30 @@ describe("Codex official hook", () => {
     assert.strictEqual(body.turn_id, "turn-1");
     assert.strictEqual(body.permission_mode, "default");
     assert.strictEqual(body.source_pid, 123);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(body, "codex_session_role"), false);
+  });
+
+  it("does not classify PermissionRequest payloads even when the transcript is subagent", () => {
+    withTempTranscript([
+      JSON.stringify({
+        type: "session_meta",
+        payload: {
+          source: { subagent: { thread_spawn: { agent_role: "worker" } } },
+          agent_role: "worker",
+        },
+      }),
+    ], (transcriptPath) => {
+      const body = buildPermissionBody({
+        hook_event_name: "PermissionRequest",
+        session_id: "s1",
+        transcript_path: transcriptPath,
+        tool_name: "Bash",
+        tool_input: { command: "npm test" },
+      }, mockResolve);
+
+      assert.strictEqual(body.agent_id, "codex");
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(body, "codex_session_role"), false);
+    });
   });
 
   it("does not build a state payload for PermissionRequest", () => {
