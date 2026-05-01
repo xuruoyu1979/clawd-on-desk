@@ -103,4 +103,18 @@ describe("built-in Cloudling prototype theme", () => {
       assert.ok(source.includes("window.__cloudlingSetPointer = payload =>"), `${file} source copy should mirror the bridge API`);
     }
   });
+
+  it("uses a visible normal idle eye-follow range for bridge validation", () => {
+    const asset = fs.readFileSync(
+      path.join(__dirname, "..", "themes", "cloudling", "assets", "cloudling-idle.svg"),
+      "utf8"
+    );
+    const source = fs.readFileSync(
+      path.join(__dirname, "..", "assets", "source", "cloudling-pointer-bridge", "cloudling-idle.svg"),
+      "utf8"
+    );
+
+    assert.ok(asset.includes("EYE_MAX: 1.20"), "normal idle should use the tuned bridge-validation eye range");
+    assert.ok(source.includes("EYE_MAX: 1.20"), "source copy should mirror the tuned eye range");
+  });
 });
