@@ -9,6 +9,7 @@ const LOW_POWER_IDLE_PAUSE_MS = 5000;
 const LOW_POWER_PAUSE_STYLE_ID = "clawd-low-power-pause-svg";
 const LOW_POWER_PAUSE_STATES = new Set(["idle", "mini-idle", "dozing"]);
 const LOW_POWER_BOUNDARY_EPSILON_MS = 80;
+const CLOUDLING_POINTER_BRIDGE_STATES = new Set(["idle", "mini-idle", "mini-peek"]);
 let lowPowerIdleMode = false;
 let lowPowerIdlePauseTimer = null;
 let lowPowerSvgPaused = false;
@@ -382,6 +383,7 @@ let isDragReacting = false;
 let reactTimer = null;
 let currentIdleSvg = null;    // tracks which SVG is currently showing
 let currentState = null;      // last state name received from main (for re-pulse)
+let lastCloudlingPointerPayload = null;
 let dndEnabled = false;
 let miniLeftFlip = false;
 
@@ -401,6 +403,9 @@ window.electronAPI.onMiniModeChange((enabled, edge, options) => {
     applyGlyphFlipCompensation(clawdEl);
   } else {
     removeGlyphFlipCompensation(clawdEl);
+  }
+  if (shouldUseCloudlingPointerBridge(currentState, currentDisplayedSvg) && lastCloudlingPointerPayload) {
+    applyCloudlingPointerBridge(lastCloudlingPointerPayload);
   }
 });
 
@@ -460,6 +465,58 @@ function needsEyeTracking(state) {
 function needsObjectChannel(state, file) {
   if (!isSvgFile(file)) return false;
   return needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);
+}
+
+function shouldUseCloudlingPointerBridge(state, file) {
+  return CLOUDLING_POINTER_BRIDGE_STATES.has(state) && isSvgFile(file);
+}
+
+function normalizeCloudlingPointerPayload(payload) {
+  if (!payload || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return null;
+  return {
+    x: payload.x,
+    y: payload.y,
+    inside: !!payload.inside,
+  };
+}
+
+function getDisplayedCloudlingPointerPayload(payload) {
+  const next = { ...payload };
+  if (miniLeftFlip) {
+    const viewBox = resolveViewBox(currentState, currentDisplayedSvg);
+    if (viewBox && Number.isFinite(viewBox.x) && Number.isFinite(viewBox.width)) {
+      next.x = viewBox.x + viewBox.width - (payload.x - viewBox.x);
+    }
+  }
+  return next;
+}
+
+function callCloudlingPointerBridge(objectEl, payload) {
+  if (!objectEl || objectEl.tagName !== "OBJECT" || !payload) return false;
+  try {
+    const svgWindow = objectEl.contentWindow;
+    if (svgWindow && typeof svgWindow.__cloudlingSetPointer === "function") {
+      svgWindow.__cloudlingSetPointer(payload);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function applyCloudlingPointerBridge(payload) {
+  const normalized = normalizeCloudlingPointerPayload(payload);
+  if (!normalized) return;
+  lastCloudlingPointerPayload = normalized;
+  if (!shouldUseCloudlingPointerBridge(currentState, currentDisplayedSvg)) return;
+  callCloudlingPointerBridge(clawdEl, getDisplayedCloudlingPointerPayload(normalized));
+}
+
+function clearCloudlingPointerBridge(objectEl = clawdEl) {
+  const payload = {
+    ...(lastCloudlingPointerPayload || { x: 0, y: 0 }),
+    inside: false,
+  };
+  callCloudlingPointerBridge(objectEl, getDisplayedCloudlingPointerPayload(payload));
 }
 
 /**
@@ -602,6 +659,9 @@ function swapToFile(file, state, useObjectChannel) {
         attachEyeTracking(next);
       }
       if (miniLeftFlip) applyGlyphFlipCompensation(next);
+      if (shouldUseCloudlingPointerBridge(currentState, file) && lastCloudlingPointerPayload) {
+        callCloudlingPointerBridge(next, getDisplayedCloudlingPointerPayload(lastCloudlingPointerPayload));
+      }
       scheduleLowPowerIdlePause();
     };
 
@@ -679,6 +739,9 @@ window.electronAPI.onStateChange((state, svg) => {
   // swapToFile() with the matching state for eye-tracking decisions.
   currentState = state;
   noteLowPowerActivity();
+  if (!shouldUseCloudlingPointerBridge(state, svg)) {
+    clearCloudlingPointerBridge();
+  }
 
   // Dedup: same file already displayed OR currently loading → don't re-swap
   const desiredObjectChannel = needsObjectChannel(state, svg);
@@ -693,6 +756,9 @@ window.electronAPI.onStateChange((state, svg) => {
         if (clawdEl.tagName === "OBJECT") attachEyeTracking(clawdEl);
       } else if (!needsEyeTracking(state)) {
         detachEyeTracking();
+      }
+      if (shouldUseCloudlingPointerBridge(state, svg) && lastCloudlingPointerPayload) {
+        applyCloudlingPointerBridge(lastCloudlingPointerPayload);
       }
       scheduleLowPowerIdlePause();
     }
@@ -1022,6 +1088,13 @@ window.electronAPI.onEyeMove((dx, dy) => {
   }
   applyEyeMove(effectiveDx, dy);
 });
+
+if (window.electronAPI && typeof window.electronAPI.onCloudlingPointer === "function") {
+  window.electronAPI.onCloudlingPointer((payload) => {
+    noteLowPowerActivity();
+    applyCloudlingPointerBridge(payload);
+  });
+}
 
 // --- Sound playback (IPC from main, receives { url, volume } from theme) ---
 const _audioCache = {};

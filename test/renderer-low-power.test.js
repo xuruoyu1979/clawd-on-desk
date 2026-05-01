@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const RENDERER = path.join(__dirname, "..", "src", "renderer.js");
+const PRELOAD = path.join(__dirname, "..", "src", "preload.js");
 
 describe("renderer low-power idle mode", () => {
   it("waits for an animation boundary before pausing the current SVG", () => {
@@ -37,5 +38,18 @@ describe("renderer object-channel selection", () => {
 
     assert.ok(source.includes("function needsEyeTracking(state)"));
     assert.ok(source.includes("if (state && needsEyeTracking(state)) {\n        attachEyeTracking(next);"));
+  });
+});
+
+describe("renderer Cloudling pointer bridge", () => {
+  it("bridges only selected Cloudling pointer states through the exporter API", () => {
+    const source = fs.readFileSync(RENDERER, "utf8");
+    const preload = fs.readFileSync(PRELOAD, "utf8");
+
+    assert.ok(source.includes('const CLOUDLING_POINTER_BRIDGE_STATES = new Set(["idle", "mini-idle", "mini-peek"]);'));
+    assert.ok(source.includes('typeof svgWindow.__cloudlingSetPointer === "function"'));
+    assert.ok(source.includes('svgWindow.__cloudlingSetPointer(payload);'));
+    assert.ok(source.includes('window.electronAPI.onCloudlingPointer((payload) => {'));
+    assert.ok(preload.includes('onCloudlingPointer: (callback) => ipcRenderer.on("cloudling-pointer", (_, payload) => callback(payload))'));
   });
 });

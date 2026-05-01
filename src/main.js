@@ -452,6 +452,13 @@ function getObjRect(bounds) {
     || { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
 }
 
+function getAssetPointerPayload(bounds, point) {
+  if (!bounds || !point || !activeTheme) return null;
+  const state = _state.getCurrentState();
+  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
+  return hitGeometry.getAssetPointerPayload(activeTheme, bounds, state, file, point);
+}
+
 let win;
 let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let viewportOffsetY = 0;
@@ -1173,6 +1180,7 @@ const _tickCtx = {
   miniPeekOut: () => miniPeekOut(),
   getObjRect,
   getHitRectScreen,
+  getAssetPointerPayload,
 };
 const _tick = require("./tick")(_tickCtx);
 requestFastTick = (maxDelay) => _tick.scheduleSoon(maxDelay);

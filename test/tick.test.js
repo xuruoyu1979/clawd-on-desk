@@ -192,6 +192,75 @@ describe("tick mini hover", () => {
   });
 });
 
+describe("tick Cloudling pointer bridge", () => {
+  let cursor;
+  let loader;
+  let tickApi;
+  let ctx;
+  let statesSeen;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    cursor = { x: 40, y: 50 };
+    loader = loadTickWithScreen(() => ({ ...cursor }));
+    statesSeen = [];
+  });
+
+  afterEach(() => {
+    if (tickApi) tickApi.cleanup();
+    if (loader) loader.restore();
+    mock.timers.reset();
+    tickApi = null;
+    ctx = null;
+  });
+
+  it("sends viewBox pointer payloads for idle", () => {
+    const theme = cloneTheme(_defaultTheme);
+    const pointers = [];
+
+    ctx = makeCtx(theme, statesSeen);
+    ctx.getAssetPointerPayload = (_bounds, point) => ({
+      x: point.x / 10,
+      y: point.y / 10,
+      inside: true,
+    });
+    ctx.sendToRenderer = (channel, payload) => {
+      if (channel === "cloudling-pointer") pointers.push(payload);
+    };
+
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+    mock.timers.tick(1);
+
+    assert.deepStrictEqual(pointers, [{ x: 4, y: 5, inside: true }]);
+  });
+
+  it("sends pointer payloads while mini-peek is active", () => {
+    const theme = cloneTheme(_defaultTheme);
+    const pointers = [];
+
+    ctx = makeCtx(theme, statesSeen);
+    ctx.miniMode = true;
+    ctx.currentState = "mini-peek";
+    ctx.currentSvg = "cloudling-mini-idle.svg";
+    ctx.isAnimating = true;
+    ctx.getAssetPointerPayload = (_bounds, point) => ({
+      x: point.x,
+      y: point.y,
+      inside: false,
+    });
+    ctx.sendToRenderer = (channel, payload) => {
+      if (channel === "cloudling-pointer") pointers.push(payload);
+    };
+
+    tickApi = loader.initTick(ctx);
+    tickApi.startMainTick();
+    mock.timers.tick(60);
+
+    assert.deepStrictEqual(pointers, [{ x: 40, y: 50, inside: false }]);
+  });
+});
+
 describe("tick adaptive polling", () => {
   let cursor;
   let cursorCalls;

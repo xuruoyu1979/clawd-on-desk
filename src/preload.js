@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onStateChange: (callback) => ipcRenderer.on("state-change", (_, state, svg) => callback(state, svg)),
   onKimiPermissionPulse: (callback) => ipcRenderer.on("kimi-permission-pulse", () => callback()),
   onEyeMove: (callback) => ipcRenderer.on("eye-move", (_, dx, dy) => callback(dx, dy)),
+  onCloudlingPointer: (callback) => ipcRenderer.on("cloudling-pointer", (_, payload) => callback(payload)),
   onWakeFromDoze: (callback) => ipcRenderer.on("wake-from-doze", () => callback()),
   onDndChange: (callback) => ipcRenderer.on("dnd-change", (_, enabled) => callback(enabled)),
   onMiniModeChange: (cb) => ipcRenderer.on("mini-mode-change", (_, enabled, edge, options) => cb(enabled, edge, options)),

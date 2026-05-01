@@ -195,8 +195,26 @@ function getContentRectScreen(theme, bounds, state, file, options = {}) {
   };
 }
 
+function getAssetPointerPayload(theme, bounds, state, file, point) {
+  if (!theme || !bounds || !point) return null;
+
+  const artRect = getAssetRectScreen(theme, bounds, state, file);
+  const vb = resolveViewBox(theme, state, file);
+  if (!artRect || !vb || artRect.w <= 0 || artRect.h <= 0) return null;
+
+  return {
+    x: vb.x + ((point.x - artRect.x) / artRect.w) * vb.width,
+    y: vb.y + ((point.y - artRect.y) / artRect.h) * vb.height,
+    inside: point.x >= artRect.x
+      && point.x <= artRect.x + artRect.w
+      && point.y >= artRect.y
+      && point.y <= artRect.y + artRect.h,
+  };
+}
+
 module.exports = {
   getAssetRectScreen,
+  getAssetPointerPayload,
   getContentRectScreen,
   getHitRectScreen,
   resolveViewBox,

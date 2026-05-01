@@ -15,6 +15,8 @@ let idleLookReturnTimer = null;
 let yawnDelayTimer = null;     // tracked setTimeout for yawn/idle-look transitions
 let idleWasActive = false;
 let lastEyeDx = 0, lastEyeDy = 0;
+let lastPointerBridgeKey = null;
+let lastPointerBridgePayload = null;
 let mainTickTimer = null;
 let mainTickActive = false;
 let nextMainTickAt = 0;
@@ -25,6 +27,8 @@ const IDLE_TICK_MS = 250;
 const REACTION_TICK_MS = 500;
 const BACKGROUND_TICK_MS = 750;
 const RECENT_MOUSE_MS = 2000;
+const POINTER_BRIDGE_STATES = new Set(["idle", "mini-idle", "mini-peek"]);
+const POINTER_BRIDGE_EPSILON = 0.001;
 
 // ── Theme-driven state (refreshed on hot theme switch) ──
 let theme = null;
@@ -93,6 +97,40 @@ function scheduleSoon(maxDelay = BOOST_TICK_MS) {
   }
 }
 
+function getPointerBridgeKey() {
+  const state = ctx.currentState;
+  if (!POINTER_BRIDGE_STATES.has(state)) return null;
+  return `${state}|${ctx.currentSvg || ""}`;
+}
+
+function pointerBridgePayloadChanged(key, payload) {
+  if (key !== lastPointerBridgeKey || !lastPointerBridgePayload) return true;
+  return payload.inside !== lastPointerBridgePayload.inside
+    || Math.abs(payload.x - lastPointerBridgePayload.x) > POINTER_BRIDGE_EPSILON
+    || Math.abs(payload.y - lastPointerBridgePayload.y) > POINTER_BRIDGE_EPSILON;
+}
+
+function sendPointerBridge(cursor, bounds) {
+  if (typeof ctx.getAssetPointerPayload !== "function") return;
+  const key = getPointerBridgeKey();
+  if (!key || !cursor || !bounds) return;
+  if (ctx.currentState !== "mini-peek" && Number(ctx.eyePauseUntil) > Date.now()) return;
+
+  const raw = ctx.getAssetPointerPayload(bounds, cursor);
+  if (!raw || !Number.isFinite(raw.x) || !Number.isFinite(raw.y)) return;
+
+  const payload = {
+    x: raw.x,
+    y: raw.y,
+    inside: !!raw.inside,
+  };
+  if (!pointerBridgePayloadChanged(key, payload)) return;
+
+  lastPointerBridgeKey = key;
+  lastPointerBridgePayload = payload;
+  ctx.sendToRenderer("cloudling-pointer", payload);
+}
+
 function runMainTick() {
   mainTickTimer = null;
   nextMainTickAt = 0;
@@ -138,7 +176,10 @@ function runMainTickOnce() {
     lastCursorY = cursor.y;
 
     // ── Cursor-over-pet tracking (for mini peek + eye tracking, NOT for input routing) ──
-    const needsBounds = ctx.miniMode || moved || ctx.forceEyeResend || miniIdleNow;
+    const pointerBridgeKey = getPointerBridgeKey();
+    const needsPointerBridgeBounds = !!pointerBridgeKey
+      && (moved || ctx.forceEyeResend || pointerBridgeKey !== lastPointerBridgeKey);
+    const needsBounds = ctx.miniMode || moved || ctx.forceEyeResend || miniIdleNow || needsPointerBridgeBounds;
     let bounds = null;
     if (needsBounds) {
       bounds = typeof ctx.getPetWindowBounds === "function"
@@ -173,6 +214,8 @@ function runMainTickOnce() {
         }
       }
     }
+
+    sendPointerBridge(cursor, bounds);
 
     if (!idleNow && !miniIdleNow) return nextDelay();
 
@@ -305,6 +348,8 @@ function cleanup() {
   idleWasActive = false;
   lastEyeDx = 0;
   lastEyeDy = 0;
+  lastPointerBridgeKey = null;
+  lastPointerBridgePayload = null;
 }
 
 // Expose mouseStillSince for wake poll (state.js deep sleep timeout)

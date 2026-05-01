@@ -225,4 +225,41 @@ describe("hit geometry", () => {
     approx(rect.w, 200);
     approx(rect.h, 163.64);
   });
+
+  it("maps screen cursor points into the active asset viewBox for pointer bridge payloads", () => {
+    const theme = {
+      _builtin: true,
+      viewBox: { x: -32, y: -24, width: 88, height: 72 },
+      miniMode: { viewBox: { x: -12, y: -12, width: 48, height: 48 } },
+      fileViewBoxes: {},
+      objectScale: { widthRatio: 1, heightRatio: 1, offsetX: 0, offsetY: 0, objBottom: 0 },
+      eyeTracking: { enabled: false, states: [] },
+      trustedRuntime: { scriptedSvgFiles: ["cloudling-mini-idle.svg"] },
+    };
+    const rect = hitGeometry.getAssetRectScreen(
+      theme,
+      bounds,
+      "mini-idle",
+      "cloudling-mini-idle.svg"
+    );
+    const payload = hitGeometry.getAssetPointerPayload(
+      theme,
+      bounds,
+      "mini-idle",
+      "cloudling-mini-idle.svg",
+      { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }
+    );
+    const outside = hitGeometry.getAssetPointerPayload(
+      theme,
+      bounds,
+      "mini-idle",
+      "cloudling-mini-idle.svg",
+      { x: rect.x - 1, y: rect.y + rect.h / 2 }
+    );
+
+    approx(payload.x, 12);
+    approx(payload.y, 12);
+    assert.strictEqual(payload.inside, true);
+    assert.strictEqual(outside.inside, false);
+  });
 });
