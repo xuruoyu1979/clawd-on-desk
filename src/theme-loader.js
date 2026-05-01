@@ -294,29 +294,34 @@ function _resolveSoundOverrideFiles(themeId, userOverrides) {
  */
 function _readThemeJson(themeId) {
   // Built-in first
-  const builtinPath = path.join(builtinThemesDir, themeId, "theme.json");
-  if (fs.existsSync(builtinPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(builtinPath, "utf8"));
-      return { raw, isBuiltin: true, themeDir: path.join(builtinThemesDir, themeId) };
-    } catch (e) {
-      console.error(`[theme-loader] Failed to parse built-in theme "${themeId}":`, e.message);
+  if (builtinThemesDir) {
+    const builtinPath = path.resolve(builtinThemesDir, themeId, "theme.json");
+    if (!_isPathInsideDir(builtinThemesDir, builtinPath)) {
+      console.error(`[theme-loader] Path traversal detected for built-in theme "${themeId}"`);
+      return { raw: null, isBuiltin: false, themeDir: null };
+    }
+    if (fs.existsSync(builtinPath)) {
+      try {
+        const raw = JSON.parse(fs.readFileSync(builtinPath, "utf8"));
+        return { raw, isBuiltin: true, themeDir: path.dirname(builtinPath) };
+      } catch (e) {
+        console.error(`[theme-loader] Failed to parse built-in theme "${themeId}":`, e.message);
+      }
     }
   }
 
   // User themes
   if (userThemesDir) {
-    const userPath = path.join(userThemesDir, themeId, "theme.json");
+    const userPath = path.resolve(userThemesDir, themeId, "theme.json");
     if (fs.existsSync(userPath)) {
       // Path traversal check: resolved path must be within userThemesDir
-      const resolved = path.resolve(userPath);
-      if (!resolved.startsWith(path.resolve(userThemesDir) + path.sep)) {
+      if (!_isPathInsideDir(userThemesDir, userPath)) {
         console.error(`[theme-loader] Path traversal detected for theme "${themeId}"`);
         return { raw: null, isBuiltin: false, themeDir: null };
       }
       try {
         const raw = JSON.parse(fs.readFileSync(userPath, "utf8"));
-        return { raw, isBuiltin: false, themeDir: path.join(userThemesDir, themeId) };
+        return { raw, isBuiltin: false, themeDir: path.dirname(userPath) };
       } catch (e) {
         console.error(`[theme-loader] Failed to parse user theme "${themeId}":`, e.message);
       }
@@ -643,6 +648,9 @@ function getRendererSourceAssetsPath() {
 function getRendererConfig() {
   if (!activeTheme) return null;
   const t = activeTheme;
+  const trustedScriptedSvgFiles = t._builtin && t.trustedRuntime
+    ? (t.trustedRuntime.scriptedSvgFiles || [])
+    : [];
   return {
     viewBox: t.viewBox,
     layout: t.layout,
@@ -656,6 +664,7 @@ function getRendererConfig() {
     idleFollowSvg: t.states.idle[0],
     // renderer needs to know which states need eye tracking (for <object> vs <img> decision)
     eyeTrackingStates: t.eyeTracking.enabled ? t.eyeTracking.states : [],
+    trustedScriptedSvgFiles: [...trustedScriptedSvgFiles],
     objectScale: t.objectScale,
     transitions: t.transitions || {},
   };
@@ -889,6 +898,15 @@ function _isPlainObject(v) {
   return v && typeof v === "object" && !Array.isArray(v);
 }
 
+function _isPathInsideDir(baseDir, candidatePath) {
+  if (!baseDir || !candidatePath) return false;
+  const base = path.resolve(baseDir);
+  const candidate = path.resolve(candidatePath);
+  const relative = path.relative(base, candidate);
+  const firstSegment = relative.split(/[\\/]/)[0];
+  return relative === "" || (!!relative && firstSegment !== ".." && !path.isAbsolute(relative));
+}
+
 function _hasNonEmptyArray(value) {
   return Array.isArray(value) && value.length > 0;
 }
@@ -1061,6 +1079,65 @@ function _deepMergeObject(base, patch) {
 
 function _basenameOnly(value) {
   return typeof value === "string" ? value.replace(/^.*[\/\\]/, "") : value;
+}
+
+function _normalizeViewBox(value) {
+  if (!_isPlainObject(value)) return null;
+  const { x, y, width, height } = value;
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+function _normalizeTrustedRuntime(value, isBuiltin, themeId) {
+  const out = { scriptedSvgFiles: [] };
+  if (!isBuiltin) {
+    if (value !== undefined) {
+      console.warn(`[theme-loader] trustedRuntime ignored for non-builtin theme "${themeId}"`);
+    }
+    return out;
+  }
+  if (!_isPlainObject(value) || !Array.isArray(value.scriptedSvgFiles)) {
+    return out;
+  }
+  const seen = new Set();
+  for (const file of value.scriptedSvgFiles) {
+    if (typeof file !== "string") continue;
+    const safeFile = _basenameOnly(file);
+    if (!safeFile || !safeFile.toLowerCase().endsWith(".svg") || seen.has(safeFile)) continue;
+    seen.add(safeFile);
+    out.scriptedSvgFiles.push(safeFile);
+  }
+  return out;
+}
+
+function _warnFileViewBoxDropped(rawKey, reason) {
+  console.warn(`[theme-loader] fileViewBoxes["${rawKey}"] dropped: ${reason}`);
+}
+
+function _normalizeFileViewBoxes(value) {
+  const out = {};
+  if (value == null) return out;
+  if (!_isPlainObject(value)) {
+    console.warn("[theme-loader] fileViewBoxes dropped: expected object map");
+    return out;
+  }
+
+  for (const [rawKey, viewBox] of Object.entries(value)) {
+    const key = _basenameOnly(rawKey);
+    if (!key) {
+      _warnFileViewBoxDropped(rawKey, "invalid filename key");
+      continue;
+    }
+    const normalized = _normalizeViewBox(viewBox);
+    if (!normalized) {
+      _warnFileViewBoxDropped(rawKey, "expected finite x/y/width/height with positive width/height");
+      continue;
+    }
+    out[key] = normalized;
+  }
+  return out;
 }
 
 function _warnFileHitBoxDropped(rawKey, reason) {
@@ -1468,8 +1545,13 @@ function mergeDefaults(raw, themeId, isBuiltin) {
   // hitBoxes
   theme.hitBoxes = { ...DEFAULT_HITBOXES, ...(raw.hitBoxes || {}) };
   theme.fileHitBoxes = _normalizeFileHitBoxes(raw.fileHitBoxes);
+  // fileViewBoxes / miniMode.viewBox are layout metadata only and safe for external themes.
+  theme.fileViewBoxes = _normalizeFileViewBoxes(raw.fileViewBoxes);
   theme.wideHitboxFiles = raw.wideHitboxFiles || [];
   theme.sleepingHitboxFiles = raw.sleepingHitboxFiles || [];
+
+  // trustedRuntime grants script execution capability, so it requires loader-derived built-in trust.
+  theme.trustedRuntime = _normalizeTrustedRuntime(raw.trustedRuntime, isBuiltin, themeId);
 
   // objectScale
   theme.objectScale = { ...DEFAULT_OBJECT_SCALE, ...(raw.objectScale || {}) };
@@ -1521,6 +1603,7 @@ function mergeDefaults(raw, themeId, isBuiltin) {
       supported: true,
       offsetRatio: 0.486,
       ...raw.miniMode,
+      viewBox: _normalizeViewBox(raw.miniMode.viewBox),
       timings: {
         minDisplay: {},
         autoReturn: {},
@@ -1529,7 +1612,7 @@ function mergeDefaults(raw, themeId, isBuiltin) {
       glyphFlips: raw.miniMode.glyphFlips || {},
     };
   } else {
-    theme.miniMode = { supported: false, states: {}, timings: { minDisplay: {}, autoReturn: {} }, glyphFlips: {} };
+    theme.miniMode = { supported: false, states: {}, viewBox: null, timings: { minDisplay: {}, autoReturn: {} }, glyphFlips: {} };
   }
 
   // Merge mini timings into main timings for state.js convenience

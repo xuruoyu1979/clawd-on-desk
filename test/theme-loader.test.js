@@ -183,6 +183,114 @@ describe("theme-loader strict mode", () => {
   });
 });
 
+describe("theme-loader trusted runtime and schema v1 defaults", () => {
+  let fixture;
+  before(() => {
+    fixture = makeFixture([
+      { id: "clawd", builtin: true, json: validThemeJson({ name: "Clawd" }) },
+      { id: "old-schema", builtin: true, json: validThemeJson({ name: "Old Schema" }) },
+      {
+        id: "trusted",
+        builtin: true,
+        json: validThemeJson({
+          name: "Trusted",
+          trustedRuntime: {
+            scriptedSvgFiles: [
+              "scripted.svg",
+              "../nested/also-scripted.svg",
+              "not-svg.png",
+              "scripted.svg",
+            ],
+          },
+          fileViewBoxes: {
+            "../nested/mini-special.svg": { x: -12, y: -12, width: 48, height: 48 },
+          },
+          miniMode: fullMiniMode({
+            viewBox: { x: -12, y: -12, width: 48, height: 48 },
+          }),
+        }),
+      },
+      {
+        id: "forged",
+        builtin: false,
+        json: validThemeJson({
+          name: "Forged",
+          trustedRuntime: {
+            scriptedSvgFiles: ["forged-script.svg"],
+          },
+          fileViewBoxes: {
+            "mini-special.svg": { x: -10, y: -10, width: 40, height: 40 },
+          },
+          miniMode: fullMiniMode({
+            viewBox: { x: -10, y: -10, width: 40, height: 40 },
+          }),
+        }),
+        assets: {},
+      },
+    ]);
+  });
+  after(() => fixture && fixture.cleanup());
+
+  it("keeps schemaVersion 1 themes valid while adding safe defaults", () => {
+    const theme = themeLoader.loadTheme("old-schema", { strict: true });
+
+    assert.strictEqual(theme.schemaVersion, 1);
+    assert.deepStrictEqual(theme.trustedRuntime, { scriptedSvgFiles: [] });
+    assert.deepStrictEqual(theme.fileViewBoxes, {});
+    assert.strictEqual(theme.miniMode.viewBox, null);
+  });
+
+  it("preserves trustedRuntime only for built-in themes and sanitizes filenames", () => {
+    const theme = themeLoader.loadTheme("trusted", { strict: true });
+    const rendererConfig = themeLoader.getRendererConfig();
+
+    assert.strictEqual(theme._builtin, true);
+    assert.deepStrictEqual(theme.trustedRuntime, {
+      scriptedSvgFiles: ["scripted.svg", "also-scripted.svg"],
+    });
+    assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, ["scripted.svg", "also-scripted.svg"]);
+    assert.deepStrictEqual(theme.fileViewBoxes, {
+      "mini-special.svg": { x: -12, y: -12, width: 48, height: 48 },
+    });
+    assert.deepStrictEqual(theme.miniMode.viewBox, { x: -12, y: -12, width: 48, height: 48 });
+  });
+
+  it("does not let external themes forge trustedRuntime into renderer config", () => {
+    const warn = mock.method(console, "warn", () => {});
+
+    const theme = themeLoader.loadTheme("forged", { strict: true });
+    const rendererConfig = themeLoader.getRendererConfig();
+
+    assert.strictEqual(theme._builtin, false);
+    assert.deepStrictEqual(theme.trustedRuntime, { scriptedSvgFiles: [] });
+    assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, []);
+    assert.strictEqual(warn.mock.callCount(), 1);
+    assert.match(warn.mock.calls[0].arguments[0], /trustedRuntime ignored for non-builtin theme "forged"/);
+    assert.deepStrictEqual(theme.fileViewBoxes, {
+      "mini-special.svg": { x: -10, y: -10, width: 40, height: 40 },
+    });
+    assert.deepStrictEqual(theme.miniMode.viewBox, { x: -10, y: -10, width: 40, height: 40 });
+  });
+
+  it("rejects path traversal before marking a theme as built-in", () => {
+    const escapedDir = path.join(fixture.tmp, "escaped-theme");
+    fs.mkdirSync(escapedDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(escapedDir, "theme.json"),
+      JSON.stringify(validThemeJson({
+        name: "Escaped",
+        trustedRuntime: { scriptedSvgFiles: ["escaped.svg"] },
+      })),
+      "utf8"
+    );
+
+    assert.throws(
+      () => themeLoader.loadTheme(path.join("..", "escaped-theme"), { strict: true }),
+      /not found/
+    );
+  });
+});
+
 describe("theme-loader getThemeMetadata", () => {
   let fixture;
   before(() => {
