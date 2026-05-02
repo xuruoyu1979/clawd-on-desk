@@ -1,12 +1,161 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg id="stage" xmlns="http://www.w3.org/2000/svg" width="880" height="720" viewBox="-32 -24 88 72" preserveAspectRatio="xMidYMid meet">
-<g id="__cloudling-export-shims" opacity="0" pointer-events="none" style="display:none">
-<g id="phase-label"></g>
-<g id="play"></g>
-<g id="scrubber"></g>
-<g id="time-label"></g>
-</g>
-<script type="application/ecmascript"><![CDATA[
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Cloudling — sweeping context cards orbit loop v1</title>
+<link rel="icon" href="data:,">
+<style>
+* { margin: 0; box-sizing: border-box; }
+:root {
+  --bg: #17171d;
+  --panel: #101018;
+  --stage-a: #1d2234;
+  --stage-b: #0d0f18;
+  --ink: #edeef6;
+  --muted: rgba(237,238,246,.66);
+  --accent: #B1A7FF;
+  --card-fill: rgba(205,218,255,.205);
+  --card-stroke: rgba(216,227,255,.90);
+  --card-inner: rgba(255,255,255,.48);
+  --line-a: rgba(238,244,255,.94);
+  --line-b: rgba(158,185,255,.82);
+  --line-c: rgba(212,206,255,.80);
+}
+body.light {
+  --bg: #f5f6fb;
+  --panel: #ffffff;
+  --stage-a: #ffffff;
+  --stage-b: #edf1fb;
+  --ink: #2e3038;
+  --muted: rgba(46,48,56,.62);
+  --accent: #6B5CFF;
+  --card-fill: rgba(67,109,255,.064);
+  --card-stroke: rgba(67,109,255,.36);
+  --card-inner: rgba(255,255,255,.78);
+  --line-a: rgba(67,109,255,.50);
+  --line-b: rgba(107,92,255,.40);
+  --line-c: rgba(85,96,126,.34);
+}
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 24px 42px;
+}
+h1 { font-size: 17px; font-weight: 680; letter-spacing: 0; }
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(177,167,255,.18);
+  color: var(--accent);
+  font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.note {
+  max-width: 760px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+button {
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 7px;
+  background: #292a34;
+  color: #d2d3de;
+  padding: 7px 12px;
+  font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+button:hover { background: #343643; }
+body.light button {
+  background: #fff;
+  color: #555963;
+  border-color: rgba(0,0,0,.10);
+}
+.scrub {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 300px) 56px;
+  gap: 10px;
+  align-items: center;
+  width: min(460px, 100%);
+  color: var(--muted);
+  font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+input[type="range"] { accent-color: #7A9DFF; }
+.stage-wrap {
+  width: min(300px, 100%);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 18px 58px rgba(0,0,0,.30);
+}
+body.light .stage-wrap { box-shadow: 0 12px 30px rgba(57,65,255,.08); }
+.stage {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 9px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 36%, var(--stage-a) 0%, var(--stage-b) 74%);
+}
+.stage svg { width: 100%; height: 100%; display: block; }
+.caption {
+  margin-top: 9px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.edge-rim-tight { stroke-opacity: .10; }
+.edge-rim-soft { stroke-opacity: .07; }
+.edge-contact { stroke-opacity: .09; }
+body.light .edge-rim-tight { stroke-opacity: .18; }
+body.light .edge-rim-soft { stroke-opacity: .12; }
+body.light .edge-contact { stroke-opacity: .18; }
+.ctx-card { fill: var(--card-fill); stroke: var(--card-stroke); }
+.ctx-card-inner { fill: none; stroke: var(--card-inner); }
+.ctx-line-a { fill: var(--line-a); }
+.ctx-line-b { fill: var(--line-b); }
+.ctx-line-c { fill: var(--line-c); }
+</style>
+</head>
+<body>
+<h1>Cloudling — sweeping <span class="tag">orbit filing loop v1</span></h1>
+<p class="note">卡片从左侧进入，保持水平，绕过云宝前方，然后稳稳垫到云宝身后；三张后在身后压缩淡出。</p>
+
+<div class="toolbar">
+  <button id="theme" type="button">light / dark</button>
+  <button id="play" type="button">pause</button>
+  <button id="replay" type="button">replay</button>
+</div>
+
+<div class="scrub">
+  <span>scrub</span>
+  <input id="scrubber" type="range" min="0" max="4.55" step="0.01" value="0">
+  <span id="time-label">0.00s</span>
+</div>
+
+<div class="stage-wrap">
+  <div class="stage" id="stage"></div>
+  <div class="caption">
+    <span id="phase-label">idle</span>
+    <span>orbit → behind stack</span>
+  </div>
+</div>
+
+<script>
 const CLOUD_D = "M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388z";
 
 const stage = document.getElementById('stage');
@@ -220,45 +369,8 @@ function phaseName(t) {
 
 function renderFrame(t) {
   stage.innerHTML = `
-<style>
-:root, svg {
-  --bg: #17171d;
-  --panel: #101018;
-  --stage-a: #1d2234;
-  --stage-b: #0d0f18;
-  --ink: #edeef6;
-  --muted: rgba(237,238,246,.66);
-  --accent: #B1A7FF;
-  --card-fill: rgba(205,218,255,.205);
-  --card-stroke: rgba(216,227,255,.90);
-  --card-inner: rgba(255,255,255,.48);
-  --line-a: rgba(238,244,255,.94);
-  --line-b: rgba(158,185,255,.82);
-  --line-c: rgba(212,206,255,.80);
-}
-.edge-rim-tight { stroke-opacity: .10; }
-.edge-rim-soft { stroke-opacity: .07; }
-.edge-contact { stroke-opacity: .09; }
-.ctx-card { fill: var(--card-fill); stroke: var(--card-stroke); }
-.ctx-card-inner { fill: none; stroke: var(--card-inner); }
-.ctx-line-a { fill: var(--line-a); }
-.ctx-line-b { fill: var(--line-b); }
-.ctx-line-c { fill: var(--line-c); }
-@media (prefers-color-scheme: light) {
-:root, svg {--bg: #f5f6fb; --panel: #ffffff; --stage-a: #ffffff; --stage-b: #edf1fb; --ink: #2e3038; --muted: rgba(46,48,56,.62); --accent: #6B5CFF; --card-fill: rgba(67,109,255,.064); --card-stroke: rgba(67,109,255,.36); --card-inner: rgba(255,255,255,.78); --line-a: rgba(67,109,255,.50); --line-b: rgba(107,92,255,.40); --line-c: rgba(85,96,126,.34)}
-.edge-rim-tight { stroke-opacity: .18; }
-.edge-rim-soft { stroke-opacity: .12; }
-.edge-contact { stroke-opacity: .18; }
-.food-cloud-shadow { flood-opacity: .28; flood-color: #5060FF; }
-.food-cloud > path {
-  stroke: #5870E8 !important;
-  stroke-width: 1.2 !important;
-  stroke-opacity: .9 !important;
-  vector-effect: non-scaling-stroke !important;
-}
-}
-</style>
-<defs>${commonDefs()}</defs>
+    <svg viewBox="-12 -12 48 48" role="img" aria-label="Cloudling files cards by orbiting them behind its body">
+      <defs>${commonDefs()}</defs>
       ${makeStack(t)}
       ${makeMovingCard(t, 'back')}
       ${makeCloudling(t)}
@@ -267,6 +379,7 @@ function renderFrame(t) {
         <circle cx="-3.2" cy="6.8" r=".13" opacity=".24"/>
         <circle cx="29.6" cy="6.1" r=".13" opacity=".22"/>
       </g>
+    </svg>
   `;
   scrubber.value = t.toFixed(2);
   timeLabel.textContent = `${t.toFixed(2)}s`;
@@ -287,7 +400,44 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+document.getElementById('theme').addEventListener('click', () => {
+  document.body.classList.toggle('light');
+});
+
+playButton.addEventListener('click', () => {
+  paused = !paused;
+  if (paused) {
+    pauseT = parseFloat(scrubber.value);
+    playButton.textContent = 'play';
+  } else {
+    start = performance.now() - pauseT * 1000;
+    playButton.textContent = 'pause';
+  }
+});
+
+document.getElementById('replay').addEventListener('click', () => {
+  paused = false;
+  scrubLock = false;
+  start = performance.now();
+  playButton.textContent = 'pause';
+});
+
+scrubber.addEventListener('pointerdown', () => {
+  scrubLock = true;
+  paused = true;
+  playButton.textContent = 'play';
+});
+scrubber.addEventListener('input', (e) => {
+  pauseT = parseFloat(e.target.value);
+  renderFrame(pauseT);
+});
+scrubber.addEventListener('pointerup', () => {
+  pauseT = parseFloat(scrubber.value);
+  scrubLock = false;
+});
+
 renderFrame(0);
 requestAnimationFrame(tick);
-]]></script>
-</svg>
+</script>
+</body>
+</html>

@@ -1,28 +1,137 @@
-<svg id="cloudling" xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="-12 -12 48 48" preserveAspectRatio="xMidYMid meet">
-<style><![CDATA[
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Cloudling — mini-peek eye morph v3</title>
+<style>
+* { margin: 0; box-sizing: border-box; }
+body {
+  min-height: 100vh;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background: #1a1a1f;
+  color: #e0e0e6;
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  transition: background .2s, color .2s;
+}
+body.light { background: #f4f4f6; color: #333; }
+h1 { font-size: 15px; font-weight: 600; opacity: .92; }
+.tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(122, 157, 255, .18);
+  color: #7A9DFF;
+  font: 600 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+body.light .tag { color: #3941FF; }
+.meta {
+  max-width: 760px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.7;
+  opacity: .68;
+}
+.meta b { color: #7A9DFF; opacity: 1; }
+body.light .meta b { color: #3941FF; }
+.workspace {
+  display: grid;
+  grid-template-columns: 640px 280px;
+  gap: 18px;
+  align-items: stretch;
+}
+.stage, .controls {
+  border-radius: 14px;
+  background: #0f0f14;
+  box-shadow: 0 18px 60px rgba(0,0,0,.38);
+}
+body.light .stage, body.light .controls {
+  background: #fff;
+  box-shadow: 0 18px 60px -20px rgba(57,65,255,.18), 0 4px 12px rgba(0,0,0,.04);
+}
+.stage {
+  width: 640px;
+  height: 640px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.stage svg { width: 640px; height: 640px; display: block; }
+.controls {
+  padding: 16px 18px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  font-size: 11px;
+  color: rgba(224,224,230,.72);
+}
+body.light .controls { color: rgba(51,51,51,.68); }
+.controls h2 {
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: rgba(224,224,230,.92);
+}
+body.light .controls h2 { color: rgba(51,51,51,.92); }
+.controls label {
+  display: grid;
+  grid-template-columns: 86px 1fr 52px;
+  gap: 8px;
+  align-items: center;
+}
+.controls label.cb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.controls input[type="range"] { accent-color: #7A9DFF; }
+body.light .controls input[type="range"] { accent-color: #3941FF; }
 .v {
   text-align: right;
   font: 600 10px ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #7A9DFF;
 }
+body.light .v { color: #3941FF; }
+.readout {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  font: 10px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: .64;
+}
+body.light .readout { border-color: rgba(0,0,0,.07); }
+.hint {
+  max-width: 820px;
+  text-align: center;
+  font: 10px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: .52;
+}
 .edge-rim-tight { stroke-opacity: .08; }
 .edge-rim-soft { stroke-opacity: .06; }
 .edge-contact { stroke-opacity: .08; }
-@media (prefers-color-scheme: light) {
-.v { color: #3941FF; }
-.edge-rim-tight { stroke-opacity: .15; }
-.edge-rim-soft { stroke-opacity: .10; }
-.edge-contact { stroke-opacity: .18; }
-.cloud-drop-shadow { flood-opacity: .13; }
-.food-cloud-shadow { flood-opacity: .28; flood-color: #5060FF; }
-.food-cloud > path {
-  stroke: #5870E8 !important;
-  stroke-width: 1.2 !important;
-  stroke-opacity: .9 !important;
-  vector-effect: non-scaling-stroke !important;
+body.light .edge-rim-tight { stroke-opacity: .15; }
+body.light .edge-rim-soft { stroke-opacity: .10; }
+body.light .edge-contact { stroke-opacity: .18; }
+body.light .cloud-drop-shadow { flood-opacity: .13; }
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 1fr; }
+  .stage { width: min(640px, 100vw - 48px); height: auto; aspect-ratio: 1; }
+  .stage svg { width: 100%; height: 100%; }
 }
-}
-]]></style>
+</style>
+</head>
+<body>
+
+<h1>Cloudling — mini-peek <span class="tag">eye morph v3</span></h1>
+<div class="meta">
+  Mini-peek 修正版: <b>runtime 负责探出, SVG 负责 hover 后眼睛从 mini-idle morph 到正常 idle-follow + 身体 duangduang</b>。正式文件保留完整 Cloudling, 贴边遮挡交给运行时窗口位置。
+</div>
+
+<div class="workspace">
+  <div class="stage">
+    <svg id="cloudling" viewBox="-12 -12 48 48" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="body-grad" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
           <stop offset="0" stop-color="#ffffff"/>
@@ -73,13 +182,70 @@
           </g>
         </g>
       </g>
-    <g id="__cloudling-export-shims" opacity="0" pointer-events="none" style="display:none">
-<g id="eye-readout"></g>
-<g id="pose-readout"></g>
-<g id="shake-readout"></g>
-</g>
+    </svg>
+  </div>
 
-<script type="application/ecmascript"><![CDATA[
+  <aside class="controls">
+    <h2>hover duang 参数</h2>
+    <label>
+      <span>停住 X</span>
+      <input id="settle-tx" type="range" min="-0.80" max="0.35" step="0.05" value="-0.22">
+      <span class="v" id="settle-tx-v">-0.22</span>
+    </label>
+    <label>
+      <span>停住 scale</span>
+      <input id="settle-scale" type="range" min="0.98" max="1.05" step="0.005" value="1.012">
+      <span class="v" id="settle-scale-v">1.012</span>
+    </label>
+    <label>
+      <span>停住倾角</span>
+      <input id="settle-rot" type="range" min="-4" max="3" step="0.25" value="-0.65">
+      <span class="v" id="settle-rot-v">-0.65</span>
+    </label>
+    <label>
+      <span>回 idle 眼</span>
+      <input id="eye-return" type="range" min="0.12" max="0.46" step="0.02" value="0.24">
+      <span class="v" id="eye-return-v">0.24</span>
+    </label>
+    <label>
+      <span>duang 力度</span>
+      <input id="duang-power" type="range" min="0" max="1.80" step="0.05" value="1.16">
+      <span class="v" id="duang-power-v">1.16</span>
+    </label>
+    <label>
+      <span>duang 时长</span>
+      <input id="duang-dur" type="range" min="0.70" max="1.60" step="0.05" value="1.12">
+      <span class="v" id="duang-dur-v">1.12</span>
+    </label>
+    <label>
+      <span>duang 次数</span>
+      <input id="duang-cycles" type="range" min="3.20" max="6.20" step="0.10" value="4.80">
+      <span class="v" id="duang-cycles-v">4.80</span>
+    </label>
+    <label>
+      <span>rim 强度</span>
+      <input id="rim-power" type="range" min="0.70" max="1.80" step="0.05" value="1.30">
+      <span class="v" id="rim-power-v">1.30</span>
+    </label>
+    <label class="cb">
+      <input id="light-mode" type="checkbox">
+      <span>浅色背景</span>
+    </label>
+    <div class="readout">
+      <div>base: runtime 先探出; SVG 从 mini-idle 眼睛 morph 到正常 idle-follow 眼睛。</div>
+      <div id="pose-readout">pose: tx -0.22, scale 1.012, rot -0.65deg</div>
+      <div id="shake-readout">duang: power 1.16 / 1.12s / cycles 4.80</div>
+      <div id="eye-readout">eyes: mini 2.2×4.65 gap 4.4 -> idle 2.6×5 gap 6</div>
+      <div>confirmed 保留完整 Cloudling; 贴边遮挡由 runtime 处理。</div>
+    </div>
+  </aside>
+</div>
+
+<div class="hint">
+  这是 hover 后的反应动画, 不内置 25px 探出动画；眼睛从 mini-idle 软变到正常 idle-follow, 身体随后 duangduang, 探出/收回由主仓库 mini runtime 完成。
+</div>
+
+<script>
 const svg = document.getElementById("cloudling");
 const pose = document.getElementById("pose-js");
 const eyes = document.getElementById("eyes-js");
@@ -323,6 +489,31 @@ svg.addEventListener("pointermove", pointerToSvg);
 svg.addEventListener("pointerleave", () => {
   pointerInside = false;
 });
+
+function bindRange(id, key, digits = 2) {
+  const el = document.getElementById(id);
+  const out = document.getElementById(`${id}-v`);
+  el.addEventListener("input", () => {
+    params[key] = Number(el.value);
+    out.textContent = params[key].toFixed(digits);
+    renderFrame((performance.now() - startT) / 1000);
+  });
+}
+
+bindRange("settle-tx", "settleTx", 2);
+bindRange("settle-scale", "settleScale", 3);
+bindRange("settle-rot", "settleRot", 2);
+bindRange("eye-return", "eyeReturnDur", 2);
+bindRange("duang-power", "duangPower", 2);
+bindRange("duang-dur", "duangDur", 2);
+bindRange("duang-cycles", "duangCycles", 2);
+bindRange("rim-power", "rimPower", 2);
+document.getElementById("light-mode").addEventListener("change", e => {
+  document.body.classList.toggle("light", e.target.checked);
+});
+
+renderFrame(0);
 requestAnimationFrame(tick);
-]]></script>
-</svg>
+</script>
+</body>
+</html>

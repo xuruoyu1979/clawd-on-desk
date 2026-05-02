@@ -1,22 +1,130 @@
-<svg id="cloudling" xmlns="http://www.w3.org/2000/svg" width="880" height="720" viewBox="-32 -24 88 72" preserveAspectRatio="xMidYMid meet">
-<style><![CDATA[
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Cloudling — typing original polish v2</title>
+<style>
+* { margin: 0; box-sizing: border-box; }
+body {
+  background: #1a1a1f;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 24px;
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  color: #e0e0e6;
+  gap: 16px;
+  transition: background .2s, color .2s;
+}
+body.light { background: #f4f4f6; color: #333; }
+h1 { font-size: 15px; font-weight: 600; opacity: .9; }
+.meta {
+  font-size: 11px;
+  opacity: .65;
+  text-align: center;
+  max-width: 720px;
+  line-height: 1.6;
+}
+.meta b { color: #7A9DFF; opacity: 1; }
+body.light .meta b { color: #3941FF; }
+.stage {
+  background: #0f0f14;
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.4);
+  overflow: hidden;
+}
+body.light .stage {
+  background: #fff;
+  box-shadow: 0 18px 60px -20px rgba(57, 65, 255, 0.18), 0 4px 12px rgba(0,0,0,0.04);
+}
+.stage svg { display: block; }
+.params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 28px;
+  background: #1f1f26;
+  border-radius: 12px;
+  padding: 16px 22px;
+  font-size: 11px;
+  color: #c0c0c8;
+  min-width: 720px;
+}
+body.light .params {
+  background: #fff;
+  color: #666;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.params h3 {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding-bottom: 4px;
+}
+body.light .params h3 { color: #999; border-color: rgba(0,0,0,.06); }
+.params h3:first-child { margin-top: 0; }
+.params h3.new { color: #7A9DFF; border-color: rgba(122, 157, 255, .25); }
+body.light .params h3.new { color: #3941FF; }
+.params label {
+  display: grid;
+  grid-template-columns: 130px 1fr 80px;
+  gap: 8px;
+  align-items: center;
+}
+.params label.cb { grid-template-columns: auto 1fr; gap: 8px; }
+.params input[type="range"] { accent-color: #7A9DFF; }
+body.light .params input[type="range"] { accent-color: #3941FF; }
+.params .v {
+  font-family: ui-monospace, monospace;
+  color: #7A9DFF;
+  font-weight: 600;
+  text-align: right;
+}
+body.light .params .v { color: #3941FF; }
+.hint {
+  font-size: 10px;
+  opacity: .55;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  max-width: 720px;
+  line-height: 1.5;
+}
+.tag {
+  display: inline-block;
+  background: rgba(122, 157, 255, 0.18);
+  color: #7A9DFF;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+}
+
 .edge-rim-tight { stroke-opacity: .08; }
 .edge-rim-soft { stroke-opacity: .06; }
 .edge-contact { stroke-opacity: .08; }
-@media (prefers-color-scheme: light) {
-.edge-rim-tight { stroke-opacity: .15; }
-.edge-rim-soft { stroke-opacity: .10; }
-.edge-contact { stroke-opacity: .18; }
-.cloud-drop-shadow { flood-opacity: .13; }
-.food-cloud-shadow { flood-opacity: .28; flood-color: #5060FF; }
-.food-cloud > path {
-  stroke: #5870E8 !important;
-  stroke-width: 1.2 !important;
-  stroke-opacity: .9 !important;
-  vector-effect: non-scaling-stroke !important;
-}
-}
-]]></style>
+body.light .edge-rim-tight { stroke-opacity: .15; }
+body.light .edge-rim-soft { stroke-opacity: .10; }
+body.light .edge-contact { stroke-opacity: .18; }
+body.light .cloud-drop-shadow { flood-opacity: .13; }
+</style>
+</head>
+<body>
+
+<h1>Cloudling — typing <span class="tag">original polish v2</span></h1>
+<div class="meta">
+  原版低侵入精修: 保留 <b>190°</b> 身体旋转、伪随机代码眼、角速度联动和两眼互斥。
+  只微调 glyph 线重/比例、组合权重和切换瞬间的短 soften, 让原版的“真的在码字”感觉更干净。
+</div>
+
+<div class="stage">
+  <svg id="cloudling" width="640" height="640" viewBox="-12 -12 48 48" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="body-grad" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
         <stop offset="0" stop-color="#ffffff"/>
@@ -62,8 +170,46 @@
       <path id="eye-l-path" stroke-linecap="round" stroke-linejoin="round"/>
       <path id="eye-r-path" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
-  
-<script type="application/ecmascript"><![CDATA[
+  </svg>
+</div>
+
+<div class="params">
+  <h3 class="new">⭐ 字符尺寸</h3>
+  <label><span>字符放大倍率</span><input id="ez" type="range" min="0.8" max="1.6" step="0.05" value="1.40"><span class="v" id="ezV">1.40 ×</span></label>
+
+  <h3 class="new">⭐ 卡顿旋转 (默认总 4.45s)</h3>
+  <label><span>总旋转角度</span><input id="ra" type="range" min="90" max="540" step="10" value="190"><span class="v" id="raV">190 °</span></label>
+  <label><span>方向</span><input id="rd" type="range" min="-1" max="1" step="2" value="-1"><span class="v" id="rdV">-1 (逆)</span></label>
+  <label><span>转出时长</span><input id="t1" type="range" min="0.2" max="2.0" step="0.05" value="1.40"><span class="v" id="t1V">1.40 s</span></label>
+  <label><span>拧过头 overshoot</span><input id="os" type="range" min="0" max="40" step="1" value="8"><span class="v" id="osV">8 °</span></label>
+  <label><span>顶端卡停</span><input id="t2" type="range" min="0" max="2.0" step="0.05" value="0.85"><span class="v" id="t2V">0.85 s</span></label>
+  <label><span>回弹时长</span><input id="t3" type="range" min="0.2" max="2.0" step="0.05" value="1.00"><span class="v" id="t3V">1.00 s</span></label>
+  <label><span>归位卡停</span><input id="t4" type="range" min="0" max="2.0" step="0.05" value="1.20"><span class="v" id="t4V">1.20 s</span></label>
+
+  <h3>大幅呼吸</h3>
+  <label><span>scale 下界</span><input id="sl" type="range" min="0.80" max="1.00" step="0.01" value="0.94"><span class="v" id="slV">0.94</span></label>
+  <label><span>scale 上界</span><input id="sh" type="range" min="1.00" max="1.20" step="0.01" value="1.05"><span class="v" id="shV">1.05</span></label>
+  <label><span>呼吸周期</span><input id="bp" type="range" min="0.4" max="4.0" step="0.05" value="1.6"><span class="v" id="bpV">1.60 s</span></label>
+
+  <h3 class="new">⭐ 字符切换 (跟外圈角速度联动)</h3>
+  <label><span>左眼切换阈值</span><input id="sdL" type="range" min="10" max="120" step="2" value="96"><span class="v" id="sdLV">96 °/切</span></label>
+  <label><span>右眼切换阈值</span><input id="sdR" type="range" min="10" max="120" step="2" value="96"><span class="v" id="sdRV">96 °/切</span></label>
+  <label><span>切换抖动</span><input id="sj" type="range" min="0" max="0.5" step="0.05" value="0.25"><span class="v" id="sjV">±25 %</span></label>
+
+  <h3>眼睛颜色流动</h3>
+  <label><span>流动周期</span><input id="fp" type="range" min="1" max="8" step="0.5" value="3.0"><span class="v" id="fpV">3.0 s</span></label>
+  <label><span>流动幅度</span><input id="fa" type="range" min="0" max="20" step="1" value="4"><span class="v" id="faV">4 单位</span></label>
+
+  <h3>视图</h3>
+  <label class="cb"><input id="bg" type="checkbox"><span>浅色背景</span></label>
+</div>
+
+<div class="hint">
+  8 token 库保留: <code>&gt; &lt; _ : = + / \</code> · A 档可停留, B 档只在高速段短暂出现。
+  切换仍跟外圈角速度联动, 只加 90ms 左右的轻微压缩淡入。
+</div>
+
+<script>
 const cloudGroup = document.getElementById('cloud-group');
 const eyeGroup = document.getElementById('eye-group');
 const eyeL = document.getElementById('eye-l-path');
@@ -349,6 +495,41 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+/* ── UI ── */
+const sliders = [
+  ['ez',  v => { P.EYE_SIZE = v; applyToken(eyeL, 9, 12, lastLeft); applyToken(eyeR, 15, 12, lastRight); },
+                                           v => v.toFixed(2) + ' ×'],
+  ['ra',  v => P.ROT_AMOUNT = v,           v => v.toFixed(0) + ' °'],
+  ['rd',  v => P.ROT_DIR = v,              v => (v < 0 ? '-1 (逆)' : '+1 (顺)')],
+  ['t1',  v => P.T_SPIN = v,               v => v.toFixed(2) + ' s'],
+  ['os',  v => P.OVERSHOOT = v,            v => v.toFixed(0) + ' °'],
+  ['t2',  v => P.T_HOLD_FAR = v,           v => v.toFixed(2) + ' s'],
+  ['t3',  v => P.T_BACK = v,               v => v.toFixed(2) + ' s'],
+  ['t4',  v => P.T_HOLD_HOME = v,          v => v.toFixed(2) + ' s'],
+  ['sl',  v => P.SCALE_LOW = v,            v => v.toFixed(2)],
+  ['sh',  v => P.SCALE_HIGH = v,           v => v.toFixed(2)],
+  ['bp',  v => P.BREATH_PERIOD = v,        v => v.toFixed(2) + ' s'],
+  ['sdL', v => P.SWITCH_DEG_L = v,         v => v.toFixed(0) + ' °/切'],
+  ['sdR', v => P.SWITCH_DEG_R = v,         v => v.toFixed(0) + ' °/切'],
+  ['sj',  v => P.SWITCH_JITTER = v,        v => '±' + (v * 100).toFixed(0) + ' %'],
+  ['fp',  v => P.FLOW_PERIOD = v,          v => v.toFixed(1) + ' s'],
+  ['fa',  v => P.FLOW_AMP = v,             v => v.toFixed(0) + ' 单位']
+];
+sliders.forEach(([id, set, fmt]) => {
+  const el = document.getElementById(id);
+  const out = document.getElementById(id + 'V');
+  el.oninput = () => {
+    const val = parseFloat(el.value);
+    set(val);
+    out.textContent = fmt(val);
+  };
+});
+
+document.getElementById('bg').onchange = e => {
+  document.body.classList.toggle('light', e.target.checked);
+};
+
 requestAnimationFrame(loop);
-]]></script>
-</svg>
+</script>
+</body>
+</html>

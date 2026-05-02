@@ -1,5 +1,63 @@
-<svg id="svg" xmlns="http://www.w3.org/2000/svg" width="880" height="720" viewBox="-32 -24 88 72" preserveAspectRatio="xMidYMid meet">
-<style><![CDATA[
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Cloudling - long idle cloud bush peek v2</title>
+<link rel="icon" href="data:,">
+<style>
+* { margin: 0; box-sizing: border-box; }
+body {
+  min-height: 100vh;
+  background: #1a1a1f;
+  color: #e7e7ee;
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 20px 36px;
+  transition: background .2s, color .2s;
+}
+body.light { background: #f5f6fb; color: #30313a; }
+h1 { font-size: 15px; font-weight: 650; opacity: .92; }
+h1 .tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 165, 107, .20);
+  color: #FFA56B;
+  font: 700 10px ui-monospace, monospace;
+}
+.meta {
+  max-width: 820px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.65;
+  opacity: .68;
+}
+.meta b { color: #FFD3B3; opacity: 1; }
+body.light .meta b { color: #C97A4A; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.toolbar button {
+  background: #2a2a32; color: #c0c0c8;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  font: 10px ui-monospace, monospace;
+}
+.toolbar button:hover { background: #363640; }
+body.light .toolbar button { background: #fff; color: #555; border-color: rgba(0,0,0,.08); }
+.stage {
+  position: relative;
+  background: radial-gradient(circle at 50% 42%, #171a27 0%, #10121c 58%, #090a11 100%);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0,0,0,.4);
+}
+body.light .stage {
+  background: radial-gradient(circle at 50% 42%, #ffffff 0%, #f7f8ff 58%, #edf1ff 100%);
+  box-shadow: 0 18px 60px -20px rgba(57,65,255,.18), 0 4px 12px rgba(0,0,0,.04);
+}
+.stage svg { display: block; }
 .phase-tag {
   position: absolute; top: 14px; left: 50%;
   transform: translateX(-50%);
@@ -8,11 +66,13 @@
   font: 700 10px ui-monospace, monospace; letter-spacing: .05em;
   pointer-events: none;
 }
+body.light .phase-tag { background: rgba(201,122,74,.10); color: #C97A4A; }
 .timeline {
   position: absolute; left: 16px; right: 16px; bottom: 12px;
   height: 4px; border-radius: 2px; overflow: hidden;
   background: rgba(255,255,255,.06);
 }
+body.light .timeline { background: rgba(57,65,255,.08); }
 .timeline-fill {
   height: 100%; width: 0; border-radius: 2px;
   background: linear-gradient(to right, #B1A7FF, #FFD3B3, #FCE3B0, #FCC9DD);
@@ -20,28 +80,64 @@
 .edge-rim-tight { stroke-opacity: .08; }
 .edge-rim-soft { stroke-opacity: .06; }
 .edge-contact { stroke-opacity: .08; }
+body.light .edge-rim-tight { stroke-opacity: .15; }
+body.light .edge-rim-soft { stroke-opacity: .10; }
+body.light .edge-contact { stroke-opacity: .18; }
+body.light .cloud-drop-shadow { flood-opacity: .13; }
+.params {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px 28px; min-width: 760px;
+  background: #1f1f26; color: #c0c0c8;
+  border-radius: 12px; padding: 16px 22px; font-size: 11px;
+}
+body.light .params { background: #fff; color: #666; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.params h3 {
+  grid-column: 1 / -1; margin: 6px 0 2px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding-bottom: 4px; color: #888; font-size: 10px;
+  font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+body.light .params h3 { color: #999; border-color: rgba(0,0,0,.06); }
+.params h3:first-child { margin-top: 0; }
+.params label {
+  display: grid; grid-template-columns: 170px 1fr 72px;
+  gap: 8px; align-items: center;
+}
+.params input[type="range"] { accent-color: #FFA56B; }
+.params .val {
+  color: #FFA56B; text-align: right;
+  font: 700 10px ui-monospace, monospace;
+}
+body.light .params .val { color: #C97A4A; }
 .statusbar {
   min-width: 760px; background: #1f1f26; color: #FFA56B;
   border-radius: 8px; padding: 6px 14px; text-align: center;
   font: 10px ui-monospace, monospace; letter-spacing: .05em;
 }
-@media (prefers-color-scheme: light) {
-.phase-tag { background: rgba(201,122,74,.10); color: #C97A4A; }
-.timeline { background: rgba(57,65,255,.08); }
-.edge-rim-tight { stroke-opacity: .15; }
-.edge-rim-soft { stroke-opacity: .10; }
-.edge-contact { stroke-opacity: .18; }
-.cloud-drop-shadow { flood-opacity: .13; }
-.statusbar { background: #fff; color: #C97A4A; }
-.food-cloud-shadow { flood-opacity: .28; flood-color: #5060FF; }
-.food-cloud > path {
-  stroke: #5870E8 !important;
-  stroke-width: 1.2 !important;
-  stroke-opacity: .9 !important;
-  vector-effect: non-scaling-stroke !important;
+body.light .statusbar { background: #fff; color: #C97A4A; }
+.hint {
+  max-width: 820px; text-align: center;
+  font: 10px/1.6 ui-monospace, monospace; opacity: .52;
 }
-}
-]]></style>
+</style>
+</head>
+<body>
+
+<h1>Cloudling - long idle cloud bush <span class="tag">peek v2</span></h1>
+<div class="meta">
+  方向: 双层<b>暖色云</b>从左飘入挡住云宝 → 云宝钻到云后面藏起来 → "哧溜"从<b>左上</b>探出半脸 + 空白处缓缓冒问号 → 缩回 → "哧溜"从<b>右上</b>再探一次并左右看看 → 缩回 → 云左右散开露出完整云宝 → idle。
+</div>
+
+<div class="toolbar">
+  <button id="btn-theme" type="button">light / dark</button>
+  <button id="btn-pause" type="button">pause / resume</button>
+  <button id="btn-restart" type="button">restart</button>
+  <button id="btn-reset" type="button">reset defaults</button>
+</div>
+
+<div class="stage">
+  <div id="phaseTag" class="phase-tag">idle</div>
+  <svg id="svg" width="560" height="620" viewBox="-18 -24 60 72" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="body-grad" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
         <stop offset="0" stop-color="#ffffff"/>
@@ -154,17 +250,44 @@
         <circle cx="-0.1" cy="2.7" r="0.44" fill="url(#eye-grad)"/>
       </g>
     </g>
-  <g id="__cloudling-export-shims" opacity="0" pointer-events="none" style="display:none">
-<g id="btn-pause"></g>
-<g id="btn-reset"></g>
-<g id="btn-restart"></g>
-<g id="btn-theme"></g>
-<g id="phaseTag"></g>
-<g id="statusbar"></g>
-<g id="timelineFill"></g>
-</g>
+  </svg>
+  <div class="timeline"><div id="timelineFill" class="timeline-fill"></div></div>
+</div>
 
-<script type="application/ecmascript"><![CDATA[
+<div class="statusbar" id="statusbar">phase: idle</div>
+
+<div class="params">
+  <h3>循环节奏</h3>
+  <label><span>总时长</span><input id="duration" type="range" min="4.8" max="7.5" step="0.1" value="6.2"><span id="durationV" class="val"></span></label>
+  <label><span>循环间隔</span><input id="gap" type="range" min="0.4" max="2.0" step="0.1" value="1.0"><span id="gapV" class="val"></span></label>
+  <h3>云宝呼吸</h3>
+  <label><span>本体呼吸幅度</span><input id="bodyBreath" type="range" min="0.000" max="0.040" step="0.002" value="0.030"><span id="bodyBreathV" class="val"></span></label>
+  <label><span>外轮廓轻旋转</span><input id="rimRotate" type="range" min="0.0" max="2.5" step="0.1" value="1.5"><span id="rimRotateV" class="val"></span></label>
+  <h3>暖云</h3>
+  <label><span>暖云入场速度</span><input id="warmSpeed" type="range" min="0.7" max="1.4" step="0.05" value="1.00"><span id="warmSpeedV" class="val"></span></label>
+  <label><span>暖云不透明度峰值</span><input id="warmOp" type="range" min="0.65" max="1.00" step="0.05" value="0.95"><span id="warmOpV" class="val"></span></label>
+  <label><span>云屏障横向错位</span><input id="barrierGap" type="range" min="1.0" max="6.0" step="0.5" value="3.0"><span id="barrierGapV" class="val"></span></label>
+  <label><span>云屏障纵向位置</span><input id="barrierY" type="range" min="14.0" max="20.0" step="0.5" value="16.5"><span id="barrierYV" class="val"></span></label>
+  <h3>探头</h3>
+  <label><span>回落中心偏移 (ty)</span><input id="hideTy" type="range" min="-1.5" max="3.0" step="0.5" value="1.0"><span id="hideTyV" class="val"></span></label>
+  <label><span>探头露出 (ty)</span><input id="peekTy" type="range" min="-8.0" max="-2.0" step="0.5" value="-4.5"><span id="peekTyV" class="val"></span></label>
+  <label><span>探头横偏 (tx)</span><input id="peekTx" type="range" min="3.0" max="9.0" step="0.5" value="8.5"><span id="peekTxV" class="val"></span></label>
+  <label><span>探头外轮廓倾斜</span><input id="peekLean" type="range" min="0.0" max="16.0" step="0.5" value="12.5"><span id="peekLeanV" class="val"></span></label>
+  <label><span>探头外轮廓收缩</span><input id="peekScaleDip" type="range" min="0.00" max="0.08" step="0.005" value="0.075"><span id="peekScaleDipV" class="val"></span></label>
+  <label><span>好奇瞪大幅度</span><input id="eyeWiden" type="range" min="0.05" max="0.30" step="0.02" value="0.19"><span id="eyeWidenV" class="val"></span></label>
+  <label><span>右探眼睛右移</span><input id="rightEyeOffsetX" type="range" min="0.0" max="1.4" step="0.05" value="1.40"><span id="rightEyeOffsetXV" class="val"></span></label>
+  <label><span>右探眼睛上移</span><input id="rightEyeLift" type="range" min="0.0" max="0.8" step="0.05" value="0.30"><span id="rightEyeLiftV" class="val"></span></label>
+  <h3>问号</h3>
+  <label><span>问号大小</span><input id="qSize" type="range" min="0.7" max="1.4" step="0.1" value="1.0"><span id="qSizeV" class="val"></span></label>
+  <label><span>问号横向偏移</span><input id="qOffsetX" type="range" min="-7.0" max="2.0" step="0.5" value="-6.0"><span id="qOffsetXV" class="val"></span></label>
+  <label><span>问号头顶距离</span><input id="qOffsetY" type="range" min="-10.0" max="-3.0" step="0.5" value="-10.0"><span id="qOffsetYV" class="val"></span></label>
+</div>
+
+<div class="hint">
+  约束: 双层暖云作"灌木丛屏障", 笑点来自 cartoon 式两边轮流探头 + 头顶问号, 不靠球化 / 弹跳 / 粒子。
+</div>
+
+<script>
 const CENTER = { x: 12, y: 12 };
 const DEFAULTS = {
   duration: 6.2,
@@ -188,7 +311,9 @@ const DEFAULTS = {
   qOffsetY: -10.0,
 };
 
-const controls = Object.fromEntries(Object.entries(DEFAULTS).map(([key, value]) => [key, { value: String(value) }]));
+const controls = Object.fromEntries(
+  Object.keys(DEFAULTS).map((key) => [key, document.getElementById(key)])
+);
 const cloudRoot = document.getElementById('cloudRoot');
 const bodyWarp = document.getElementById('bodyWarp');
 const cloudShape = document.getElementById('cloudShape');
@@ -660,5 +785,6 @@ if (urlP !== null) {
 }
 
 requestAnimationFrame(frame);
-]]></script>
-</svg>
+</script>
+</body>
+</html>
