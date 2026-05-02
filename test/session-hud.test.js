@@ -62,6 +62,21 @@ describe("session HUD geometry", () => {
     });
   });
 
+  it("uses a stable anchor rect instead of the dynamic hitbox when available", () => {
+    const result = computeSessionHudBounds({
+      hitRect: { left: 260, top: 50, right: 460, bottom: 220 },
+      anchorRect: { left: 100, top: 80, right: 200, bottom: 160 },
+      workArea: { x: 0, y: 0, width: 800, height: 600 },
+    });
+
+    assert.deepStrictEqual(result.contentBounds, {
+      x: 150 - Math.round(constants.HUD_WIDTH / 2),
+      y: 160 + constants.HUD_PET_GAP,
+      width: constants.HUD_WIDTH,
+      height: constants.HUD_HEIGHT,
+    });
+  });
+
   it("keeps the reserved offset aligned to the visible card height plus the bottom shell only", () => {
     const expected = constants.HUD_PET_GAP
       + constants.HUD_HEIGHT

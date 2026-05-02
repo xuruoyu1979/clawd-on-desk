@@ -1129,6 +1129,13 @@ function getUpdateBubbleAnchorRect(bounds) {
   return getHitRectScreen(bounds);
 }
 
+function getSessionHudAnchorRect(bounds) {
+  if (!bounds || !activeTheme) return null;
+  const box = getThemeMarginBox(activeTheme);
+  if (!box) return null;
+  return computeThemeAnchorRect(activeTheme, bounds, { box });
+}
+
 function getVisibleContentMargins(bounds) {
   if (!bounds || !activeTheme) return { top: 0, bottom: 0 };
   const box = getThemeMarginBox(activeTheme);
@@ -1221,6 +1228,7 @@ const _sessionHud = require("./session-hud")({
   getI18n: () => getDashboardI18nPayload(),
   getPetWindowBounds,
   getHitRectScreen,
+  getSessionHudAnchorRect,
   getNearestWorkArea,
   guardAlwaysOnTop,
   reapplyMacVisibility,

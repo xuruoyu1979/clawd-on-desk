@@ -31,6 +31,14 @@ function clampToWorkArea(value, min, max) {
   return Math.max(min, Math.min(value, max));
 }
 
+function isScreenRect(rect) {
+  return !!rect
+    && Number.isFinite(rect.left)
+    && Number.isFinite(rect.top)
+    && Number.isFinite(rect.right)
+    && Number.isFinite(rect.bottom);
+}
+
 function isHudSession(session) {
   return !!session && !session.headless && session.state !== "sleeping";
 }
@@ -62,19 +70,20 @@ function computeHudReservedOffset(cardHeight) {
   return HUD_PET_GAP + h + HUD_WINDOW_SHELL.bottom + BUBBLE_GAP;
 }
 
-function computeSessionHudBounds({ hitRect, workArea, width = HUD_WIDTH, height = HUD_HEIGHT }) {
-  if (!hitRect || !workArea) return null;
-  const hitTop = Math.round(hitRect.top);
-  const hitBottom = Math.round(hitRect.bottom);
-  const hitCx = Math.round((hitRect.left + hitRect.right) / 2);
+function computeSessionHudBounds({ hitRect, anchorRect, workArea, width = HUD_WIDTH, height = HUD_HEIGHT }) {
+  const followRect = isScreenRect(anchorRect) ? anchorRect : hitRect;
+  if (!isScreenRect(followRect) || !workArea) return null;
+  const followTop = Math.round(followRect.top);
+  const followBottom = Math.round(followRect.bottom);
+  const followCx = Math.round((followRect.left + followRect.right) / 2);
 
   const outerWidth = width + HUD_WINDOW_SHELL.left + HUD_WINDOW_SHELL.right;
   const outerHeight = height + HUD_WINDOW_SHELL.top + HUD_WINDOW_SHELL.bottom;
   const minX = Math.round(workArea.x);
   const maxX = Math.round(workArea.x + workArea.width - width);
-  const x = clampToWorkArea(hitCx - Math.round(width / 2), minX, maxX);
+  const x = clampToWorkArea(followCx - Math.round(width / 2), minX, maxX);
 
-  const belowY = hitBottom + HUD_PET_GAP;
+  const belowY = followBottom + HUD_PET_GAP;
   const belowMax = workArea.y + workArea.height - EDGE_MARGIN;
   if (belowY + height <= belowMax) {
     const contentBounds = { x, y: belowY, width, height };
@@ -92,7 +101,7 @@ function computeSessionHudBounds({ hitRect, workArea, width = HUD_WIDTH, height 
 
   const minY = Math.round(workArea.y + EDGE_MARGIN);
   const maxY = Math.round(workArea.y + workArea.height - EDGE_MARGIN - height);
-  const aboveY = hitTop - height - HUD_PET_GAP;
+  const aboveY = followTop - height - HUD_PET_GAP;
   const contentBounds = {
     x,
     y: clampToWorkArea(aboveY, minY, maxY),
@@ -229,6 +238,9 @@ module.exports = function initSessionHud(ctx) {
     const hitRect = typeof ctx.getHitRectScreen === "function"
       ? ctx.getHitRectScreen(petBounds)
       : null;
+    const anchorRect = typeof ctx.getSessionHudAnchorRect === "function"
+      ? ctx.getSessionHudAnchorRect(petBounds)
+      : null;
     const cx = petBounds.x + petBounds.width / 2;
     const cy = petBounds.y + petBounds.height / 2;
     const workArea = typeof ctx.getNearestWorkArea === "function"
@@ -237,7 +249,7 @@ module.exports = function initSessionHud(ctx) {
     const layout = computeHudLayout(snapshot);
     const height = computeHudHeight(layout.rowCount);
     lastHudHeight = height;
-    return computeSessionHudBounds({ hitRect, workArea, height });
+    return computeSessionHudBounds({ hitRect, anchorRect, workArea, height });
   }
 
   function showSessionHud(win) {
