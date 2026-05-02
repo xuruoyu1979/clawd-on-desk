@@ -1002,10 +1002,26 @@ function createElicitationQuestionCard(question, questionIndex) {
     updateElicitationSubmitState();
   });
   // Enter activates the primary action when it is enabled; Shift+Enter inserts a newline.
+  // ArrowUp from the start of Other returns focus to the last preset option.
   otherTextarea.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       if (!btnAllow.disabled) btnAllow.click();
+      return;
+    }
+    if (e.key === "ArrowUp" && !e.shiftKey && !e.isComposing) {
+      const atStart = otherTextarea.selectionStart === 0 && otherTextarea.selectionEnd === 0;
+      const isEmpty = otherTextarea.value.length === 0;
+      const shouldEscape = isEmpty || atStart;
+      if (shouldEscape) {
+        e.preventDefault();
+        const presetInputs = optionList.querySelectorAll(`input[name="elicitation-${questionIndex}"]:not([data-other])`);
+        const target = presetInputs[presetInputs.length - 1];
+        if (target) {
+          target.focus();
+          if (!question.multiSelect) target.click();
+        }
+      }
     }
   });
   optionList.appendChild(otherTextarea);
@@ -1023,6 +1039,16 @@ function createElicitationQuestionCard(question, questionIndex) {
   otherInput.addEventListener("change", () => {
     setElicitationSelection(question, questionIndex, ELICITATION_OTHER_KEY, otherInput.checked);
     updateOtherTextarea();
+  });
+  // ArrowDown on Other moves focus into the textarea when it is visible.
+  otherInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" && !e.shiftKey && !e.isComposing) {
+      const ta = optionList.querySelector("[data-other-textarea]");
+      if (ta && ta.classList.contains("visible")) {
+        e.preventDefault();
+        ta.focus();
+      }
+    }
   });
   if (!question.multiSelect) {
     optionList.querySelectorAll("input[type=radio]").forEach(r => {
