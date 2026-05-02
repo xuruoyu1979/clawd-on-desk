@@ -49,6 +49,8 @@ let DEEP_SLEEP_TIMEOUT = 0;
 let YAWN_DURATION = 0;
 let WAKE_DURATION = 0;
 let DND_SKIP_YAWN = false;
+let DND_SLEEP_TRANSITION_SVG = null;
+let DND_SLEEP_TRANSITION_DURATION = 0;
 let COLLAPSE_DURATION = 0;
 let SLEEP_MODE = "full";
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
@@ -246,6 +248,12 @@ function refreshTheme() {
   YAWN_DURATION = theme.timings.yawnDuration;
   WAKE_DURATION = theme.timings.wakeDuration;
   DND_SKIP_YAWN = !!theme.timings.dndSkipYawn;
+  DND_SLEEP_TRANSITION_SVG = typeof theme.timings.dndSleepTransitionSvg === "string" && theme.timings.dndSleepTransitionSvg
+    ? theme.timings.dndSleepTransitionSvg.split(/[\\/]/).pop()
+    : null;
+  DND_SLEEP_TRANSITION_DURATION = Number.isFinite(theme.timings.dndSleepTransitionDuration) && theme.timings.dndSleepTransitionDuration > 0
+    ? Math.floor(theme.timings.dndSleepTransitionDuration)
+    : 0;
   COLLAPSE_DURATION = theme.timings.collapseDuration || 0;
   SLEEP_MODE = theme.sleepSequence && theme.sleepSequence.mode === "direct" ? "direct" : "full";
   DISPLAY_HINT_MAP = theme.displayHintMap || {};
@@ -400,6 +408,10 @@ function applyDndSleepState() {
     applyState("sleeping");
     return;
   }
+  if (DND_SLEEP_TRANSITION_SVG) {
+    applyState("collapsing", DND_SLEEP_TRANSITION_SVG);
+    return;
+  }
   applyState(DND_SKIP_YAWN ? "collapsing" : "yawning");
 }
 
@@ -487,11 +499,22 @@ function applyState(state, svgOverride) {
       autoReturnTimer = null;
       applyState(ctx.doNotDisturb ? "collapsing" : "dozing");
     }, YAWN_DURATION);
-  } else if (state === "collapsing" && COLLAPSE_DURATION > 0) {
-    autoReturnTimer = setTimeout(() => {
-      autoReturnTimer = null;
-      applyState("sleeping");
-    }, COLLAPSE_DURATION);
+  } else if (state === "collapsing") {
+    const dndCollapseDuration = (
+      ctx.doNotDisturb
+      && DND_SLEEP_TRANSITION_SVG
+      && svg === DND_SLEEP_TRANSITION_SVG
+      && DND_SLEEP_TRANSITION_DURATION > 0
+    )
+      ? DND_SLEEP_TRANSITION_DURATION
+      : 0;
+    const collapseDuration = dndCollapseDuration || COLLAPSE_DURATION;
+    if (collapseDuration > 0) {
+      autoReturnTimer = setTimeout(() => {
+        autoReturnTimer = null;
+        applyState("sleeping");
+      }, collapseDuration);
+    }
   } else if (state === "waking") {
     autoReturnTimer = setTimeout(() => {
       autoReturnTimer = null;

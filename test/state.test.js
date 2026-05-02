@@ -1397,6 +1397,24 @@ describe("DND mode", () => {
     assert.strictEqual(api.getCurrentState(), "collapsing");
   });
 
+  it("enableDoNotDisturb uses theme-specific direct sleep transition art when provided", () => {
+    const theme = cloneTheme(_defaultTheme);
+    theme.timings.dndSleepTransitionSvg = "custom-idle-to-sleeping.svg";
+    theme.timings.dndSleepTransitionDuration = 4800;
+    api.cleanup();
+    ctx = makeCtx({ theme });
+    api = require("../src/state")(ctx);
+
+    api.enableDoNotDisturb();
+
+    assert.strictEqual(api.getCurrentState(), "collapsing");
+    assert.strictEqual(api.getCurrentSvg(), "custom-idle-to-sleeping.svg");
+    mock.timers.tick(4799);
+    assert.strictEqual(api.getCurrentState(), "collapsing");
+    mock.timers.tick(1);
+    assert.strictEqual(api.getCurrentState(), "sleeping");
+  });
+
   it("enableDoNotDisturb mini → mini-sleep", () => {
     ctx.miniMode = true;
     api.enableDoNotDisturb();

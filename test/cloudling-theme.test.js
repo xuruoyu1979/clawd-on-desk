@@ -81,6 +81,8 @@ describe("built-in Cloudling theme", () => {
     assert.deepStrictEqual(theme.states.collapsing, ["cloudling-dozing-to-sleeping.svg"]);
     assert.deepStrictEqual(theme.states.waking, ["cloudling-sleeping-to-idle.svg"]);
     assert.strictEqual(theme.sleepSequence.mode, "full");
+    assert.strictEqual(theme.timings.dndSleepTransitionSvg, "cloudling-idle-to-sleeping.svg");
+    assert.strictEqual(theme.timings.dndSleepTransitionDuration, 4850);
 
     assert.deepStrictEqual(theme.workingTiers.map((tier) => tier.file), [
       "cloudling-building.svg",

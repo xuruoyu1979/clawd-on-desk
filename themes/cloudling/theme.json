@@ -178,6 +178,8 @@
     "yawnDuration": 9030,
     "collapseDuration": 4700,
     "wakeDuration": 3650,
+    "dndSleepTransitionSvg": "cloudling-idle-to-sleeping.svg",
+    "dndSleepTransitionDuration": 4850,
     "deepSleepTimeout": 600000,
     "mouseIdleTimeout": 20000,
     "mouseSleepTimeout": 60000
