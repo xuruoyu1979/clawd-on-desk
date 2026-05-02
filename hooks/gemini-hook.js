@@ -12,9 +12,9 @@ const HOOK_MAP = {
   BeforeAgent:   { state: "thinking",     event: "UserPromptSubmit" },
   BeforeTool:    { state: "working",      event: "PreToolUse" },
   AfterTool:     { state: "working",      event: "PostToolUse" },
-  AfterAgent:    { state: "attention",    event: "Stop" },
+  AfterAgent:    { state: "idle",         event: "AfterAgent" },
   Notification:  { state: "notification", event: "Notification" },
-  PreCompress:   { state: "sweeping",     event: "PreCompact" },
+  PreCompress:   { state: "idle",         event: "PreCompress", preserveState: true },
 };
 
 const config = getPlatformConfig();
@@ -43,7 +43,7 @@ function buildStateBody(hookName, payload, options = {}) {
   const mapped = HOOK_MAP[hookName];
   if (!mapped) return null;
 
-  const { state, event } = mapped;
+  const { state, event, preserveState } = mapped;
   const sessionId = (payload && payload.session_id) || "default";
   const cwd = (payload && payload.cwd) || "";
   const body = {
@@ -54,6 +54,7 @@ function buildStateBody(hookName, payload, options = {}) {
   };
 
   if (cwd) body.cwd = cwd;
+  if (preserveState) body.preserve_state = true;
 
   if (options.remote) {
     body.host = options.host || readHostPrefix();

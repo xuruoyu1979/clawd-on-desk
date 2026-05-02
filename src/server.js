@@ -910,6 +910,7 @@ function startHttpServer() {
           const rawTitle = typeof data.session_title === "string" ? data.session_title.trim() : "";
           const sessionTitle = rawTitle || null;
           const permissionSuspect = data.permission_suspect === true;
+          const preserveState = data.preserve_state === true;
           const hookSource = typeof data.hook_source === "string" ? data.hook_source : null;
           // Agent gate: user disabled this agent in the settings panel. Drop
           // with 204 so hook scripts get a quick no-op response instead of
@@ -978,6 +979,7 @@ function startHttpServer() {
                 displayHint: display_svg,
                 sessionTitle,
                 permissionSuspect,
+                preserveState,
                 hookSource,
               });
             }

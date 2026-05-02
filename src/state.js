@@ -77,10 +77,12 @@ const EVENT_LABEL_KEYS = {
   PreToolUse: "eventLabelPreToolUse",
   PostToolUse: "eventLabelPostToolUse",
   PostToolUseFailure: "eventLabelPostToolUseFailure",
+  AfterAgent: "eventLabelAfterAgent",
   Stop: "eventLabelStop",
   StopFailure: "eventLabelStopFailure",
   SubagentStart: "eventLabelSubagentStart",
   SubagentStop: "eventLabelSubagentStop",
+  PreCompress: "eventLabelPreCompress",
   PreCompact: "eventLabelPreCompact",
   PostCompact: "eventLabelPostCompact",
   Notification: "eventLabelNotification",
@@ -883,6 +885,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     displayHint = undefined,
     sessionTitle = null,
     permissionSuspect = false,
+    preserveState = false,
     hookSource = null,
   } = opts;
   if (startupRecoveryActive) {
@@ -925,13 +928,14 @@ function updateSession(sessionId, state, event, opts = {}) {
   const srcResumeState = (existing && existing.resumeState) || null;
   const isSubagentStart = event === "SubagentStart" || event === "subagentStart";
   const isSubagentStop = event === "SubagentStop" || event === "subagentStop";
+  const preservedState = preserveState && existing ? existing.state : null;
 
   debugSession(`event ${describeSession(sessionId, existing)} -> incoming=${state}/${event || "-"} hint=${displayHint || "-"} source=${hookSource || "-"}`);
 
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const recentEvents = pushRecentEvent(existing, state, event);
+  const recentEvents = pushRecentEvent(existing, preservedState || state, event);
   const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, sessionTitle: srcSessionTitle, recentEvents, pidReachable };
 
   // Evict oldest session if at capacity and this is a new session
@@ -999,6 +1003,15 @@ function updateSession(sessionId, state, event, opts = {}) {
     const displayState = resolveDisplayState();
     setState(displayState, getSvgOverride(displayState));
     return;
+  } else if (preservedState) {
+    const dh = pickDisplayHint(preservedState, existing, displayHint);
+    sessions.set(sessionId, {
+      state: preservedState,
+      updatedAt: Date.now(),
+      displayHint: dh,
+      ...base,
+      resumeState: srcResumeState,
+    });
   } else if (state === "attention" || state === "notification" || SLEEP_SEQUENCE.has(state)) {
     sessions.set(sessionId, { state: "idle", updatedAt: Date.now(), displayHint: null, ...base, resumeState: null });
   } else if (ONESHOT_STATES.has(state)) {

@@ -184,6 +184,36 @@ describe("server hook event ringbuffer", () => {
     }]);
   });
 
+  it("forwards preserve_state to state.js without changing hook event recording", async () => {
+    const { api, handler, ctx } = startServer();
+
+    const res = await callHandler(handler, "POST", "/state", {
+      agent_id: "gemini-cli",
+      state: "idle",
+      event: "PreCompress",
+      session_id: "gemini:s1",
+      preserve_state: true,
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(ctx._test.updateSessionCalls.length, 1);
+    assert.strictEqual(ctx._test.updateSessionCalls[0][0], "gemini:s1");
+    assert.strictEqual(ctx._test.updateSessionCalls[0][1], "idle");
+    assert.strictEqual(ctx._test.updateSessionCalls[0][2], "PreCompress");
+    assert.strictEqual(ctx._test.updateSessionCalls[0][3].preserveState, true);
+    assert.deepStrictEqual(api.getRecentHookEvents().map(({ agentId, eventType, route, outcome }) => ({
+      agentId,
+      eventType,
+      route,
+      outcome,
+    })), [{
+      agentId: "gemini-cli",
+      eventType: "PreCompress",
+      route: "state",
+      outcome: "accepted",
+    }]);
+  });
+
   it("records /permission DND gate", async () => {
     const { api, handler } = startServer({ doNotDisturb: true });
 

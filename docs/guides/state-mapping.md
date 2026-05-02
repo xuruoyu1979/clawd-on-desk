@@ -2,7 +2,7 @@
 
 [Back to README](../../README.md)
 
-Events from all agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
+Most lifecycle events from agents (Claude Code hooks, Codex JSONL, Copilot hooks) map to the same animation states:
 
 | Agent Event | State | Animation | Clawd | Calico | Cloudling |
 |---|---|---|---|---|---|
@@ -39,6 +39,15 @@ Kimi Code CLI (Kimi-CLI) now uses hook-only integration (`~/.kimi/config.toml`),
 | PreCompact | sweeping |
 | PostCompact | attention |
 | Notification | notification |
+
+## Gemini CLI Hook Notes
+
+Gemini CLI stays on hook-only integration, but two Gemini-native events are intentionally not forced into the shared Claude/Codex semantics:
+
+| Gemini Hook Event | Clawd behavior |
+|---|---|
+| AfterAgent | Recorded as `AfterAgent` and the session returns to `idle`. It does not remap to shared `Stop`, so Gemini turns no longer auto-show the `attention` / done animation. |
+| PreCompress | Recorded as `PreCompress` in session history, but does not switch the pet to `sweeping`. The current visible state (usually `thinking` or `working`) stays in place. |
 
 ## Mini Mode
 

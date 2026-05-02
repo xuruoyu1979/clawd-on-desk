@@ -920,6 +920,63 @@ describe("recentEvents tracking", () => {
     assert.strictEqual(events.length, 1);
     assert.strictEqual(events[0].event, null);
   });
+
+  it("records Gemini PreCompress without changing the active session state", () => {
+    update(api, { id: "g1", state: "thinking", event: "UserPromptSubmit", agentId: "gemini-cli" });
+    api.updateSession("g1", "idle", "PreCompress", {
+      cwd: "/tmp",
+      agentId: "gemini-cli",
+      preserveState: true,
+    });
+
+    const session = api.sessions.get("g1");
+    assert.strictEqual(session.state, "thinking");
+    assert.deepStrictEqual(
+      session.recentEvents.map((entry) => entry.event),
+      ["UserPromptSubmit", "PreCompress"]
+    );
+  });
+
+  it("keeps the pet display state on Gemini PreCompress while exposing the event in session snapshots", () => {
+    const stateChanges = [];
+    api.cleanup();
+    api = require("../src/state")(makeCtx({
+      sendToRenderer: (...args) => stateChanges.push(args),
+      syncHitWin: () => {},
+      sendToHitWin: () => {},
+    }));
+
+    update(api, { id: "g1", state: "thinking", event: "UserPromptSubmit", agentId: "gemini-cli" });
+    const beforeCount = stateChanges.length;
+    api.updateSession("g1", "idle", "PreCompress", {
+      cwd: "/tmp",
+      agentId: "gemini-cli",
+      preserveState: true,
+    });
+
+    assert.strictEqual(api.resolveDisplayState(), "thinking");
+    const snapshot = api.buildSessionSnapshot();
+    assert.strictEqual(snapshot.sessions[0].lastEvent.rawEvent, "PreCompress");
+    assert.strictEqual(snapshot.sessions[0].lastEvent.labelKey, "eventLabelPreCompress");
+    assert.strictEqual(stateChanges.length, beforeCount);
+    assert.ok(stateChanges.every((entry) => entry[1] !== "sweeping"));
+  });
+
+  it("returns Gemini sessions to idle on AfterAgent without marking them done", () => {
+    update(api, { id: "g1", state: "working", event: "PreToolUse", agentId: "gemini-cli" });
+    api.updateSession("g1", "idle", "AfterAgent", {
+      cwd: "/tmp",
+      agentId: "gemini-cli",
+    });
+
+    const session = api.sessions.get("g1");
+    assert.strictEqual(session.state, "idle");
+    assert.strictEqual(api.deriveSessionBadge(session), "idle");
+    assert.deepStrictEqual(
+      session.recentEvents.map((entry) => entry.event),
+      ["PreToolUse", "AfterAgent"]
+    );
+  });
 });
 
 describe("buildSessionSnapshot", () => {
@@ -1320,6 +1377,11 @@ describe("deriveSessionBadge", () => {
   it("returns 'done' when idle with PostCompact in recentEvents", () => {
     const s = { state: "idle", recentEvents: [{ event: "PostCompact" }] };
     assert.strictEqual(api.deriveSessionBadge(s), "done");
+  });
+
+  it("returns 'idle' when idle with Gemini AfterAgent in recentEvents", () => {
+    const s = { state: "idle", recentEvents: [{ event: "AfterAgent" }] };
+    assert.strictEqual(api.deriveSessionBadge(s), "idle");
   });
 
   it("returns 'idle' when sleeping (no tombstone, not 'exited')", () => {

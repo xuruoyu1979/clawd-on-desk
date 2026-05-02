@@ -140,8 +140,46 @@ describe("Gemini hook script", () => {
     assert.deepStrictEqual(result.stdout, "{}");
     assert.strictEqual(postedBodies.length, 1);
     assert.strictEqual(postedBodies[0].agent_id, "gemini-cli");
-    assert.strictEqual(postedBodies[0].event, "Stop");
+    assert.strictEqual(postedBodies[0].event, "AfterAgent");
     assert.strictEqual(postedBodies[0].host, "remote-host");
     assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "source_pid"));
+  });
+
+  it("keeps Gemini AfterAgent as a neutral event instead of Stop/attention", async () => {
+    const postedBodies = [];
+    const result = await __test.sendHookEvent({
+      session_id: "s1",
+      cwd: process.cwd(),
+    }, "AfterAgent", {
+      env: {},
+      postState: (body, _options, callback) => {
+        postedBodies.push(JSON.parse(body));
+        callback(true, 23333);
+      },
+    });
+
+    assert.deepStrictEqual(result.stdout, "{}");
+    assert.strictEqual(postedBodies.length, 1);
+    assert.strictEqual(postedBodies[0].state, "idle");
+    assert.strictEqual(postedBodies[0].event, "AfterAgent");
+  });
+
+  it("keeps Gemini PreCompress visible without remapping to PreCompact/sweeping", async () => {
+    const postedBodies = [];
+    const result = await __test.sendHookEvent({
+      session_id: "s1",
+      cwd: process.cwd(),
+    }, "PreCompress", {
+      env: {},
+      postState: (body, _options, callback) => {
+        postedBodies.push(JSON.parse(body));
+        callback(true, 23333);
+      },
+    });
+
+    assert.deepStrictEqual(result.stdout, "{}");
+    assert.strictEqual(postedBodies.length, 1);
+    assert.strictEqual(postedBodies[0].state, "idle");
+    assert.strictEqual(postedBodies[0].event, "PreCompress");
   });
 });
