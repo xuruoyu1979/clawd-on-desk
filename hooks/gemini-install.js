@@ -33,7 +33,7 @@ function buildGeminiHookEntry(command) {
 }
 
 function buildGeminiHookCommand(nodeBin, hookScript, event, options = {}) {
-  return `${formatNodeHookCommand(nodeBin, hookScript, options)} ${event}`;
+  return formatNodeHookCommand(nodeBin, hookScript, { ...options, args: [event] });
 }
 
 function replaceEntry(target, source) {
@@ -128,6 +128,41 @@ function normalizeGeminiHookEntries(entries, desiredCommand) {
   return { matched: true, changed };
 }
 
+function normalizeGeminiDisabledHooks(settings) {
+  const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
+  if (!hooksConfig || typeof hooksConfig !== "object" || !Array.isArray(hooksConfig.disabled)) return false;
+
+  let changed = false;
+  let sawClawd = false;
+  const nextDisabled = [];
+
+  for (const entry of hooksConfig.disabled) {
+    if (entry === "clawd") {
+      if (sawClawd) {
+        changed = true;
+        continue;
+      }
+      sawClawd = true;
+      nextDisabled.push(entry);
+      continue;
+    }
+
+    if (isClawdHookCommand(entry)) {
+      if (!sawClawd) {
+        nextDisabled.push("clawd");
+        sawClawd = true;
+      }
+      changed = true;
+      continue;
+    }
+
+    nextDisabled.push(entry);
+  }
+
+  if (changed) hooksConfig.disabled = nextDisabled;
+  return changed;
+}
+
 /**
  * Register Clawd hooks into ~/.gemini/settings.json
  * @param {object} [options]
@@ -162,12 +197,13 @@ function registerGeminiHooks(options = {}) {
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
 
-  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
-
   let added = 0;
   let skipped = 0;
   let updated = 0;
   let changed = false;
+
+  if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
+  if (normalizeGeminiDisabledHooks(settings)) changed = true;
 
   for (const event of GEMINI_HOOK_EVENTS) {
     const desiredCommand = buildGeminiHookCommand(nodeBin, hookScript, event);

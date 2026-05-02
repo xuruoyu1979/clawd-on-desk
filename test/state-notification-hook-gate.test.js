@@ -89,6 +89,34 @@ describe("updateSession: Notification hook gate", () => {
     assert.deepStrictEqual(ctx._soundsPlayed, ["confirm"], "confirm sound must play");
   });
 
+  it("mutes Gemini Notification bell + animation when the per-agent flag is off", () => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    ctx = makeCtx({ notificationHookEnabled: false });
+    api = require("../src/state")(ctx);
+
+    api.updateSession("gemini-1", "notification", "Notification", { agentId: "gemini-cli" });
+
+    assert.strictEqual(api.sessions.has("gemini-1"), true, "Gemini session must still be registered");
+    assert.strictEqual(api.sessions.get("gemini-1").state, "idle", "Gemini Notification must still resolve bookkeeping");
+    const stateChanges = ctx._rendererEvents.filter(([ch]) => ch === "state-change");
+    assert.ok(stateChanges.length >= 1, "pet must still get a state-change broadcast");
+    assert.notStrictEqual(stateChanges[0][1], "notification", "Gemini mute must skip notification state");
+    assert.deepStrictEqual(ctx._soundsPlayed, [], "Gemini mute must suppress confirm sound");
+  });
+
+  it("lets Gemini Notification through when the per-agent flag is on", () => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    ctx = makeCtx({ notificationHookEnabled: true });
+    api = require("../src/state")(ctx);
+
+    api.updateSession("gemini-1", "notification", "Notification", { agentId: "gemini-cli" });
+
+    const stateChanges = ctx._rendererEvents.filter(([ch]) => ch === "state-change");
+    assert.ok(stateChanges.length >= 1, "Gemini notification state must be broadcast");
+    assert.strictEqual(stateChanges[0][1], "notification");
+    assert.deepStrictEqual(ctx._soundsPlayed, ["confirm"], "Gemini notification must play confirm sound");
+  });
+
   it("never drops PermissionRequest events even when the flag is off", () => {
     // Permission bubbles must keep their bell regardless of idle-alert prefs.
     // PermissionRequest is handled by the branch before the gate and never

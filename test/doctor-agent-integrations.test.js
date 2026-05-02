@@ -208,7 +208,7 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.fixAction, undefined);
   });
 
-  it("treats legacy disabled Gemini hook entries as disabled-clawd", () => {
+  it("does not treat legacy disabled Gemini hook command strings as a stable disabled signal", () => {
     const descriptor = baseDescriptor({
       agentId: "gemini-cli",
       marker: "gemini-hook.js",
@@ -227,12 +227,12 @@ describe("checkAgentIntegrations", () => {
     });
 
     const detail = runOne(descriptor);
-    assert.strictEqual(detail.status, "not-connected");
-    assert.strictEqual(detail.level, "warning");
+    assert.strictEqual(detail.status, "ok");
+    assert.strictEqual(detail.level, null);
     assert.deepStrictEqual(detail.supplementary, {
       key: "gemini_hooks",
-      value: "disabled-clawd",
-      detail: "hooksConfig.disabled includes a Clawd Gemini hook entry",
+      value: "enabled",
+      detail: "hooksConfig allows Clawd Gemini hooks",
     });
     assert.strictEqual(detail.fixAction, undefined);
   });

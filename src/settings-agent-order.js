@@ -4,6 +4,7 @@ function buildSettingsAgentOrderExports() {
   const COLLAPSIBLE_AGENT_PRIORITY = [
     "claude-code",
     "codex",
+    "gemini-cli",
     "kimi-cli",
     "opencode",
     "codebuddy",
@@ -11,7 +12,6 @@ function buildSettingsAgentOrderExports() {
 
   const NON_COLLAPSIBLE_AGENT_PRIORITY = [
     "cursor-agent",
-    "gemini-cli",
     "copilot-cli",
     "kiro-cli",
   ];

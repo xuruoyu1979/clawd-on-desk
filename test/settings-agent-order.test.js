@@ -32,7 +32,7 @@ describe("settings agent order", () => {
       { id: "codebuddy", name: "CodeBuddy", capabilities: { permissionApproval: true, notificationHook: true } },
       { id: "copilot-cli", name: "Copilot CLI", capabilities: {} },
       { id: "opencode", name: "OpenCode", capabilities: { permissionApproval: true } },
-      { id: "gemini-cli", name: "Gemini CLI", capabilities: {} },
+      { id: "gemini-cli", name: "Gemini CLI", capabilities: { notificationHook: true } },
       { id: "claude-code", name: "Claude Code", capabilities: { permissionApproval: true, notificationHook: true } },
       { id: "cursor-agent", name: "Cursor Agent", capabilities: {} },
       { id: "codex", name: "Codex CLI", capabilities: { interactiveBubble: true } },
@@ -42,11 +42,11 @@ describe("settings agent order", () => {
     assert.deepStrictEqual(sorted.map((agent) => agent.id), [
       "claude-code",
       "codex",
+      "gemini-cli",
       "kimi-cli",
       "opencode",
       "codebuddy",
       "cursor-agent",
-      "gemini-cli",
       "copilot-cli",
       "kiro-cli",
     ]);

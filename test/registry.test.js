@@ -113,6 +113,7 @@ describe("Agent Registry", () => {
     const gemini = registry.getAgent("gemini-cli");
     assert.strictEqual(gemini.capabilities.httpHook, false);
     assert.strictEqual(gemini.capabilities.permissionApproval, false);
+    assert.strictEqual(gemini.capabilities.notificationHook, true);
     assert.strictEqual(gemini.capabilities.sessionEnd, true);
     assert.strictEqual(gemini.capabilities.subagent, false);
 

@@ -637,6 +637,14 @@ describe("settings renderer browser environment", () => {
     assert.ok(agentsSource.includes("sortAgentMetadataForSettings(runtime.agentMetadata"));
   });
 
+  it("keeps Gemini agent detail rows on the generic notificationHook path", () => {
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
+    assert.ok(agentsSource.includes("if (caps.notificationHook) {"));
+    assert.ok(agentsSource.includes('flag: "notificationHookEnabled"'));
+    assert.ok(!agentsSource.includes('agent.id === "gemini-cli"'));
+    assert.ok(!agentsSource.includes("Gemini CLI"));
+  });
+
   it("keeps stale sound override prefs resettable from the settings UI", () => {
     const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
     assert.ok(

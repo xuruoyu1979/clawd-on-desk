@@ -52,7 +52,7 @@ describe("Gemini hook installer", () => {
       assert.strictEqual(hook.name, "clawd");
       assert.ok(hook.command.includes(MARKER));
       assert.ok(hook.command.includes("/usr/local/bin/node"));
-      assert.ok(hook.command.endsWith(`" ${event}`));
+      assert.ok(hook.command.endsWith(`"${event}"`));
     }
   });
 
@@ -87,7 +87,7 @@ describe("Gemini hook installer", () => {
     assert.strictEqual(settings.hooks.AfterTool.length, 1);
     assert.ok(settings.hooks.AfterTool[0].hooks[0].command.includes("/usr/local/bin/node"));
     assert.ok(!settings.hooks.AfterTool[0].hooks[0].command.includes("/old/path/"));
-    assert.ok(settings.hooks.AfterTool[0].hooks[0].command.endsWith('" AfterTool'));
+    assert.ok(settings.hooks.AfterTool[0].hooks[0].command.endsWith('"AfterTool"'));
   });
 
   it("migrates stale flat Clawd entries into nested Gemini hook shape", () => {
@@ -112,7 +112,7 @@ describe("Gemini hook installer", () => {
     assert.strictEqual(settings.hooks.BeforeTool[0].matcher, "*");
     assert.strictEqual(settings.hooks.BeforeTool[0].hooks[0].name, "clawd");
     assert.ok(settings.hooks.BeforeTool[0].hooks[0].command.includes(MARKER));
-    assert.ok(settings.hooks.BeforeTool[0].hooks[0].command.endsWith('" BeforeTool'));
+    assert.ok(settings.hooks.BeforeTool[0].hooks[0].command.endsWith('"BeforeTool"'));
   });
 
   it("preserves existing node path when detection fails", () => {
@@ -179,7 +179,7 @@ describe("Gemini hook installer", () => {
       }],
     });
     assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.includes(MARKER));
-    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('" BeforeTool'));
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('"BeforeTool"'));
   });
 
   it("removes Clawd from shared matcher entries when a dedicated Clawd entry already exists", () => {
@@ -223,7 +223,7 @@ describe("Gemini hook installer", () => {
       }],
     });
     assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.includes("/usr/local/bin/node"));
-    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('" BeforeTool'));
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('"BeforeTool"'));
   });
 
   it("does not force hooksConfig.enabled when the user disabled hooks", () => {
@@ -237,6 +237,20 @@ describe("Gemini hook installer", () => {
     assert.strictEqual(settings.hooksConfig.enabled, false);
   });
 
+  it("migrates legacy disabled Gemini hook command entries to clawd", () => {
+    const legacyDisabled = '"/old/node" "/old/path/gemini-hook.js" BeforeTool';
+    const settingsPath = makeTempSettingsFile({
+      hooksConfig: {
+        disabled: ["other-hook", legacyDisabled],
+      },
+    });
+
+    registerGeminiHooks({ silent: true, settingsPath, nodeBin: "/usr/local/bin/node" });
+
+    const settings = readJson(settingsPath);
+    assert.deepStrictEqual(settings.hooksConfig.disabled, ["other-hook", "clawd"]);
+  });
+
   it("builds Windows PowerShell commands with the Gemini event argv", () => {
     const command = __test.buildGeminiHookCommand(
       "node",
@@ -245,7 +259,18 @@ describe("Gemini hook installer", () => {
       { platform: "win32" }
     );
 
-    assert.strictEqual(command, '& "node" "D:/clawd/hooks/gemini-hook.js" BeforeTool');
+    assert.strictEqual(command, '& "node" "D:/clawd/hooks/gemini-hook.js" "BeforeTool"');
+  });
+
+  it("builds Windows cmd-wrapped commands with the Gemini event argv", () => {
+    const command = __test.buildGeminiHookCommand(
+      "node",
+      "D:/clawd/hooks/gemini-hook.js",
+      "BeforeTool",
+      { platform: "win32", windowsWrapper: "cmd" }
+    );
+
+    assert.strictEqual(command, 'cmd /d /s /c ""node" "D:/clawd/hooks/gemini-hook.js" "BeforeTool""');
   });
 
   it("skips when ~/.gemini/ does not exist", () => {

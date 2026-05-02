@@ -180,13 +180,6 @@ function getGeminiHooksSupplementary(settings, descriptor) {
       detail: 'hooksConfig.disabled includes "clawd"',
     };
   }
-  if (disabled.some((entry) => typeof entry === "string" && entry.includes(descriptor.marker))) {
-    return {
-      key: "gemini_hooks",
-      value: "disabled-clawd",
-      detail: "hooksConfig.disabled includes a Clawd Gemini hook entry",
-    };
-  }
 
   return {
     key: "gemini_hooks",
