@@ -144,6 +144,88 @@ describe("Gemini hook installer", () => {
     assert.ok(settings.hooks.SessionStart[1].hooks[0].command.includes(MARKER));
   });
 
+  it("splits Clawd out of shared matcher entries instead of widening third-party hooks", () => {
+    const settingsPath = makeTempSettingsFile({
+      hooks: {
+        BeforeTool: [{
+          matcher: "Edit",
+          hooks: [
+            { type: "command", command: "other-tool --flag", name: "other" },
+            { type: "command", command: '"/old/node" "/old/path/gemini-hook.js"', name: "clawd" },
+          ],
+        }],
+      },
+    });
+
+    const result = registerGeminiHooks({
+      silent: true,
+      settingsPath,
+      nodeBin: "/usr/local/bin/node",
+    });
+
+    assert.ok(result.updated >= 1);
+    const settings = readJson(settingsPath);
+    assert.strictEqual(settings.hooks.BeforeTool.length, 2);
+    assert.deepStrictEqual(settings.hooks.BeforeTool[0], {
+      matcher: "Edit",
+      hooks: [{ type: "command", command: "other-tool --flag", name: "other" }],
+    });
+    assert.deepStrictEqual(settings.hooks.BeforeTool[1], {
+      matcher: "*",
+      hooks: [{
+        type: "command",
+        command: settings.hooks.BeforeTool[1].hooks[0].command,
+        name: "clawd",
+      }],
+    });
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.includes(MARKER));
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('" BeforeTool'));
+  });
+
+  it("removes Clawd from shared matcher entries when a dedicated Clawd entry already exists", () => {
+    const settingsPath = makeTempSettingsFile({
+      hooks: {
+        BeforeTool: [
+          {
+            matcher: "Edit",
+            hooks: [
+              { type: "command", command: "other-tool --flag", name: "other" },
+              { type: "command", command: '"/old/node" "/old/path/gemini-hook.js"', name: "clawd" },
+            ],
+          },
+          {
+            matcher: "*",
+            hooks: [{ type: "command", command: '"/stale/node" "/stale/path/gemini-hook.js"', name: "clawd" }],
+          },
+        ],
+      },
+    });
+
+    const result = registerGeminiHooks({
+      silent: true,
+      settingsPath,
+      nodeBin: "/usr/local/bin/node",
+    });
+
+    assert.ok(result.updated >= 1);
+    const settings = readJson(settingsPath);
+    assert.strictEqual(settings.hooks.BeforeTool.length, 2);
+    assert.deepStrictEqual(settings.hooks.BeforeTool[0], {
+      matcher: "Edit",
+      hooks: [{ type: "command", command: "other-tool --flag", name: "other" }],
+    });
+    assert.deepStrictEqual(settings.hooks.BeforeTool[1], {
+      matcher: "*",
+      hooks: [{
+        type: "command",
+        command: settings.hooks.BeforeTool[1].hooks[0].command,
+        name: "clawd",
+      }],
+    });
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.includes("/usr/local/bin/node"));
+    assert.ok(settings.hooks.BeforeTool[1].hooks[0].command.endsWith('" BeforeTool'));
+  });
+
   it("does not force hooksConfig.enabled when the user disabled hooks", () => {
     const settingsPath = makeTempSettingsFile({
       hooksConfig: { enabled: false },

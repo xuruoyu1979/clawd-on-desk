@@ -36,38 +36,93 @@ function buildGeminiHookCommand(nodeBin, hookScript, event, options = {}) {
   return `${formatNodeHookCommand(nodeBin, hookScript, options)} ${event}`;
 }
 
-function normalizeGeminiHookEntry(entry, desiredCommand) {
-  if (!entry || typeof entry !== "object") return { matched: false, changed: false };
+function replaceEntry(target, source) {
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, source);
+}
 
-  if (isClawdHookCommand(entry.command)) {
-    const desired = buildGeminiHookEntry(desiredCommand);
-    const changed = JSON.stringify(entry) !== JSON.stringify(desired);
-    if (changed) {
-      for (const key of Object.keys(entry)) delete entry[key];
-      Object.assign(entry, desired);
-    }
-    return { matched: true, changed };
-  }
+function isDesiredGeminiHookEntry(entry, desiredCommand) {
+  return !!(
+    entry
+    && typeof entry === "object"
+    && entry.matcher === "*"
+    && Array.isArray(entry.hooks)
+    && entry.hooks.length === 1
+    && entry.hooks[0]
+    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].type === "command"
+    && entry.hooks[0].command === desiredCommand
+  );
+}
 
-  if (!Array.isArray(entry.hooks)) return { matched: false, changed: false };
-  const hook = entry.hooks.find((candidate) => candidate && isClawdHookCommand(candidate.command));
-  if (!hook) return { matched: false, changed: false };
+function normalizeGeminiHookEntries(entries, desiredCommand) {
+  if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  let matched = false;
   let changed = false;
-  if (entry.matcher !== "*") {
-    entry.matcher = "*";
+  let dedicatedIndex = -1;
+
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!entry || typeof entry !== "object") continue;
+
+    if (isClawdHookCommand(entry.command)) {
+      matched = true;
+      if (dedicatedIndex === -1) {
+        replaceEntry(entry, buildGeminiHookEntry(desiredCommand));
+        dedicatedIndex = index;
+        changed = true;
+      } else {
+        entries.splice(index, 1);
+        index--;
+        changed = true;
+      }
+      continue;
+    }
+
+    if (!Array.isArray(entry.hooks)) continue;
+    const otherHooks = [];
+    let clawdHookCount = 0;
+    for (const hook of entry.hooks) {
+      if (hook && isClawdHookCommand(hook.command)) {
+        clawdHookCount++;
+      } else {
+        otherHooks.push(hook);
+      }
+    }
+    if (clawdHookCount === 0) continue;
+
+    matched = true;
+    if (otherHooks.length > 0) {
+      entry.hooks = otherHooks;
+      changed = true;
+      continue;
+    }
+
+    if (dedicatedIndex === -1) {
+      if (!isDesiredGeminiHookEntry(entry, desiredCommand)) {
+        replaceEntry(entry, buildGeminiHookEntry(desiredCommand));
+        changed = true;
+      }
+      dedicatedIndex = index;
+      continue;
+    }
+
+    entries.splice(index, 1);
+    index--;
     changed = true;
   }
-  if (hook.name !== "clawd") {
-    hook.name = "clawd";
-    changed = true;
+
+  if (!matched) return { matched: false, changed: false };
+
+  if (dedicatedIndex === -1) {
+    entries.push(buildGeminiHookEntry(desiredCommand));
+    return { matched: true, changed: true };
   }
-  if (hook.type !== "command") {
-    hook.type = "command";
-    changed = true;
-  }
-  if (hook.command !== desiredCommand) {
-    hook.command = desiredCommand;
+
+  const dedicatedEntry = entries[dedicatedIndex];
+  if (!isDesiredGeminiHookEntry(dedicatedEntry, desiredCommand)) {
+    replaceEntry(dedicatedEntry, buildGeminiHookEntry(desiredCommand));
     changed = true;
   }
   return { matched: true, changed };
@@ -122,18 +177,10 @@ function registerGeminiHooks(options = {}) {
     }
 
     const arr = settings.hooks[event];
-    let found = false;
-    let entryChanged = false;
-    for (const entry of arr) {
-      const result = normalizeGeminiHookEntry(entry, desiredCommand);
-      if (!result.matched) continue;
-      found = true;
-      if (result.changed) {
-        entryChanged = true;
-        changed = true;
-      }
-      break;
-    }
+    const result = normalizeGeminiHookEntries(arr, desiredCommand);
+    const found = result.matched;
+    const entryChanged = result.changed;
+    if (entryChanged) changed = true;
 
     if (found) {
       if (entryChanged) {
