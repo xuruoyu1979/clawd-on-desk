@@ -424,7 +424,7 @@ Step 1 覆盖 ①②④。**③⑤ 是 Step 2 核心。**
 | 类型 | agent | 入口 |
 |---|---|---|
 | **HTTP 入口（进 ringbuffer）**| 9 个全部 | `src/server.js` `/state` `/permission` |
-| **文件 mtime（副路径）**| gemini-cli (~/.gemini/tmp)、codex rollout (~/.codex/sessions/) | 仅 detector 用 |
+| **文件 mtime（副路径）**| codex rollout (~/.codex/sessions/) | 仅 detector 用；Gemini 已改为 hook-only，不再用 ~/.gemini/tmp 兜底 |
 
 ### 5.3 ringbuffer 实现（v8：多点 record，每路径只 record 一次）
 
@@ -519,7 +519,7 @@ Overall: WARNING (2 issues)
 | codex | hook+log-poll | ok | ~/.codex/hooks.json registered; supplementary: codex_hooks=true |
 | cursor-agent | hook | not-connected | ~/.cursor/ exists but ~/.cursor/hooks.json missing |
 | copilot-cli | hook | manual-only | Project-level hooks.json; cannot be auto-detected |
-| gemini-cli | hook+log-poll | not-installed | ~/.gemini/ home directory missing |
+| gemini-cli | hook | not-installed | ~/.gemini/ home directory missing |
 | codebuddy | hook | ok | ~/.codebuddy/settings.json registered, scriptPath verified |
 | kiro-cli | hook | ok | 2 fully-valid in ~/.kiro/agents/: clawd.json, custom.json |
 | kimi-cli | hook | ok | ~/.kimi/config.toml registered, scriptPath verified |

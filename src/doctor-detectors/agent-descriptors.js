@@ -80,7 +80,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configMode: "file",
     autoInstall: true,
     marker: "gemini-hook.js",
-    nested: false,
+    nested: true,
   }),
   Object.freeze({
     agentId: "codebuddy",

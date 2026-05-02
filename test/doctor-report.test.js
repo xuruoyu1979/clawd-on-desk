@@ -126,6 +126,20 @@ describe("formatDiagnosticReport", () => {
     assert.match(detail, /opencode entry:/);
   });
 
+  it("formats Gemini supplementary diagnostics into visible detail text", () => {
+    const detail = formatAgentDetail({
+      detail: "Gemini hooks are disabled in settings.json; Clawd preserves this user setting and will not receive hook events",
+      supplementary: {
+        key: "gemini_hooks",
+        value: "disabled-global",
+        detail: "hooksConfig.enabled is false",
+      },
+    });
+
+    assert.match(detail, /gemini_hooks=disabled-global/);
+    assert.match(detail, /hooksConfig\.enabled is false/);
+  });
+
   it("formats summary and agent integration details", () => {
     const report = formatDiagnosticReport({
       generatedAt: "2026-04-28T14:32:00.000Z",
@@ -173,7 +187,7 @@ describe("formatDiagnosticReport", () => {
           eventType: "PermissionRequest",
         }],
         fileActivity: [{
-          agentId: "gemini-cli",
+          agentId: "codex",
           source: "file-mtime",
           count: 1,
         }],
@@ -198,7 +212,7 @@ describe("formatDiagnosticReport", () => {
     assert.match(report, /## Connection Test/);
     assert.match(report, /HTTP works but events were dropped/);
     assert.match(report, /dropped-by-dnd/);
-    assert.match(report, /Fallback file activity also observed: gemini-cli \(1\)\./);
+    assert.match(report, /Fallback file activity also observed: codex \(1\)\./);
     assert.doesNotMatch(report, /\| gemini-cli \| file-mtime \| 1 \|/);
     assert.ok(!report.includes("Alice"));
     assert.ok(!report.includes("D:/animation"));

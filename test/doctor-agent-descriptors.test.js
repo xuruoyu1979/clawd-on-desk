@@ -67,4 +67,11 @@ describe("doctor agent descriptors", () => {
     assert.strictEqual(getAgentDescriptor("claude-code").agentId, "claude-code");
     assert.strictEqual(getAgentDescriptor("missing"), null);
   });
+
+  it("checks Gemini hooks with the official nested settings shape", () => {
+    const descriptor = getAgentDescriptor("gemini-cli");
+
+    assert.strictEqual(descriptor.eventSource, "hook");
+    assert.strictEqual(descriptor.nested, true);
+  });
 });

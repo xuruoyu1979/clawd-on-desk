@@ -8,10 +8,7 @@
 | **Codex CLI: partial hook coverage** | Official hooks cover live state and `PermissionRequest` observation/intercept mode, but not every runtime signal. Clawd keeps JSONL polling active for hook-disabled sessions and fallback-only events such as web search, compaction, and aborted turns, so those events can still have polling latency. |
 | **Copilot CLI: manual hook setup** | Copilot is the one supported agent that still requires manually creating `~/.copilot/hooks/hooks.json`. |
 | **Copilot CLI: no permission bubble** | Copilot's `preToolUse` hook only supports deny, not the full allow/deny flow. Permission bubbles currently work with Claude Code, CodeBuddy, and opencode. |
-| **Gemini CLI: no working state** | Gemini's session JSON only records completed messages, not in-progress tool execution. The pet jumps from thinking straight to happy/error — no typing animation during work. |
-| **Gemini CLI: no permission bubble** | Gemini handles tool approval inside the terminal. File polling can't intercept or display approval requests. |
-| **Gemini CLI: no terminal focus** | Session JSON doesn't carry terminal PID info, same limitation as Codex. |
-| **Gemini CLI: polling latency** | ~1.5s poll interval + 4s defer window for batching tool completion signals. Noticeably slower than hook-based agents. |
+| **Gemini CLI: no permission bubble** | Gemini handles tool approval inside the terminal. Clawd observes Gemini hook events, but does not show permission bubbles unless Gemini adds a compatible blocking approval contract later. |
 | **Cursor Agent: no permission bubble** | Cursor handles permissions via stdout JSON in the hook, not HTTP blocking — Clawd can't intercept the approval flow. |
 | **Cursor Agent: startup recovery** | No process detection on startup (matching the editor PID would false-trigger on any Cursor instance). Clawd stays idle until the first hook event fires. |
 | **Kiro CLI: no session tracking** | Kiro CLI stdin JSON has no session_id — all Kiro sessions are merged into a single tracked session. |

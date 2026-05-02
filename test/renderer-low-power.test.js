@@ -8,9 +8,13 @@ const path = require("node:path");
 const RENDERER = path.join(__dirname, "..", "src", "renderer.js");
 const PRELOAD = path.join(__dirname, "..", "src", "preload.js");
 
+function readNormalized(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+}
+
 describe("renderer low-power idle mode", () => {
   it("waits for an animation boundary before pausing the current SVG", () => {
-    const source = fs.readFileSync(RENDERER, "utf8");
+    const source = readNormalized(RENDERER);
 
     assert.ok(source.includes("function getLowPowerAnimationBoundaryDelayMs(root)"));
     assert.ok(source.includes("root.getAnimations({ subtree: true })"));
@@ -27,14 +31,14 @@ describe("renderer low-power idle mode", () => {
 
 describe("renderer object-channel selection", () => {
   it("allows built-in trusted scripted SVG files to use <object>", () => {
-    const source = fs.readFileSync(RENDERER, "utf8");
+    const source = readNormalized(RENDERER);
 
     assert.ok(source.includes("_trustedScriptedSvgFiles = new Set"));
     assert.ok(source.includes("return needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);"));
   });
 
   it("keeps eye-tracking attachment state-based only", () => {
-    const source = fs.readFileSync(RENDERER, "utf8");
+    const source = readNormalized(RENDERER);
 
     assert.ok(source.includes("function needsEyeTracking(state)"));
     assert.ok(source.includes("if (state && needsEyeTracking(state)) {\n        attachEyeTracking(next);"));

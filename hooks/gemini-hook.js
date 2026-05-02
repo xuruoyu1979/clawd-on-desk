@@ -26,12 +26,13 @@ const resolve = createPidResolver({
 // Gemini CLI gating hooks need stdout JSON response
 function stdoutForEvent(hookName) {
   if (hookName === "BeforeTool") return JSON.stringify({ decision: "allow" });
+  if (hookName === "AfterTool") return JSON.stringify({ decision: "allow" });
   if (hookName === "BeforeAgent") return JSON.stringify({});
   return "{}";
 }
 
 readStdinJson().then((payload) => {
-  const hookName = (payload && payload.hook_event_name) || "";
+  const hookName = (payload && payload.hook_event_name) || process.argv[2] || "";
   const mapped = HOOK_MAP[hookName];
 
   if (!mapped) {

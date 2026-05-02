@@ -18,6 +18,7 @@ const INFO_ONLY_STATUSES = new Set([
   "not-installed",
 ]);
 const REPAIRABLE_AGENT_STATUSES = new Set(["not-connected", "broken-path"]);
+const GEMINI_HOOKS_DISABLED_DETAIL = "Gemini hooks are disabled in settings.json; Clawd preserves this user setting and will not receive hook events";
 
 function dirExists(fsImpl, dirPath) {
   try {
@@ -52,6 +53,14 @@ function withAgentBubbleNote(detail, prefs, agentId) {
 
 function withAgentFixAction(detail, descriptor) {
   if (!descriptor.autoInstall || !REPAIRABLE_AGENT_STATUSES.has(detail.status)) return detail;
+  if (
+    descriptor.agentId === "gemini-cli"
+    && detail.supplementary
+    && detail.supplementary.key === "gemini_hooks"
+    && detail.supplementary.value !== "enabled"
+  ) {
+    return detail;
+  }
   const fixAction = { type: "agent-integration", agentId: descriptor.agentId };
   if (
     descriptor.agentId === "codex"
@@ -145,6 +154,67 @@ function applyCodexSupplementary(detail, descriptor, options) {
   };
 }
 
+function getGeminiHooksSupplementary(settings, descriptor) {
+  const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
+  if (!hooksConfig || typeof hooksConfig !== "object") {
+    return {
+      key: "gemini_hooks",
+      value: "enabled",
+      detail: "hooksConfig allows Clawd Gemini hooks",
+    };
+  }
+
+  if (hooksConfig.enabled === false) {
+    return {
+      key: "gemini_hooks",
+      value: "disabled-global",
+      detail: "hooksConfig.enabled is false",
+    };
+  }
+
+  const disabled = Array.isArray(hooksConfig.disabled) ? hooksConfig.disabled : [];
+  if (disabled.includes("clawd")) {
+    return {
+      key: "gemini_hooks",
+      value: "disabled-clawd",
+      detail: 'hooksConfig.disabled includes "clawd"',
+    };
+  }
+  if (disabled.some((entry) => typeof entry === "string" && entry.includes(descriptor.marker))) {
+    return {
+      key: "gemini_hooks",
+      value: "disabled-clawd",
+      detail: "hooksConfig.disabled includes a Clawd Gemini hook entry",
+    };
+  }
+
+  return {
+    key: "gemini_hooks",
+    value: "enabled",
+    detail: "hooksConfig allows Clawd Gemini hooks",
+  };
+}
+
+function applyGeminiSupplementary(detail, descriptor, settings) {
+  if (descriptor.agentId !== "gemini-cli") return detail;
+  if (detail.status !== "ok") return detail;
+
+  const supplementary = getGeminiHooksSupplementary(settings, descriptor);
+  if (supplementary.value !== "enabled") {
+    return {
+      ...detail,
+      status: "not-connected",
+      level: "warning",
+      detail: GEMINI_HOOKS_DISABLED_DETAIL,
+      supplementary,
+    };
+  }
+  return {
+    ...detail,
+    supplementary,
+  };
+}
+
 function checkFileMode(descriptor, options) {
   if (!fileExists(options.fs, descriptor.configPath)) {
     return makeDetail(descriptor, descriptor.autoInstall ? "not-connected" : "manual-only", {
@@ -184,7 +254,8 @@ function checkFileMode(descriptor, options) {
     configFileExists: true,
     configPath: descriptor.configPath,
   };
-  return applyCodexSupplementary(detail, descriptor, options);
+  detail = applyCodexSupplementary(detail, descriptor, options);
+  return applyGeminiSupplementary(detail, descriptor, settings);
 }
 
 function checkTomlTextMode(descriptor, options) {

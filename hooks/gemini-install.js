@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { resolveNodeBin } = require("./server-config");
-const { writeJsonAtomic, asarUnpackedPath, extractExistingNodeBin } = require("./json-utils");
+const { writeJsonAtomic, asarUnpackedPath, extractExistingNodeBin, formatNodeHookCommand } = require("./json-utils");
 const MARKER = "gemini-hook.js";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".gemini");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
@@ -20,6 +20,58 @@ const GEMINI_HOOK_EVENTS = [
   "Notification",
   "PreCompress",
 ];
+
+function isClawdHookCommand(command) {
+  return typeof command === "string" && command.includes(MARKER);
+}
+
+function buildGeminiHookEntry(command) {
+  return {
+    matcher: "*",
+    hooks: [{ name: "clawd", type: "command", command }],
+  };
+}
+
+function buildGeminiHookCommand(nodeBin, hookScript, event, options = {}) {
+  return `${formatNodeHookCommand(nodeBin, hookScript, options)} ${event}`;
+}
+
+function normalizeGeminiHookEntry(entry, desiredCommand) {
+  if (!entry || typeof entry !== "object") return { matched: false, changed: false };
+
+  if (isClawdHookCommand(entry.command)) {
+    const desired = buildGeminiHookEntry(desiredCommand);
+    const changed = JSON.stringify(entry) !== JSON.stringify(desired);
+    if (changed) {
+      for (const key of Object.keys(entry)) delete entry[key];
+      Object.assign(entry, desired);
+    }
+    return { matched: true, changed };
+  }
+
+  if (!Array.isArray(entry.hooks)) return { matched: false, changed: false };
+  const hook = entry.hooks.find((candidate) => candidate && isClawdHookCommand(candidate.command));
+  if (!hook) return { matched: false, changed: false };
+
+  let changed = false;
+  if (entry.matcher !== "*") {
+    entry.matcher = "*";
+    changed = true;
+  }
+  if (hook.name !== "clawd") {
+    hook.name = "clawd";
+    changed = true;
+  }
+  if (hook.type !== "command") {
+    hook.type = "command";
+    changed = true;
+  }
+  if (hook.command !== desiredCommand) {
+    hook.command = desiredCommand;
+    changed = true;
+  }
+  return { matched: true, changed };
+}
 
 /**
  * Register Clawd hooks into ~/.gemini/settings.json
@@ -52,9 +104,8 @@ function registerGeminiHooks(options = {}) {
   // Resolve node path; if detection fails, preserve existing absolute path
   const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
   const nodeBin = resolved
-    || extractExistingNodeBin(settings, MARKER)
+    || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
-  const desiredCommand = `"${nodeBin}" "${hookScript}"`;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
 
@@ -64,6 +115,7 @@ function registerGeminiHooks(options = {}) {
   let changed = false;
 
   for (const event of GEMINI_HOOK_EVENTS) {
+    const desiredCommand = buildGeminiHookCommand(nodeBin, hookScript, event);
     if (!Array.isArray(settings.hooks[event])) {
       settings.hooks[event] = [];
       changed = true;
@@ -71,30 +123,28 @@ function registerGeminiHooks(options = {}) {
 
     const arr = settings.hooks[event];
     let found = false;
-    let stalePath = false;
+    let entryChanged = false;
     for (const entry of arr) {
-      if (!entry || typeof entry !== "object") continue;
-      const cmd = entry.command || "";
-      if (!cmd.includes(MARKER)) continue;
+      const result = normalizeGeminiHookEntry(entry, desiredCommand);
+      if (!result.matched) continue;
       found = true;
-      if (cmd !== desiredCommand) {
-        entry.command = desiredCommand;
-        stalePath = true;
+      if (result.changed) {
+        entryChanged = true;
+        changed = true;
       }
       break;
     }
 
     if (found) {
-      if (stalePath) {
+      if (entryChanged) {
         updated++;
-        changed = true;
       } else {
         skipped++;
       }
       continue;
     }
 
-    arr.push({ type: "command", command: desiredCommand, name: "clawd" });
+    arr.push(buildGeminiHookEntry(desiredCommand));
     added++;
     changed = true;
   }
@@ -116,6 +166,7 @@ module.exports = {
   DEFAULT_CONFIG_PATH,
   registerGeminiHooks,
   GEMINI_HOOK_EVENTS,
+  __test: { buildGeminiHookCommand },
 };
 
 if (require.main === module) {

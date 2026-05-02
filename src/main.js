@@ -349,7 +349,6 @@ const {
 } = require("./codex-monitor-callback");
 const _codexSubagentClassifier = new CodexSubagentClassifier();
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
-let _geminiMonitor = null;         // Gemini CLI session JSON polling instance
 const CODEX_OFFICIAL_LOG_SUPPRESS_TTL_MS = 10 * 60 * 1000;
 const CODEX_LOG_EVENTS_COVERED_BY_OFFICIAL_HOOKS = new Set([
   "session_meta",
@@ -400,11 +399,9 @@ function updateSessionFromServer(sessionId, state, event, opts = {}) {
 // HTTP route layer. Only log-poll agents hit these branches.
 function startMonitorForAgent(agentId) {
   if (agentId === "codex" && _codexMonitor) _codexMonitor.start();
-  else if (agentId === "gemini-cli" && _geminiMonitor) _geminiMonitor.start();
 }
 function stopMonitorForAgent(agentId) {
   if (agentId === "codex" && _codexMonitor) _codexMonitor.stop();
-  else if (agentId === "gemini-cli" && _geminiMonitor) _geminiMonitor.stop();
 }
 
 // ── Theme loader ──
@@ -4222,22 +4219,6 @@ if (!gotTheLock) {
       console.warn("Clawd: Codex log monitor not started:", err.message);
     }
 
-    try {
-      const GeminiLogMonitor = require("../agents/gemini-log-monitor");
-      const geminiAgent = require("../agents/gemini-cli");
-      _geminiMonitor = new GeminiLogMonitor(geminiAgent, (sid, state, event, extra) => {
-        updateSession(sid, state, event, {
-          cwd: extra.cwd,
-          agentId: "gemini-cli",
-        });
-      });
-      if (_isAgentEnabled(_settingsController.getSnapshot(), "gemini-cli")) {
-        _geminiMonitor.start();
-      }
-    } catch (err) {
-      console.warn("Clawd: Gemini log monitor not started:", err.message);
-    }
-
     // Auto-install VS Code/Cursor terminal-focus extension
     try { installTerminalFocusExtension(); } catch (err) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
@@ -4260,7 +4241,6 @@ if (!gotTheLock) {
     _mini.cleanup();
     _sessionHud.cleanup();
     if (_codexMonitor) _codexMonitor.stop();
-    if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();
     if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();
