@@ -2000,6 +2000,8 @@ async function _runAnimationPreviewPosterJob(job) {
     if (job.generationId !== animationOverridePreviewPosterGenerationId) return;
     if (!_getLiveSettingsWebContents()) return;
 
+    // Current in-memory scheduling usually prevents this from hitting, but it
+    // keeps queued jobs cheap if a later cache layer fills the key first.
     const cached = _readAnimationPreviewPosterCache(job.previewPosterCacheKey);
     if (cached) {
       _sendAnimationPreviewPosterReady(job, cached);
@@ -2011,7 +2013,12 @@ async function _runAnimationPreviewPosterJob(job) {
     _rememberAnimationPreviewPosterCache(job.previewPosterCacheKey, previewImageUrl);
     _sendAnimationPreviewPosterReady(job, previewImageUrl);
   } catch (err) {
-    console.warn("Clawd: failed to capture animation preview poster:", err && err.message);
+    const message = err && err.message;
+    if (err && err.code === "ANIMATION_PREVIEW_POSTER_TIMEOUT") {
+      console.warn("Clawd: animation preview poster capture timed out:", message);
+    } else {
+      console.warn("Clawd: failed to capture animation preview poster:", message);
+    }
   } finally {
     if (job && job.previewPosterCacheKey) {
       animationOverridePreviewPosterPendingKeys.delete(job.previewPosterCacheKey);

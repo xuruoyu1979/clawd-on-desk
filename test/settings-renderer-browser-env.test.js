@@ -762,6 +762,47 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl, "data:image/png;base64,pushed");
   });
 
+  it("patches pending animation override data when a poster push arrives after fetch", async () => {
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling" },
+        assets: [{
+          name: "cloudling-thinking.svg",
+          previewImageUrl: null,
+          previewPosterCacheKey: "K1",
+          previewPosterPending: true,
+        }],
+        sections: [{
+          cards: [{
+            currentFile: "cloudling-thinking.svg",
+            currentFilePreviewUrl: null,
+            currentFilePreviewPosterCacheKey: "K1",
+            previewPosterPending: true,
+          }],
+        }],
+        cards: [{
+          currentFile: "cloudling-thinking.svg",
+          currentFilePreviewUrl: null,
+          currentFilePreviewPosterCacheKey: "K1",
+          previewPosterPending: true,
+        }],
+      }),
+    });
+
+    await core.ops.fetchAnimationOverridesData();
+    core.ops.applyAnimationPreviewPoster({
+      themeId: "cloudling",
+      filename: "cloudling-thinking.svg",
+      previewImageUrl: "data:image/png;base64,late-push",
+      previewPosterCacheKey: "K1",
+    });
+
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].previewImageUrl, "data:image/png;base64,late-push");
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].previewPosterPending, false);
+    assert.strictEqual(core.runtime.animationOverridesData.sections[0].cards[0].currentFilePreviewUrl, "data:image/png;base64,late-push");
+    assert.strictEqual(core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl, "data:image/png;base64,late-push");
+  });
+
   it("does not let a stale rejected animation overrides fetch clear newer data", async () => {
     const oldFetch = createDeferred();
     const newFetch = createDeferred();
