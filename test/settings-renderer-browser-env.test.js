@@ -521,6 +521,34 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("claudeHooksDisconnectConfirmKeep"));
   });
 
+  it("clears successful switch transient state so rerenders do not keep wait cursors", () => {
+    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
+    assert.ok(
+      /clearTransientState\(seq\);\s*setSwitchVisual\(sw,\s*nextVisual,\s*\{\s*pending:\s*false\s*\}\);/.test(coreSource),
+      "successful switch actions must delete transient pending state before any later rerender"
+    );
+    assert.ok(
+      !coreSource.includes("setTransientState({ visualOn: nextVisual, pending: false, seq });"),
+      "leaving a non-pending transient row lets rerendered controls inherit stale pending state"
+    );
+  });
+
+  it("clears settings-broadcast transient state before patching or rerendering", () => {
+    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
+    assert.ok(coreSource.includes("function clearTransientStateForChanges(changes)"));
+    assert.ok(coreSource.includes("state.transientUiState.generalSwitches.delete(key);"));
+    assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "agents")'));
+    assert.ok(coreSource.includes("state.transientUiState.agentSwitches.clear();"));
+    const clearIndex = coreSource.indexOf("clearTransientStateForChanges(changes);");
+    const patchIndex = coreSource.indexOf("activeTab.patchInPlace(changes)");
+    const renderIndex = coreSource.indexOf("requestRender({ sidebar: true, content: true });", patchIndex);
+    assert.notStrictEqual(clearIndex, -1);
+    assert.notStrictEqual(patchIndex, -1);
+    assert.notStrictEqual(renderIndex, -1);
+    assert.ok(clearIndex < patchIndex, "broadcast cleanup must happen before in-place patching");
+    assert.ok(clearIndex < renderIndex, "broadcast cleanup must happen before full rerender");
+  });
+
   it("uses a roomier grid layout for Settings confirmation buttons", () => {
     const html = fs.readFileSync(SETTINGS_HTML, "utf8");
     assert.ok(/\.settings-confirm-modal\s*\{[\s\S]*width:\s*min\(480px,\s*100%\);/.test(html));

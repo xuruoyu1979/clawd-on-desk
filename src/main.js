@@ -111,9 +111,9 @@ function _uninstallAutoStartHook() {
   const { unregisterAutoStart } = require("../hooks/install.js");
   unregisterAutoStart();
 }
-function _uninstallClaudeHooksNow() {
-  const { unregisterHooks } = require("../hooks/install.js");
-  unregisterHooks();
+async function _uninstallClaudeHooksNow() {
+  const { unregisterHooksAsync } = require("../hooks/install.js");
+  await unregisterHooksAsync();
 }
 
 // Cross-platform "open at login" writer used by both the openAtLogin effect
@@ -223,7 +223,10 @@ const _settingsController = createSettingsController({
   injectedDeps: {
     installAutoStart: _installAutoStartHook,
     uninstallAutoStart: _uninstallAutoStartHook,
-    syncClaudeHooksNow: () => _server.syncClawdHooks(),
+    syncClaudeHooksNow: () => {
+      const { registerHooksAsync } = require("../hooks/install.js");
+      return registerHooksAsync({ silent: true, autoStart: autoStartWithClaude, port: getHookServerPort() });
+    },
     uninstallClaudeHooksNow: _uninstallClaudeHooksNow,
     startClaudeSettingsWatcher: () => _server.startClaudeSettingsWatcher(),
     stopClaudeSettingsWatcher: () => _server.stopClaudeSettingsWatcher(),

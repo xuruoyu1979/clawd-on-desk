@@ -156,6 +156,57 @@ describe("server-config helpers", () => {
     assert.strictEqual(result, null);
   });
 
+  it("resolveNodeBinAsync finds node from well-known paths without sync probes", async () => {
+    const result = await serverConfig.resolveNodeBinAsync({
+      platform: "darwin",
+      isElectron: true,
+      homeDir: "/Users/tester",
+      async access(candidate) {
+        if (candidate === "/opt/homebrew/bin/node") return;
+        throw new Error("ENOENT");
+      },
+      async execFile() {
+        throw new Error("shell probing should not run after a well-known path succeeds");
+      },
+      accessSync() {
+        throw new Error("sync access should not run");
+      },
+      execFileSync() {
+        throw new Error("sync exec should not run");
+      },
+    });
+
+    assert.strictEqual(result, "/opt/homebrew/bin/node");
+  });
+
+  it("resolveNodeBinAsync falls back to async login shell output", async () => {
+    const result = await serverConfig.resolveNodeBinAsync({
+      platform: "darwin",
+      isElectron: true,
+      homeDir: "/Users/tester",
+      async access() {
+        throw new Error("ENOENT");
+      },
+      async execFile(shell, args) {
+        assert.deepStrictEqual(args, ["-lic", "which node"]);
+        if (shell === "/bin/zsh") {
+          return {
+            stdout: "[oh-my-zsh]\n/Users/tester/.nvm/versions/node/v22.0.0/bin/node\n",
+          };
+        }
+        throw new Error("not found");
+      },
+      accessSync() {
+        throw new Error("sync access should not run");
+      },
+      execFileSync() {
+        throw new Error("sync exec should not run");
+      },
+    });
+
+    assert.strictEqual(result, "/Users/tester/.nvm/versions/node/v22.0.0/bin/node");
+  });
+
   it("postStateToRunningServer probes fallback ports before posting", async () => {
     const probes = [];
     const posts = [];

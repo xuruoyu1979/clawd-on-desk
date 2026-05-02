@@ -279,23 +279,33 @@ describe("object-form effects (autoStartWithClaude / manageClaudeHooksAutomatica
     assert.strictEqual(uninstallCalls, 0);
   });
 
-  it("manageClaudeHooksAutomatically effect syncs hooks and starts watcher on true", () => {
+  it("manageClaudeHooksAutomatically effect waits for async sync before starting watcher on true", async () => {
     let syncCalls = 0;
     let startCalls = 0;
     let stopCalls = 0;
+    const calls = [];
     const deps = {
-      syncClaudeHooksNow: () => syncCalls++,
-      startClaudeSettingsWatcher: () => startCalls++,
+      syncClaudeHooksNow: async () => {
+        syncCalls++;
+        calls.push("sync:start");
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        calls.push("sync:end");
+      },
+      startClaudeSettingsWatcher: () => {
+        startCalls++;
+        calls.push("watcher:start");
+      },
       stopClaudeSettingsWatcher: () => stopCalls++,
     };
-    const r = updateRegistry.manageClaudeHooksAutomatically.effect(true, deps);
+    const r = await updateRegistry.manageClaudeHooksAutomatically.effect(true, deps);
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(syncCalls, 1);
     assert.strictEqual(startCalls, 1);
     assert.strictEqual(stopCalls, 0);
+    assert.deepStrictEqual(calls, ["sync:start", "sync:end", "watcher:start"]);
   });
 
-  it("manageClaudeHooksAutomatically effect skips side effects on true when Claude Code is disabled", () => {
+  it("manageClaudeHooksAutomatically effect skips side effects on true when Claude Code is disabled", async () => {
     let syncCalls = 0;
     let startCalls = 0;
     let stopCalls = 0;
@@ -307,14 +317,14 @@ describe("object-form effects (autoStartWithClaude / manageClaudeHooksAutomatica
       startClaudeSettingsWatcher: () => startCalls++,
       stopClaudeSettingsWatcher: () => stopCalls++,
     };
-    const r = updateRegistry.manageClaudeHooksAutomatically.effect(true, deps);
+    const r = await updateRegistry.manageClaudeHooksAutomatically.effect(true, deps);
     assert.deepStrictEqual(r, { status: "ok" });
     assert.strictEqual(syncCalls, 0);
     assert.strictEqual(startCalls, 0);
     assert.strictEqual(stopCalls, 0);
   });
 
-  it("manageClaudeHooksAutomatically effect stops watcher on false", () => {
+  it("manageClaudeHooksAutomatically effect stops watcher on false", async () => {
     let syncCalls = 0;
     let startCalls = 0;
     let stopCalls = 0;
@@ -323,7 +333,7 @@ describe("object-form effects (autoStartWithClaude / manageClaudeHooksAutomatica
       startClaudeSettingsWatcher: () => startCalls++,
       stopClaudeSettingsWatcher: () => stopCalls++,
     };
-    const r = updateRegistry.manageClaudeHooksAutomatically.effect(false, deps);
+    const r = await updateRegistry.manageClaudeHooksAutomatically.effect(false, deps);
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(syncCalls, 0);
     assert.strictEqual(startCalls, 0);
@@ -334,6 +344,22 @@ describe("object-form effects (autoStartWithClaude / manageClaudeHooksAutomatica
     const r = updateRegistry.manageClaudeHooksAutomatically.effect(true, {});
     assert.strictEqual(r.status, "error");
     assert.match(r.message, /syncClaudeHooksNow/);
+  });
+
+  it("manageClaudeHooksAutomatically effect returns error and does not start watcher when async sync fails", async () => {
+    let startCalls = 0;
+    const deps = {
+      syncClaudeHooksNow: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        throw new Error("spawn failed");
+      },
+      startClaudeSettingsWatcher: () => { startCalls++; },
+      stopClaudeSettingsWatcher: () => {},
+    };
+    const r = await updateRegistry.manageClaudeHooksAutomatically.effect(true, deps);
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /spawn failed/);
+    assert.strictEqual(startCalls, 0);
   });
 
   it("openAtLogin effect calls setOpenAtLogin with the value", () => {
@@ -440,7 +466,10 @@ describe("hook commands", () => {
     let syncCalls = 0;
     const r = await commandRegistry.installHooks(null, {
       snapshot: prefs.getDefaults(),
-      syncClaudeHooksNow: () => syncCalls++,
+      syncClaudeHooksNow: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        syncCalls++;
+      },
     });
     assert.strictEqual(r.status, "ok");
     assert.strictEqual(syncCalls, 1);
@@ -452,7 +481,10 @@ describe("hook commands", () => {
     const r = await commandRegistry.uninstallHooks(null, {
       snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: true, autoStartWithClaude: true },
       stopClaudeSettingsWatcher: () => calls.push("stop"),
-      uninstallClaudeHooksNow: () => calls.push("uninstall"),
+      uninstallClaudeHooksNow: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        calls.push("uninstall");
+      },
       startClaudeSettingsWatcher: () => calls.push("start"),
     });
     assert.strictEqual(r.status, "ok");
@@ -466,8 +498,9 @@ describe("hook commands", () => {
     const r = await commandRegistry.uninstallHooks(null, {
       snapshot: { ...prefs.getDefaults(), manageClaudeHooksAutomatically: true },
       stopClaudeSettingsWatcher: () => calls.push("stop"),
-      uninstallClaudeHooksNow: () => {
+      uninstallClaudeHooksNow: async () => {
         calls.push("uninstall");
+        await new Promise((resolve) => setTimeout(resolve, 1));
         throw new Error("disk locked");
       },
       startClaudeSettingsWatcher: () => calls.push("start"),

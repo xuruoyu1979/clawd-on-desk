@@ -409,6 +409,62 @@ function resolveNodeBin(options = {}) {
   return null;
 }
 
+async function resolveNodeBinAsync(options = {}) {
+  const platform = options.platform || process.platform;
+
+  if (platform === "win32") return "node";
+
+  const isElectron = options.isElectron !== undefined
+    ? options.isElectron
+    : !!process.versions.electron;
+
+  if (!isElectron) {
+    return options.execPath || process.execPath;
+  }
+
+  const homeDir = options.homeDir || os.homedir();
+  const access = options.access || fs.promises.access.bind(fs.promises);
+  const candidates = [
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    path.join(homeDir, ".volta", "bin", "node"),
+    path.join(homeDir, ".local", "bin", "node"),
+    "/usr/bin/node",
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {}
+  }
+
+  const execFile = options.execFile || ((command, args, execOptions) => new Promise((resolve, reject) => {
+    require("child_process").execFile(command, args, execOptions, (err, stdout, stderr) => {
+      if (err) reject(err);
+      else resolve({ stdout, stderr });
+    });
+  }));
+  const shells = ["/bin/zsh", "/bin/bash"];
+  for (const shell of shells) {
+    try {
+      const out = await execFile(shell, ["-lic", "which node"], {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+      });
+      const raw = typeof out === "string" ? out : out && typeof out.stdout === "string" ? out.stdout : "";
+      const lines = raw.split("\n");
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (line.startsWith("/")) return line;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 module.exports = {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
@@ -428,6 +484,7 @@ module.exports = {
   readHostPrefix,
   readRuntimePort,
   resolveNodeBin,
+  resolveNodeBinAsync,
   splitPortCandidates,
   postStateToPort,
   writeRuntimeConfig,

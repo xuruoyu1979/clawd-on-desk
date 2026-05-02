@@ -1,6 +1,9 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { extractExistingNodeBin, formatNodeHookCommand } = require("../hooks/json-utils");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { extractExistingNodeBin, formatNodeHookCommand, writeJsonAtomicAsync } = require("../hooks/json-utils");
 
 describe("extractExistingNodeBin", () => {
   it("extracts node path from flat command format", () => {
@@ -136,5 +139,21 @@ describe("formatNodeHookCommand", () => {
       }),
       'cmd /d /s /c ""C:\\Program Files\\nodejs\\node.exe" "D:/app/hooks/codex-debug-hook.js""'
     );
+  });
+});
+
+describe("writeJsonAtomicAsync", () => {
+  it("writes pretty JSON atomically and cleans up tmp files", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-json-utils-"));
+    const filePath = path.join(tmpDir, "settings.json");
+    try {
+      await writeJsonAtomicAsync(filePath, { hooks: { Stop: [] } });
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      assert.deepStrictEqual(parsed, { hooks: { Stop: [] } });
+      const leftovers = fs.readdirSync(tmpDir).filter((name) => name.includes(".tmp"));
+      assert.deepStrictEqual(leftovers, []);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

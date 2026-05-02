@@ -3,14 +3,19 @@ const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { registerHooks, unregisterHooks, __test } = require("../hooks/install");
+const { registerHooks, unregisterHooks, registerHooksAsync, unregisterHooksAsync, __test } = require("../hooks/install");
 const {
   parseClaudeVersion,
   getWindowsClaudePathSuffixes,
   getClaudePathCandidates,
+  getClaudePathCandidatesAsync,
   getClaudePackageJsonCandidates,
+  getClaudePackageJsonCandidatesAsync,
   getClaudeVersionFromPackageJson,
+  getClaudeVersionFromPackageJsonAsync,
   readClaudeVersionFallback,
+  readClaudeVersionFallbackAsync,
+  getClaudeVersionAsync,
 } = __test;
 
 const tempDirs = [];
@@ -82,6 +87,60 @@ describe("Claude version detection helpers", () => {
     assert.strictEqual(parseClaudeVersion(null), null);
   });
 
+  it("reuses the in-flight async Claude version probe", async () => {
+    let execCalls = 0;
+    const execFile = async () => {
+      execCalls++;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { stdout: "Claude Code 2.1.109\n" };
+    };
+
+    const [a, b] = await Promise.all([
+      getClaudeVersionAsync({
+        platform: "linux",
+        pathEnv: "",
+        candidates: ["/usr/bin/claude"],
+        execFile,
+        resetCache: true,
+      }),
+      getClaudeVersionAsync({
+        platform: "linux",
+        pathEnv: "",
+        candidates: ["/usr/bin/claude"],
+        execFile,
+      }),
+    ]);
+
+    assert.deepStrictEqual(a, b);
+    assert.strictEqual(execCalls, 1);
+  });
+
+  it("reuses a cached async Claude version result after success", async () => {
+    let execCalls = 0;
+    const execFile = async () => {
+      execCalls++;
+      return { stdout: "Claude Code 2.1.109\n" };
+    };
+
+    const first = await getClaudeVersionAsync({
+      platform: "linux",
+      pathEnv: "",
+      candidates: ["/usr/bin/claude"],
+      execFile,
+      resetCache: true,
+    });
+    const second = await getClaudeVersionAsync({
+      platform: "linux",
+      pathEnv: "",
+      candidates: ["/usr/bin/claude"],
+      execFile,
+    });
+
+    assert.strictEqual(first.version, "2.1.109");
+    assert.deepStrictEqual(second, first);
+    assert.strictEqual(execCalls, 1);
+  });
+
   it("normalizes Windows PATHEXT suffixes with stable order", () => {
     assert.deepStrictEqual(
       getWindowsClaudePathSuffixes(".EXE;.Cmd;;BAT;.ps1"),
@@ -104,6 +163,32 @@ describe("Claude version detection helpers", () => {
       pathExt: ".CMD;.Ps1",
       existsSync(candidatePath) {
         return existing.has(candidatePath.toLowerCase());
+      },
+    });
+
+    assert.deepStrictEqual(candidates, [
+      path.join(npmDir, "claude.cmd"),
+      path.join(toolsDir, "claude.ps1"),
+    ]);
+  });
+
+  it("finds existing Windows Claude shims asynchronously from PATH", async () => {
+    const npmDir = "C:\\Users\\Tester\\AppData\\Roaming\\npm";
+    const npmDirUpper = "C:\\USERS\\Tester\\AppData\\Roaming\\NPM";
+    const toolsDir = "C:\\Tools";
+    const existing = new Set([
+      path.join(npmDir, "claude.cmd").toLowerCase(),
+      path.join(toolsDir, "claude.ps1").toLowerCase(),
+    ]);
+
+    const candidates = await getClaudePathCandidatesAsync({
+      platform: "win32",
+      pathEnv: `"${npmDir}";${npmDirUpper};${toolsDir}`,
+      pathExt: ".CMD;.Ps1",
+      async access(candidatePath) {
+        if (!existing.has(candidatePath.toLowerCase())) {
+          throw new Error(`missing: ${candidatePath}`);
+        }
       },
     });
 
@@ -148,6 +233,40 @@ describe("Claude version detection helpers", () => {
         return { size: 512, isFile: () => true };
       },
       readFileSync(targetPath) {
+        assert.strictEqual(targetPath, candidatePath);
+        return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
+      },
+    });
+
+    assert.deepStrictEqual(candidates, [
+      siblingPackageJson,
+      realpathPackageJson,
+    ]);
+  });
+
+  it("collects Claude package.json candidates asynchronously", async () => {
+    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const candidateDir = path.dirname(candidatePath);
+    const siblingPackageJson = path.join(candidateDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
+    const realpathCli = "D:\\shim-store\\claude\\cli.js";
+    const realpathPackageJson = path.join(path.dirname(realpathCli), "package.json");
+    const existing = new Set([siblingPackageJson.toLowerCase(), realpathPackageJson.toLowerCase()]);
+
+    const candidates = await getClaudePackageJsonCandidatesAsync(candidatePath, {
+      platform: "win32",
+      async access(packageJsonPath) {
+        if (!existing.has(packageJsonPath.toLowerCase())) {
+          throw new Error(`missing: ${packageJsonPath}`);
+        }
+      },
+      async realpath(targetPath) {
+        assert.strictEqual(targetPath, candidatePath);
+        return realpathCli;
+      },
+      async stat() {
+        return { size: 512, isFile: () => true };
+      },
+      async readFile(targetPath) {
         assert.strictEqual(targetPath, candidatePath);
         return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
       },
@@ -213,6 +332,33 @@ describe("Claude version detection helpers", () => {
     );
   });
 
+  it("reads Claude version from package.json asynchronously", async () => {
+    const packageJsonPath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\package.json";
+
+    assert.deepStrictEqual(
+      await getClaudeVersionFromPackageJsonAsync(packageJsonPath, {
+        async readFile(targetPath) {
+          assert.strictEqual(targetPath, packageJsonPath);
+          return JSON.stringify({ version: "2.1.109" });
+        },
+      }),
+      {
+        version: "2.1.109",
+        source: packageJsonPath,
+        status: "known",
+      }
+    );
+
+    assert.strictEqual(
+      await getClaudeVersionFromPackageJsonAsync(packageJsonPath, {
+        async readFile() {
+          return JSON.stringify({ version: "latest" });
+        },
+      }),
+      null
+    );
+  });
+
   it("returns the first valid fallback version info from candidate package.json files", () => {
     const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
     const candidateDir = path.dirname(candidatePath);
@@ -248,6 +394,126 @@ describe("Claude version detection helpers", () => {
     assert.deepStrictEqual(result, {
       version: "2.1.109",
       source: realpathPackageJson,
+      status: "known",
+    });
+  });
+
+  it("returns the first valid async fallback version info from candidate package.json files", async () => {
+    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const candidateDir = path.dirname(candidatePath);
+    const siblingPackageJson = path.join(candidateDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
+    const realpathCli = "D:\\shim-store\\claude\\cli.js";
+    const realpathPackageJson = path.join(path.dirname(realpathCli), "package.json");
+    const existing = new Set([siblingPackageJson.toLowerCase(), realpathPackageJson.toLowerCase()]);
+
+    const result = await readClaudeVersionFallbackAsync(candidatePath, {
+      platform: "win32",
+      async access(packageJsonPath) {
+        if (!existing.has(packageJsonPath.toLowerCase())) {
+          throw new Error(`missing: ${packageJsonPath}`);
+        }
+      },
+      async realpath() {
+        return realpathCli;
+      },
+      async stat() {
+        return { size: 256, isFile: () => true };
+      },
+      async readFile(targetPath) {
+        if (targetPath === candidatePath) {
+          return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
+        }
+        if (targetPath === siblingPackageJson) {
+          return JSON.stringify({ version: "latest" });
+        }
+        if (targetPath === realpathPackageJson) {
+          return JSON.stringify({ version: "2.1.109" });
+        }
+        throw new Error(`unexpected read: ${targetPath}`);
+      },
+    });
+
+    assert.deepStrictEqual(result, {
+      version: "2.1.109",
+      source: realpathPackageJson,
+      status: "known",
+    });
+  });
+
+  it("getClaudeVersionAsync uses async metadata fallback when exec probes fail", async () => {
+    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const packageJsonPath = path.join(path.dirname(candidatePath), "node_modules", "@anthropic-ai", "claude-code", "package.json");
+
+    const result = await getClaudeVersionAsync({
+      platform: "win32",
+      candidates: [candidatePath],
+      resetCache: true,
+      async execFile() {
+        throw new Error("spawn failed");
+      },
+      async access(targetPath) {
+        if (targetPath !== packageJsonPath) throw new Error(`missing: ${targetPath}`);
+      },
+      async realpath() {
+        throw new Error("no realpath");
+      },
+      async stat() {
+        return { size: 0, isFile: () => true };
+      },
+      async readFile(targetPath) {
+        if (targetPath === packageJsonPath) return JSON.stringify({ version: "2.1.109" });
+        return "";
+      },
+    });
+
+    assert.deepStrictEqual(result, {
+      version: "2.1.109",
+      source: packageJsonPath,
+      status: "known",
+    });
+  });
+
+  it("getClaudeVersionAsync does not call sync filesystem probes", async () => {
+    const npmDir = "C:\\Users\\Tester\\AppData\\Roaming\\npm";
+    const candidatePath = path.join(npmDir, "claude.cmd");
+    const packageJsonPath = path.join(npmDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
+
+    const throwSync = () => {
+      throw new Error("sync filesystem probe should not run");
+    };
+
+    const result = await getClaudeVersionAsync({
+      platform: "win32",
+      pathEnv: npmDir,
+      pathExt: ".CMD",
+      resetCache: true,
+      existsSync: throwSync,
+      statSync: throwSync,
+      readFileSync: throwSync,
+      realpathSync: throwSync,
+      async execFile() {
+        throw new Error("spawn failed");
+      },
+      async access(targetPath) {
+        if (targetPath !== candidatePath && targetPath !== packageJsonPath) {
+          throw new Error(`missing: ${targetPath}`);
+        }
+      },
+      async realpath() {
+        throw new Error("no realpath");
+      },
+      async stat() {
+        return { size: 0, isFile: () => true };
+      },
+      async readFile(targetPath) {
+        if (targetPath === packageJsonPath) return JSON.stringify({ version: "2.1.109" });
+        return "";
+      },
+    });
+
+    assert.deepStrictEqual(result, {
+      version: "2.1.109",
+      source: packageJsonPath,
       status: "known",
     });
   });
@@ -930,5 +1196,111 @@ describe("Hook installer unregisterHooks", () => {
     const settings = readSettings(settingsPath);
 
     assert.deepStrictEqual(settings.hooks, {});
+  });
+});
+
+describe("async hook installer parity", () => {
+  it("registerHooksAsync preserves an existing Node path before probing asynchronously", async () => {
+    const existingAbsPath = "/Users/tester/.nvm/versions/node/v20.11.0/bin/node";
+    const settingsPath = makeTempSettings({
+      hooks: {
+        Stop: [
+          {
+            matcher: "",
+            hooks: [{ type: "command", command: `"${existingAbsPath}" "/app/hooks/clawd-hook.js" Stop` }],
+          },
+        ],
+      },
+    });
+
+    await registerHooksAsync({
+      silent: true,
+      settingsPath,
+      platform: "darwin",
+      isElectron: true,
+      homeDir: "/Users/tester",
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+      async access() {
+        throw new Error("async node probing should not run when settings already has a node path");
+      },
+      async execFile() {
+        throw new Error("async shell probing should not run when settings already has a node path");
+      },
+      accessSync() {
+        throw new Error("sync node probing should not run");
+      },
+      execFileSync() {
+        throw new Error("sync shell probing should not run");
+      },
+    });
+
+    const commands = getClawdCommands(readSettings(settingsPath), "Stop");
+    assert.ok(commands.some((command) => command.includes(existingAbsPath)), commands.join("\n"));
+  });
+
+  it("registerHooksAsync resolves Node with async probes without calling sync probes", async () => {
+    const settingsPath = makeTempSettings({});
+    const nodeBin = "/opt/homebrew/bin/node";
+
+    await registerHooksAsync({
+      silent: true,
+      settingsPath,
+      platform: "darwin",
+      isElectron: true,
+      homeDir: "/Users/tester",
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+      async access(candidate) {
+        if (candidate === nodeBin) return;
+        throw new Error("ENOENT");
+      },
+      async execFile() {
+        throw new Error("shell probing should not run after a well-known path succeeds");
+      },
+      accessSync() {
+        throw new Error("sync access should not run");
+      },
+      execFileSync() {
+        throw new Error("sync exec should not run");
+      },
+    });
+
+    const commands = getClawdCommands(readSettings(settingsPath), "Stop");
+    assert.ok(commands.some((command) => command.startsWith(`"${nodeBin}" "`)), commands.join("\n"));
+  });
+
+  it("registerHooksAsync writes the same hook set as registerHooks", async () => {
+    const syncSettingsPath = makeTempSettings({});
+    const asyncSettingsPath = makeTempSettings({});
+
+    const syncResult = registerHooks({
+      silent: true,
+      settingsPath: syncSettingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+    const asyncResult = await registerHooksAsync({
+      silent: true,
+      settingsPath: asyncSettingsPath,
+      claudeVersionInfo: { version: "2.1.78", source: "test", status: "known" },
+    });
+
+    assert.deepStrictEqual(readSettings(asyncSettingsPath), readSettings(syncSettingsPath));
+    assert.deepStrictEqual(asyncResult, syncResult);
+  });
+
+  it("unregisterHooksAsync removes the same entries as unregisterHooks", async () => {
+    const initial = {
+      hooks: {
+        Stop: [{ matcher: "", hooks: [{ type: "command", command: '"/usr/bin/node" "/tmp/clawd-hook.js"' }] }],
+        PermissionRequest: [{ matcher: "", hooks: [{ type: "http", url: "http://127.0.0.1:23333/permission" }] }],
+      },
+    };
+    const syncSettingsPath = makeTempSettings(initial);
+    const asyncSettingsPath = makeTempSettings(initial);
+
+    const syncResult = unregisterHooks({ settingsPath: syncSettingsPath });
+    const asyncResult = await unregisterHooksAsync({ settingsPath: asyncSettingsPath });
+
+    assert.deepStrictEqual(readSettings(asyncSettingsPath), readSettings(syncSettingsPath));
+    assert.deepStrictEqual(asyncResult, syncResult);
   });
 });

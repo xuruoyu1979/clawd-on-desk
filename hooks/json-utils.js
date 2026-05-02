@@ -31,6 +31,20 @@ function writeJsonAtomic(filePath, data) {
   }
 }
 
+async function writeJsonAtomicAsync(filePath, data) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
+  await fs.promises.mkdir(dir, { recursive: true });
+  try {
+    await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    await fs.promises.rename(tmpPath, filePath);
+  } catch (err) {
+    try { await fs.promises.unlink(tmpPath); } catch {}
+    throw err;
+  }
+}
+
 /**
  * Rewrite a path so it points at the asar.unpacked mirror instead of asar.
  * In packaged builds, __dirname resolves to the virtual app.asar/ tree, but
@@ -130,6 +144,7 @@ function findHookCommands(settings, marker, options) {
 
 module.exports = {
   writeJsonAtomic,
+  writeJsonAtomicAsync,
   asarUnpackedPath,
   extractExistingNodeBin,
   findHookCommands,
