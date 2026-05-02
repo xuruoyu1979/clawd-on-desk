@@ -29,7 +29,34 @@
       asset.name,
       asset.cycleMs == null ? "" : asset.cycleMs,
       asset.cycleStatus || "",
+      asset.previewImageUrl || "",
     ].join(":")).join("\n");
+  }
+
+  let previewUrlCounter = 0;
+
+  function buildAnimationPreviewUrl(fileUrl) {
+    if (!fileUrl) return null;
+    try {
+      const url = new URL(fileUrl);
+      if (url.protocol === "data:" || url.protocol === "blob:") return fileUrl;
+      previewUrlCounter += 1;
+      url.searchParams.set("_settingsPreview", String(previewUrlCounter));
+      return url.href;
+    } catch {
+      return fileUrl;
+    }
+  }
+
+  function appendAnimationPreviewMedia(parent, fileUrl) {
+    if (!parent || !fileUrl) return false;
+    const previewUrl = buildAnimationPreviewUrl(fileUrl);
+    const img = document.createElement("img");
+    img.src = previewUrl;
+    img.alt = "";
+    img.draggable = false;
+    parent.appendChild(img);
+    return true;
   }
 
   function captureAssetPickerScrollState() {
@@ -230,13 +257,7 @@
   function buildAnimPreviewNode(fileUrl) {
     const frame = document.createElement("div");
     frame.className = "anim-override-preview-frame";
-    if (fileUrl) {
-      const img = document.createElement("img");
-      img.src = fileUrl;
-      img.alt = "";
-      img.draggable = false;
-      frame.appendChild(img);
-    } else {
+    if (!appendAnimationPreviewMedia(frame, fileUrl)) {
       const glyph = document.createElement("span");
       glyph.className = "theme-thumb-empty";
       glyph.textContent = t("themeThumbMissing");
@@ -608,13 +629,7 @@
     const thumb = document.createElement("div");
     thumb.className = "anim-override-thumb";
     thumb.title = t("animOverridesPreview");
-    if (card.currentFileUrl) {
-      const img = document.createElement("img");
-      img.src = card.currentFileUrl;
-      img.alt = "";
-      img.draggable = false;
-      thumb.appendChild(img);
-    }
+    appendAnimationPreviewMedia(thumb, card.currentFilePreviewUrl || card.currentFileUrl);
     thumb.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -764,13 +779,7 @@
     const bigPreview = document.createElement("div");
     bigPreview.className = "anim-override-drawer-preview";
     bigPreview.title = t("animOverridesPreview");
-    if (card.currentFileUrl) {
-      const img = document.createElement("img");
-      img.src = card.currentFileUrl;
-      img.alt = "";
-      img.draggable = false;
-      bigPreview.appendChild(img);
-    }
+    appendAnimationPreviewMedia(bigPreview, card.currentFilePreviewUrl || card.currentFileUrl);
     bigPreview.addEventListener("click", () => triggerPreviewOnce(card));
     head.appendChild(bigPreview);
 
@@ -965,7 +974,7 @@
 
   function populateAssetPickerDetail(detail, selected) {
     detail.innerHTML = "";
-    detail.appendChild(buildAnimPreviewNode(selected && selected.fileUrl));
+    detail.appendChild(buildAnimPreviewNode(selected && (selected.previewImageUrl || selected.fileUrl)));
     const selectedLabel = document.createElement("div");
     selectedLabel.className = "anim-override-file";
     selectedLabel.textContent = `${t("animOverridesModalSelected")}: ${selected ? selected.name : "-"}`;

@@ -11,6 +11,7 @@ const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 const SETTINGS_UI_CORE = path.join(SRC_DIR, "settings-ui-core.js");
 const SETTINGS_I18N = path.join(SRC_DIR, "settings-i18n.js");
 const SETTINGS_DOCTOR_MODAL = path.join(SRC_DIR, "settings-doctor-modal.js");
+const SETTINGS_ANIMATION_PREVIEW = path.join(SRC_DIR, "settings-animation-preview.html");
 const PRELOAD_SETTINGS = path.join(SRC_DIR, "preload-settings.js");
 const MAIN_PROCESS = path.join(SRC_DIR, "main.js");
 const DOCTOR_IPC = path.join(SRC_DIR, "doctor-ipc.js");
@@ -384,6 +385,33 @@ describe("settings renderer browser environment", () => {
       overridesSource.includes("resetBtn.disabled = !slot.hasStoredOverride;"),
       "sound override row reset must stay enabled when prefs still contain a stale sound override entry"
     );
+  });
+
+  it("uses captured poster previews for trusted scripted animation override SVGs", () => {
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    const previewHtml = fs.readFileSync(SETTINGS_ANIMATION_PREVIEW, "utf8");
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
+    const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
+
+    assert.ok(html.includes("img-src 'self' data: file:"));
+    assert.ok(!html.includes("frame-src"));
+    assert.ok(previewHtml.includes("default-src 'self' file:"));
+    assert.ok(previewHtml.includes("object-src 'self' file:"));
+    assert.ok(previewHtml.includes("script-src 'unsafe-inline'"));
+    assert.ok(previewHtml.includes("window.renderAnimationPreviewPoster"));
+    assert.ok(previewHtml.includes("width: 285%;"));
+    assert.ok(mainSource.includes("ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION"));
+    assert.ok(!overridesSource.includes('document.createElement("iframe")'));
+    assert.ok(overridesSource.includes('if (url.protocol === "data:" || url.protocol === "blob:") return fileUrl;'));
+    assert.ok(overridesSource.includes("card.currentFilePreviewUrl || card.currentFileUrl"));
+    assert.ok(overridesSource.includes("selected.previewImageUrl || selected.fileUrl"));
+    assert.ok(mainSource.includes("function _needsScriptedAnimationPreviewPoster"));
+    assert.ok(mainSource.includes("function _captureAnimationPreviewPosterDataUrl"));
+    assert.ok(mainSource.includes("capturePage"));
+    assert.ok(mainSource.includes("theme._builtin"));
+    assert.ok(mainSource.includes("trustedRuntime.scriptedSvgFiles"));
+    assert.ok(mainSource.includes("currentFilePreviewUrl: preview.previewImageUrl"));
+    assert.ok(mainSource.includes("previewImageUrl: previewUrl"));
   });
 
   it("keeps localized shortcut labels from collapsing into vertical CJK text", () => {

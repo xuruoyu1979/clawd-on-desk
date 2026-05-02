@@ -1073,6 +1073,9 @@ html, body {
   .anim-override-thumb { background: rgba(255, 255, 255, 0.04); }
 }
 .anim-override-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -1203,6 +1206,9 @@ html, body {
   .anim-override-drawer-preview { background: rgba(255, 255, 255, 0.04); }
 }
 .anim-override-drawer-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -1680,6 +1686,7 @@ html, body {
   align-items: center;
   justify-content: center;
   width: 100%;
+  height: 180px;
   max-height: 220px;
   min-height: 120px;
   padding: 8px;
@@ -1690,9 +1697,13 @@ html, body {
   flex-shrink: 1;
 }
 .anim-override-preview-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  pointer-events: none;
 }
 .asset-picker-footer {
   display: flex;

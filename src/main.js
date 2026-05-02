@@ -1658,7 +1658,13 @@ _settingsController.subscribeKey("shortcuts", (_value, snapshot) => {
 });
 
 const ANIMATION_OVERRIDE_ASSET_EXTS = new Set([".svg", ".gif", ".apng", ".png", ".webp", ".jpg", ".jpeg"]);
+const ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE = { width: 176, height: 144 };
+const ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION = 2;
 let animationOverridePreviewTimer = null;
+let animationOverridePreviewPosterWindow = null;
+let animationOverridePreviewPosterReady = null;
+let animationOverridePreviewPosterQueue = Promise.resolve();
+const animationOverridePreviewPosterCache = new Map();
 // Tasks queued while activateTheme()'s reload is in progress. Anything that
 // needs to talk to the renderer after a fresh theme load (e.g. the preview
 // animation triggered right after a setAnimationOverride) lands here and fires
@@ -1777,6 +1783,135 @@ function _buildAnimationAssetUrl(filename) {
   return absPath ? _buildFileUrl(absPath) : null;
 }
 
+function _needsScriptedAnimationPreviewPoster(filename, theme = activeTheme) {
+  if (!filename || !theme || !theme._builtin || !theme.trustedRuntime) return false;
+  const scriptedFiles = Array.isArray(theme.trustedRuntime.scriptedSvgFiles)
+    ? theme.trustedRuntime.scriptedSvgFiles
+    : [];
+  const base = path.basename(filename);
+  return scriptedFiles.includes(base);
+}
+
+function _buildAnimationAssetPreview(filename, theme = activeTheme) {
+  const fileUrl = _buildAnimationAssetUrl(filename);
+  const needsPoster = _needsScriptedAnimationPreviewPoster(filename, theme);
+  return {
+    fileUrl,
+    previewImageUrl: fileUrl,
+    needsScriptedPreviewPoster: needsPoster,
+  };
+}
+
+function _animationPreviewDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function _getAnimationPreviewPosterCacheKey(filename) {
+  const absPath = _resolveAnimationAssetAbsPath(filename);
+  if (!absPath) return null;
+  try {
+    const stat = fs.statSync(absPath);
+    const themeId = activeTheme && activeTheme._id ? activeTheme._id : "theme";
+    return `${ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION}|${themeId}|${path.basename(filename)}|${stat.size}|${Math.round(stat.mtimeMs)}`;
+  } catch {
+    return null;
+  }
+}
+
+function _getAnimationPreviewPosterWindow() {
+  if (animationOverridePreviewPosterWindow && !animationOverridePreviewPosterWindow.isDestroyed()) {
+    return animationOverridePreviewPosterWindow;
+  }
+  animationOverridePreviewPosterReady = null;
+  animationOverridePreviewPosterWindow = new BrowserWindow({
+    width: ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE.width,
+    height: ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      offscreen: true,
+      backgroundThrottling: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  animationOverridePreviewPosterWindow.on("closed", () => {
+    animationOverridePreviewPosterWindow = null;
+    animationOverridePreviewPosterReady = null;
+  });
+  return animationOverridePreviewPosterWindow;
+}
+
+async function _ensureAnimationPreviewPosterPage() {
+  const posterWindow = _getAnimationPreviewPosterWindow();
+  if (!animationOverridePreviewPosterReady) {
+    animationOverridePreviewPosterReady = posterWindow.loadFile(path.join(__dirname, "settings-animation-preview.html"))
+      .catch((err) => {
+        animationOverridePreviewPosterReady = null;
+        throw err;
+      });
+  }
+  await animationOverridePreviewPosterReady;
+  return posterWindow;
+}
+
+async function _captureAnimationPreviewPosterDataUrl(filename) {
+  const absPath = _resolveAnimationAssetAbsPath(filename);
+  if (!absPath) return null;
+  const fileUrl = _buildFileUrl(absPath);
+  if (!fileUrl) return null;
+  const cacheKey = _getAnimationPreviewPosterCacheKey(filename);
+  if (cacheKey && animationOverridePreviewPosterCache.has(cacheKey)) {
+    return animationOverridePreviewPosterCache.get(cacheKey);
+  }
+
+  const capture = async () => {
+    const posterWindow = await _ensureAnimationPreviewPosterPage();
+    if (!posterWindow || posterWindow.isDestroyed()) return null;
+    const webContents = posterWindow.webContents;
+    if (!webContents || webContents.isDestroyed()) return null;
+    await webContents.executeJavaScript(`window.renderAnimationPreviewPoster(${JSON.stringify(fileUrl)})`, true);
+    await _animationPreviewDelay(20);
+    const image = await webContents.capturePage({
+      x: 0,
+      y: 0,
+      width: ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE.width,
+      height: ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE.height,
+    });
+    return image && typeof image.toDataURL === "function" ? image.toDataURL() : null;
+  };
+
+  const result = await (animationOverridePreviewPosterQueue = animationOverridePreviewPosterQueue
+    .then(capture, capture)
+    .catch((err) => {
+      console.warn("Clawd: failed to capture animation preview poster:", err && err.message);
+      return null;
+    }));
+  if (cacheKey && result) animationOverridePreviewPosterCache.set(cacheKey, result);
+  return result;
+}
+
+async function _hydrateAnimationPreviewPosters(data) {
+  if (!data || !Array.isArray(data.assets)) return data;
+  const previewByName = new Map();
+  for (const asset of data.assets) {
+    if (!asset || typeof asset.name !== "string") continue;
+    if (asset.needsScriptedPreviewPoster) {
+      const posterUrl = await _captureAnimationPreviewPosterDataUrl(asset.name);
+      if (posterUrl) asset.previewImageUrl = posterUrl;
+    }
+    previewByName.set(asset.name, asset.previewImageUrl || asset.fileUrl || null);
+  }
+  for (const card of data.cards || []) {
+    if (!card || typeof card.currentFile !== "string") continue;
+    card.currentFilePreviewUrl = previewByName.get(card.currentFile) || card.currentFileUrl || null;
+  }
+  return data;
+}
+
 function _buildAnimationAssetProbe(file) {
   const absPath = _resolveAnimationAssetAbsPath(file);
   if (!absPath) {
@@ -1844,9 +1979,12 @@ function _listAnimationOverrideAssets(theme = activeTheme) {
       const absPath = _resolveAnimationAssetAbsPath(entry.name) || path.join(dir, entry.name);
       const previewUrl = _buildFileUrl(absPath);
       const probe = animationCycle.probeAssetCycle(absPath);
+      const needsScriptedPreviewPoster = _needsScriptedAnimationPreviewPoster(entry.name, theme);
       assets.push({
         name: entry.name,
         fileUrl: previewUrl,
+        previewImageUrl: previewUrl,
+        needsScriptedPreviewPoster,
         ext,
         cycleMs: Number.isFinite(probe && probe.ms) && probe.ms > 0 ? probe.ms : null,
         cycleStatus: (probe && probe.status) || "unavailable",
@@ -1888,6 +2026,7 @@ function _buildTierCardGroup(tierGroup, triggerKind, resolvedTiers, baseTiers, b
     const maxSessions = higherTier ? Math.max(tier.minSessions, higherTier.minSessions - 1) : null;
     const hintTarget = baseHintMap && baseHintMap[originalFile];
     const timingHint = _buildTimingHint(tier.file);
+    const preview = _buildAnimationAssetPreview(tier.file);
     return {
       id: `${tierGroup}:${originalFile}`,
       slotType: "tier",
@@ -1899,7 +2038,9 @@ function _buildTierCardGroup(tierGroup, triggerKind, resolvedTiers, baseTiers, b
       minSessions: tier.minSessions,
       maxSessions,
       currentFile: tier.file,
-      currentFileUrl: _buildAnimationAssetUrl(tier.file),
+      currentFileUrl: preview.fileUrl,
+      currentFilePreviewUrl: preview.previewImageUrl,
+      needsScriptedPreviewPoster: preview.needsScriptedPreviewPoster,
       bindingLabel: `${tierGroup}[${originalFile}]`,
       transition: _readResolvedTransition(tier.file),
       supportsAutoReturn: false,
@@ -1959,6 +2100,7 @@ function _buildStateCard(stateKey, triggerKind, themeOverrideMap, options = {}) 
   const resolvedAutoReturnMs = supportsAutoReturn ? autoReturnMap[stateKey] : null;
   const timingHint = _buildTimingHint(currentFile, resolvedAutoReturnMs);
   const fallbackTargetState = resolved.fallbackTargetState;
+  const preview = _buildAnimationAssetPreview(currentFile);
   const bindingMap = options.bindingMap || (
     options.bindingPathPrefix === "miniMode.states"
       ? ((activeTheme._bindingBase && activeTheme._bindingBase.miniStates) || {})
@@ -1975,7 +2117,9 @@ function _buildStateCard(stateKey, triggerKind, themeOverrideMap, options = {}) 
     resolvedState: resolved.resolvedState,
     fallbackTargetState,
     baseFile: bindingMap[stateKey] || currentFile,
-    currentFileUrl: _buildAnimationAssetUrl(currentFile),
+    currentFileUrl: preview.fileUrl,
+    currentFilePreviewUrl: preview.previewImageUrl,
+    needsScriptedPreviewPoster: preview.needsScriptedPreviewPoster,
     bindingLabel: fallbackTargetState
       ? `${bindingPathPrefix}.${stateKey}.fallbackTo -> ${fallbackTargetState}`
       : `${bindingPathPrefix}.${stateKey}[0]`,
@@ -2002,6 +2146,7 @@ function _buildIdleAnimationCards(themeOverrideMap) {
       const originalFile = (baseEntry && baseEntry.originalFile) || entry.file;
       const durationMs = Number.isFinite(entry.duration) ? entry.duration : null;
       const timingHint = _buildTimingHint(entry.file, durationMs);
+      const preview = _buildAnimationAssetPreview(entry.file);
       const hasDurationOverride = !!(overrideMap
         && overrideMap[originalFile]
         && Object.prototype.hasOwnProperty.call(overrideMap[originalFile], "durationMs"));
@@ -2014,7 +2159,9 @@ function _buildIdleAnimationCards(themeOverrideMap) {
         originalFile,
         baseFile: originalFile,
         currentFile: entry.file,
-        currentFileUrl: _buildAnimationAssetUrl(entry.file),
+        currentFileUrl: preview.fileUrl,
+        currentFilePreviewUrl: preview.previewImageUrl,
+        needsScriptedPreviewPoster: preview.needsScriptedPreviewPoster,
         bindingLabel: `idleAnimations[${index}] (${originalFile})`,
         transition: _readResolvedTransition(entry.file),
         supportsAutoReturn: false,
@@ -2058,6 +2205,7 @@ function _buildReactionCards(themeOverrideMap) {
       ? reactionEntry.duration
       : null;
     const timingHint = _buildTimingHint(currentFile, durationMs);
+    const preview = _buildAnimationAssetPreview(currentFile);
     const overrideEntry = overrideMap && overrideMap[spec.key];
     const hasDurationOverride = !!(overrideEntry
       && Object.prototype.hasOwnProperty.call(overrideEntry, "durationMs"));
@@ -2069,7 +2217,9 @@ function _buildReactionCards(themeOverrideMap) {
       triggerKind: spec.triggerKind,
       currentFile,
       baseFile: currentFile,
-      currentFileUrl: _buildAnimationAssetUrl(currentFile),
+      currentFileUrl: preview.fileUrl,
+      currentFilePreviewUrl: preview.previewImageUrl,
+      needsScriptedPreviewPoster: preview.needsScriptedPreviewPoster,
       bindingLabel: `reactions.${spec.key}`,
       transition: _readResolvedTransition(currentFile),
       supportsAutoReturn: false,
@@ -2266,11 +2416,11 @@ function _rememberRuntimeSoundOverrideFile(themeId, soundName, absPath) {
   activeTheme._soundOverrideFiles = nextOverrideMap;
 }
 
-function _buildAnimationOverrideData() {
+async function _buildAnimationOverrideData() {
   if (!activeTheme) return null;
   const meta = themeLoader.getThemeMetadata(activeTheme._id) || {};
   const sections = _buildAnimationOverrideSections();
-  return {
+  const data = {
     theme: {
       id: activeTheme._id,
       name: meta.name || activeTheme._id,
@@ -2283,6 +2433,7 @@ function _buildAnimationOverrideData() {
     cards: sections.flatMap((section) => section.cards || []),
     sounds: _buildSoundOverrideSlots(),
   };
+  return _hydrateAnimationPreviewPosters(data);
 }
 
 function _previewAnimationOverride(payload) {
@@ -2810,10 +2961,9 @@ const _updater = require("./updater")(_updaterCtx);
 const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel } = _updater;
 
 // ── About tab IPC ──
-// Hero SVG is inlined (not file URL) because settings.html CSP is
-// `default-src 'none'` with no `object-src`/`frame-src` — <object>/<iframe>
-// loads are blocked. Inlining keeps CSP strict while letting the renderer
-// access #shake-slot to drive the click reaction.
+// Hero SVG is inlined so the Settings renderer can access #shake-slot to
+// drive the click reaction. Animation override posters are captured in a
+// hidden renderer, so they cannot expose SVG internals to Settings either.
 ipcMain.handle("settings:get-about-info", () => {
   const heroSvgAbsPath = path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
   let heroSvgContent = "";
@@ -3934,6 +4084,9 @@ if (!gotTheLock) {
     stopTopmostWatchdog();
     if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();
+    if (animationOverridePreviewPosterWindow && !animationOverridePreviewPosterWindow.isDestroyed()) {
+      animationOverridePreviewPosterWindow.destroy();
+    }
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });
 
