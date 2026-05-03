@@ -1111,6 +1111,16 @@ function _normalizeTrustedRuntime(value, isBuiltin, themeId) {
     seen.add(safeFile);
     out.scriptedSvgFiles.push(safeFile);
   }
+  if (_isPlainObject(value.scriptedSvgCycleMs)) {
+    const cycleMap = {};
+    for (const [file, ms] of Object.entries(value.scriptedSvgCycleMs)) {
+      const safeFile = _basenameOnly(file);
+      if (!safeFile || !safeFile.toLowerCase().endsWith(".svg") || !seen.has(safeFile)) continue;
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      cycleMap[safeFile] = Math.round(ms);
+    }
+    if (Object.keys(cycleMap).length > 0) out.scriptedSvgCycleMs = cycleMap;
+  }
   return out;
 }
 

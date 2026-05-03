@@ -51,6 +51,10 @@ describe("built-in Cloudling theme", () => {
     assert.strictEqual(theme.schemaVersion, 1);
     assert.strictEqual(theme._builtin, true);
     assert.deepStrictEqual(theme.trustedRuntime.scriptedSvgFiles, CLOUDLING_SCRIPTED_FILES);
+    assert.strictEqual(Object.keys(theme.trustedRuntime.scriptedSvgCycleMs || {}).length, CLOUDLING_SCRIPTED_FILES.length);
+    assert.strictEqual(theme.trustedRuntime.scriptedSvgCycleMs["cloudling-building.svg"], 5400);
+    assert.strictEqual(theme.trustedRuntime.scriptedSvgCycleMs["cloudling-sweeping.svg"], 4550);
+    assert.strictEqual(theme.trustedRuntime.scriptedSvgCycleMs["cloudling-react-drag.svg"], undefined);
     assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, CLOUDLING_SCRIPTED_FILES);
     assert.strictEqual(theme.miniMode.states["mini-crabwalk"][0], "cloudling-mini-crabwalk.svg");
     assert.strictEqual(theme.trustedRuntime.scriptedSvgFiles.includes("cloudling-react-drag.svg"), false);
@@ -83,6 +87,10 @@ describe("built-in Cloudling theme", () => {
     assert.strictEqual(theme.sleepSequence.mode, "full");
     assert.strictEqual(theme.timings.dndSleepTransitionSvg, "cloudling-idle-to-sleeping.svg");
     assert.strictEqual(theme.timings.dndSleepTransitionDuration, 4850);
+    assert.strictEqual(theme.timings.minDisplay.attention, 3660);
+    assert.strictEqual(theme.timings.autoReturn.attention, 3660);
+    assert.strictEqual(theme.timings.minDisplay.carrying, 4500);
+    assert.strictEqual(theme.timings.autoReturn.carrying, 4500);
 
     assert.deepStrictEqual(theme.workingTiers.map((tier) => tier.file), [
       "cloudling-building.svg",

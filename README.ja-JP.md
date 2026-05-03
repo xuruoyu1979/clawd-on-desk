@@ -213,7 +213,7 @@ Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報
 Clawd をより良くしてくれたすべての方に感謝します。
 
 <details>
-<summary>コントリビューター 40 人をすべて表示</summary>
+<summary>コントリビューター 41 人をすべて表示</summary>
 
 <table>
   <tr>
@@ -267,6 +267,7 @@ Clawd をより良くしてくれたすべての方に感謝します。
     <td align="center" valign="top" width="110"><a href="https://github.com/yeonhub"><img src="https://github.com/yeonhub.png" width="50" style="border-radius:50%" /><br /><sub>yeonhub</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/joshua-wu"><img src="https://github.com/joshua-wu.png" width="50" style="border-radius:50%" /><br /><sub>joshua-wu</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/nmsn"><img src="https://github.com/nmsn.png" width="50" style="border-radius:50%" /><br /><sub>nmsn</sub></a></td>
+    <td align="center" valign="top" width="110"><a href="https://github.com/sunnysonx"><img src="https://github.com/sunnysonx.png" width="50" style="border-radius:50%" /><br /><sub>sunnysonx</sub></a></td>
   </tr>
 </table>
 

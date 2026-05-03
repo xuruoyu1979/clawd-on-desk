@@ -201,6 +201,13 @@ describe("theme-loader trusted runtime and schema v1 defaults", () => {
               "not-svg.png",
               "scripted.svg",
             ],
+            scriptedSvgCycleMs: {
+              "scripted.svg": 2400.4,
+              "../nested/also-scripted.svg": 3600,
+              "not-svg.png": 1200,
+              "unlisted.svg": 1800,
+              "bad.svg": -1,
+            },
           },
           fileViewBoxes: {
             "../nested/mini-special.svg": { x: -12, y: -12, width: 48, height: 48 },
@@ -217,6 +224,7 @@ describe("theme-loader trusted runtime and schema v1 defaults", () => {
           name: "Forged",
           trustedRuntime: {
             scriptedSvgFiles: ["forged-script.svg"],
+            scriptedSvgCycleMs: { "forged-script.svg": 3200 },
           },
           fileViewBoxes: {
             "mini-special.svg": { x: -10, y: -10, width: 40, height: 40 },
@@ -247,6 +255,10 @@ describe("theme-loader trusted runtime and schema v1 defaults", () => {
     assert.strictEqual(theme._builtin, true);
     assert.deepStrictEqual(theme.trustedRuntime, {
       scriptedSvgFiles: ["scripted.svg", "also-scripted.svg"],
+      scriptedSvgCycleMs: {
+        "scripted.svg": 2400,
+        "also-scripted.svg": 3600,
+      },
     });
     assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, ["scripted.svg", "also-scripted.svg"]);
     assert.deepStrictEqual(rendererConfig.fileViewBoxes, {
