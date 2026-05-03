@@ -1,8 +1,34 @@
-# Theme Creation Guide
+# Theme Creation And Installation Guide
 
-Create your own Clawd desktop pet theme with custom characters and animations.
+Install a downloaded Clawd theme, or create your own desktop pet theme with custom characters and animations.
 
-## Quick Start
+## Install A Downloaded Theme
+
+A Clawd theme is a folder whose top level contains `theme.json`. The folder name is the theme id; the display name shown in Clawd comes from `theme.json.name`.
+
+1. Download, clone, or unzip the theme.
+
+2. Make sure the folder shape is correct:
+   ```text
+   pixel-cat/
+     theme.json
+     assets/
+       idle.png
+       working.gif
+       ...
+   ```
+   If unzipping creates `pixel-cat/pixel-cat/theme.json`, move the inner folder into the themes directory.
+
+3. Put the theme folder in your Clawd user themes directory:
+   - Windows: `%APPDATA%/clawd-on-desk/themes/pixel-cat/`
+   - macOS: `~/Library/Application Support/clawd-on-desk/themes/pixel-cat/`
+   - Linux: `~/.config/clawd-on-desk/themes/pixel-cat/`
+
+4. Open `Settings...` -> `Theme` and select the theme. If Clawd was already open and the theme does not appear, restart Clawd.
+
+Avoid using a folder id that matches a built-in theme (`clawd`, `calico`, or `cloudling`). Built-in themes take priority over user themes with the same id.
+
+## Create A New Theme
 
 1. Scaffold a theme:
    ```bash
@@ -23,7 +49,7 @@ Create your own Clawd desktop pet theme with custom characters and animations.
 
 4. Create your assets in the `assets/` folder
 
-5. Restart Clawd → right-click → Theme → select your theme
+5. Open `Settings...` -> `Theme` and select your theme. Restart Clawd if the new folder is not listed yet.
 
 6. (Optional) Validate:
    ```bash
@@ -47,6 +73,9 @@ my-theme/
     sleeping.gif
     waking.gif
     ...                   ← Additional animations for reactions, tiers, etc.
+  sounds/                 ← Optional per-theme audio files
+    complete.mp3
+    confirm.mp3
 ```
 
 ## Creation Tiers
@@ -84,6 +113,16 @@ Skip the template entirely. Author all animations as SVG with CSS `@keyframes`:
 - CSS animation control (timing, easing, iteration)
 - SVG filter effects (blur, glow, drop-shadow)
 - Reference `assets/svg/clawd-*.svg` in the repo for examples
+
+### External Theme Runtime Limits
+
+External themes are treated as untrusted input. SVG files in user themes are sanitized before rendering:
+
+- `<script>`, event handler attributes such as `onclick`, `javascript:` URLs, external resource URLs, absolute paths, and path traversal references are removed
+- CSS animation in `<style>` is allowed, but `@import` and unsafe `url(...)` references are stripped
+- `url(#local-id)` fragment references for filters, masks, gradients, and markers are allowed
+
+Do not build a user theme that depends on JavaScript inside SVG files. The built-in Cloudling theme uses `trustedRuntime.scriptedSvgFiles`, but that capability is only honored for themes loaded from Clawd's packaged/repo `themes/` directory. If an external theme declares `trustedRuntime`, Clawd ignores it.
 
 ## theme.json Reference
 
@@ -187,6 +226,8 @@ Eye tracking makes the character follow the user's cursor. It requires the idle 
 - `#shadow-js` — receives translate + scaleX for shadow stretch toward cursor (optional)
 
 **To disable eye tracking:** set `"enabled": false`. All states can then use any format (SVG, GIF, APNG, WebP, PNG, JPG, JPEG). Your idle animation will just loop without cursor following.
+
+Advanced SVG themes may use `eyeTracking.trackingLayers` instead of the legacy single `ids` map when different character layers need different cursor-follow strength. See `themes/calico/theme.json` for a working example.
 
 ### Capability Switches
 
@@ -329,6 +370,8 @@ Mini mode hides the character at the screen edge. Set `"supported": false` or om
 
 If `miniMode.supported` is `true`, the validator expects all 8 mini states shown above. `mini-idle` only needs to be SVG when `mini-idle` is listed in `eyeTracking.states`.
 
+`mini-working` is optional. If you provide `miniMode.states["mini-working"]`, Clawd can show a compact working animation while the pet is in mini mode. If you omit it, working/thinking/juggling events do not break mini mode; Clawd keeps the current mini visual.
+
 ### Timings
 
 All values in milliseconds. Omit any to use defaults:
@@ -352,6 +395,34 @@ All values in milliseconds. Omit any to use defaults:
 }
 ```
 
+Theme-specific DND sleep transitions are available for built-in-style polish:
+
+```json
+"timings": {
+  "dndSleepTransitionSvg": "idle-to-sleeping.svg",
+  "dndSleepTransitionDuration": 4850
+}
+```
+
+Most third-party themes do not need this. Use `sleepSequence.mode: "direct"` if you simply want fewer sleep assets.
+
+### Sounds
+
+Themes can map logical sound names to files in a sibling `sounds/` directory:
+
+```json
+"sounds": {
+  "complete": "complete.mp3",
+  "confirm": "confirm.mp3",
+  "error": "error.ogg"
+}
+```
+
+- Built-in logical names are `complete` and `confirm`
+- Additional names are allowed, but only code paths that call that sound name will play them
+- Set a sound value to `null` to disable it for the theme
+- User overrides in `Settings...` -> `Animation Overrides` -> `Sounds` are stored separately and do not edit the theme package
+
 ### Object Scale
 
 Fine-tune rendered size relative to viewBox. Defaults work for most themes:
@@ -364,6 +435,20 @@ Fine-tune rendered size relative to viewBox. Defaults work for most themes:
   "offsetY": -0.25
 }
 ```
+
+For mixed-format themes where individual files need small alignment fixes, `objectScale.fileScales` and `objectScale.fileOffsets` can tune a specific asset by filename. See `themes/calico/theme.json` for a larger APNG example.
+
+### File-Specific ViewBoxes
+
+Most themes use one root `viewBox` for every normal-mode asset. If one asset uses a different logical canvas, declare it in `fileViewBoxes`:
+
+```json
+"fileViewBoxes": {
+  "mini-crabwalk.svg": { "x": -32, "y": -24, "width": 88, "height": 72 }
+}
+```
+
+This is mainly for special transition assets. Prefer one shared canvas unless a specific file truly needs a different coordinate system.
 
 ### Layout Normalization
 
@@ -480,14 +565,16 @@ The validator checks:
 - Eye tracking SVG structure (required IDs)
 - Mini mode completeness when `miniMode.supported=true`
 - Hit box configuration
+- Variant patch structure when `variants` are declared
 
 ## Debugging Tips
 
-- **Theme not appearing in menu?** Check that `theme.json` is valid JSON (no trailing commas, no comments — use `_comment` fields instead)
+- **Theme not appearing in Settings?** Check that `theme.json` is valid JSON (no trailing commas, no comments — use `_comment` fields instead), and that the folder containing it is directly under the user themes directory
 - **Assets not loading?** Check file names match exactly (case-sensitive on Linux/macOS)
 - **Eye tracking not working?** Verify your SVG has `id="eyes-js"` on the eye group, and `eyeTracking.enabled` is `true`
 - **Character jumping between states?** Ensure all assets share the same canvas size and character position
 - **Animation not looping?** GIF/APNG must be set to loop; SVG CSS `@keyframes` need `infinite` iteration
+- **Scripted SVG animation not running?** External theme SVG scripts are intentionally stripped. Use CSS animation, APNG/GIF/WebP, or contribute a built-in theme if trusted scripted runtime is required.
 
 ## Distribution
 
@@ -506,8 +593,8 @@ The validator checks:
 ## Theme Installation (User Side)
 
 1. Download/clone the theme to the themes directory (see paths above)
-2. In `Settings…` → `Theme`, check the capability badges (`Tracked idle`, `Animated idle`, `Static theme`, `Mini`, `Direct sleep`, `No reactions`) to confirm what the theme supports
-3. Restart Clawd or switch theme via right-click → Theme menu
-4. The theme appears in the menu by its `name` field from `theme.json`
+2. In `Settings...` -> `Theme`, check the capability badges (`Tracked idle`, `Animated idle`, `Static theme`, `Mini`, `Direct sleep`, `No reactions`) to confirm what the theme supports
+3. Select the theme card. The theme appears by its `name` field from `theme.json`.
+4. Restart Clawd only if a newly copied theme folder does not appear yet.
 
 > **Security note:** Third-party SVG files are automatically sanitized — `<script>`, event handlers, and `javascript:` URLs are stripped before rendering.

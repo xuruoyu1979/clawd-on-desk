@@ -144,7 +144,8 @@ describe("Agent Registry", () => {
     const gemini = registry.getAgent("gemini-cli");
     assert.strictEqual(gemini.eventMap.SessionStart, "idle");
     assert.strictEqual(gemini.eventMap.BeforeTool, "working");
-    assert.strictEqual(gemini.eventMap.AfterAgent, "attention");
+    assert.strictEqual(gemini.eventMap.AfterAgent, "idle");
+    assert.strictEqual(gemini.eventMap.PreCompress, "idle");
 
     const cursor = registry.getAgent("cursor-agent");
     assert.strictEqual(cursor.eventMap.sessionStart, "idle");

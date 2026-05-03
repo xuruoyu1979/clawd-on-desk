@@ -1797,13 +1797,24 @@ function _buildAnimationAssetUrl(filename, theme = activeTheme) {
   return absPath ? _buildFileUrl(absPath) : null;
 }
 
-function _needsScriptedAnimationPreviewPoster(filename, theme = activeTheme) {
+function _isTrustedScriptedAnimationFile(filename, theme = activeTheme) {
   if (!filename || !theme || !theme._builtin || !theme.trustedRuntime) return false;
   const scriptedFiles = Array.isArray(theme.trustedRuntime.scriptedSvgFiles)
     ? theme.trustedRuntime.scriptedSvgFiles
     : [];
   const base = path.basename(filename);
   return scriptedFiles.includes(base);
+}
+
+function _needsScriptedAnimationPreviewPoster(filename, theme = activeTheme) {
+  return _isTrustedScriptedAnimationFile(filename, theme);
+}
+
+function _getTrustedScriptedAnimationCycleMs(filename, theme = activeTheme) {
+  if (!_isTrustedScriptedAnimationFile(filename, theme)) return null;
+  const cycleMap = theme && theme.trustedRuntime && theme.trustedRuntime.scriptedSvgCycleMs;
+  const ms = cycleMap && cycleMap[path.basename(filename)];
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 
 function _rememberAnimationPreviewPosterCache(cacheKey, dataUrl) {
@@ -2073,8 +2084,16 @@ function _scheduleAnimationPreviewPosters(data) {
   }
 }
 
-function _buildAnimationAssetProbe(file) {
-  const absPath = _resolveAnimationAssetAbsPath(file);
+function _buildAnimationAssetProbe(file, theme = activeTheme, resolvedAbsPath = null) {
+  const trustedCycleMs = _getTrustedScriptedAnimationCycleMs(file, theme);
+  if (trustedCycleMs != null) {
+    return {
+      assetCycleMs: trustedCycleMs,
+      assetCycleStatus: "exact",
+      assetCycleSource: "trusted-runtime",
+    };
+  }
+  const absPath = resolvedAbsPath || _resolveAnimationAssetAbsPath(file, theme);
   if (!absPath) {
     return {
       assetCycleMs: null,
@@ -2139,7 +2158,7 @@ function _listAnimationOverrideAssets(theme = activeTheme) {
       if (seen.has(entry.name)) continue;
       const absPath = _resolveAnimationAssetAbsPath(entry.name, theme) || path.join(dir, entry.name);
       const preview = _buildAnimationAssetPreview(entry.name, theme, absPath);
-      const probe = animationCycle.probeAssetCycle(absPath);
+      const probe = _buildAnimationAssetProbe(entry.name, theme, absPath);
       assets.push({
         name: entry.name,
         fileUrl: preview.fileUrl,
@@ -2148,9 +2167,9 @@ function _listAnimationOverrideAssets(theme = activeTheme) {
         previewPosterCacheKey: preview.previewPosterCacheKey,
         previewPosterPending: preview.previewPosterPending,
         ext,
-        cycleMs: Number.isFinite(probe && probe.ms) && probe.ms > 0 ? probe.ms : null,
-        cycleStatus: (probe && probe.status) || "unavailable",
-        cycleSource: (probe && probe.source) || null,
+        cycleMs: Number.isFinite(probe && probe.assetCycleMs) && probe.assetCycleMs > 0 ? probe.assetCycleMs : null,
+        cycleStatus: (probe && probe.assetCycleStatus) || "unavailable",
+        cycleSource: (probe && probe.assetCycleSource) || null,
       });
       seen.add(entry.name);
     }
@@ -2634,15 +2653,19 @@ function _previewAnimationOverride(payload) {
   return _runAnimationOverridePreview(stateKey, file, durationMs);
 }
 
-// Preview is a quick peek at the asset, not a full-length playback. Hard clamp
+// Preview is a quick peek at the asset, not an unbounded playback. Hard clamp
 // the hold duration:
 //   · some assets have extremely long cycleMs (a SMIL animation with dur="60s"
 //     or an indefinite loop that the cycle probe estimates high) — without a
 //     ceiling the pet would be stuck on the preview SVG for that full duration
+//   · trusted scripted SVGs can publish an explicit cycle in theme metadata;
+//     those need enough room to show a complete Cloudling cycle while still
+//     staying bounded
 //   · the floor prevents sub-flash previews that finish before the renderer
 //     has even painted the new SVG
 const PREVIEW_HOLD_MIN_MS = 800;
 const PREVIEW_HOLD_MAX_MS = 3500;
+const TRUSTED_SCRIPTED_PREVIEW_HOLD_MAX_MS = 15000;
 
 function _runAnimationOverridePreview(stateKey, file, durationMs) {
   if (animationOverridePreviewTimer) {
@@ -2654,17 +2677,21 @@ function _runAnimationOverridePreview(stateKey, file, durationMs) {
   } catch (err) {
     return { status: "error", message: `previewAnimationOverride: ${err && err.message}` };
   }
+  const trustedScriptedCycleMs = _getTrustedScriptedAnimationCycleMs(file);
+  const previewMaxMs = _isTrustedScriptedAnimationFile(file)
+    ? TRUSTED_SCRIPTED_PREVIEW_HOLD_MAX_MS
+    : PREVIEW_HOLD_MAX_MS;
   const requested = (typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0)
     ? durationMs
-    : PREVIEW_HOLD_MIN_MS;
-  const holdMs = Math.max(PREVIEW_HOLD_MIN_MS, Math.min(PREVIEW_HOLD_MAX_MS, requested));
+    : (trustedScriptedCycleMs != null ? trustedScriptedCycleMs : PREVIEW_HOLD_MIN_MS);
+  const holdMs = Math.max(PREVIEW_HOLD_MIN_MS, Math.min(previewMaxMs, requested));
   animationOverridePreviewTimer = setTimeout(() => {
     animationOverridePreviewTimer = null;
     try {
       // Unconditionally release back to idle at the end of the preview. Rationale:
       //   · continuous states (working/thinking/juggling) would otherwise stay
       //     latched on the preview SVG until the live session stales out (5 min)
-      //   · oneshot states have their own autoReturn, but clamping to 3.5s means
+      //   · oneshot states have their own autoReturn, but clamping preview duration means
       //     we'll usually beat it — forcing idle here keeps the exit consistent
       //   · if a hook event fires mid-preview and a live session is still active,
       //     the next event will re-upgrade state naturally — a brief idle flash

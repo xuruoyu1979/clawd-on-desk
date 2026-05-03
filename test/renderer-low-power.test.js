@@ -41,7 +41,7 @@ describe("renderer object-channel selection", () => {
     const source = readNormalized(RENDERER);
 
     assert.ok(source.includes("function needsEyeTracking(state)"));
-    assert.ok(source.includes("if (state && needsEyeTracking(state)) {\n        attachEyeTracking(next);"));
+    assert.match(source, /if \(state && needsEyeTracking\(state\)\) {\r?\n\s+attachEyeTracking\(next\);/);
   });
 });
 

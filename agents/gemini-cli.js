@@ -13,9 +13,11 @@ module.exports = {
     BeforeAgent: "thinking",
     BeforeTool: "working",
     AfterTool: "working",
-    AfterAgent: "attention",
+    AfterAgent: "idle",
     Notification: "notification",
-    PreCompress: "sweeping",
+    // Hook runtime sends preserve_state=true for this event, so state.js keeps
+    // the active visual while recording the raw PreCompress event.
+    PreCompress: "idle",
   },
   capabilities: {
     httpHook: false,

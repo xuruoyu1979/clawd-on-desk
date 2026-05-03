@@ -637,11 +637,12 @@ describe("settings renderer browser environment", () => {
     assert.ok(agentsSource.includes("sortAgentMetadataForSettings(runtime.agentMetadata"));
   });
 
-  it("keeps Gemini agent detail rows on the generic notificationHook path", () => {
+  it("keeps Agent management capability-driven for Gemini wait-for-input alerts", () => {
     const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
     assert.ok(agentsSource.includes("if (caps.notificationHook) {"));
     assert.ok(agentsSource.includes('flag: "notificationHookEnabled"'));
     assert.ok(!agentsSource.includes('agent.id === "gemini-cli"'));
+    assert.ok(!agentsSource.includes('agent.id !== "gemini-cli"'));
     assert.ok(!agentsSource.includes("Gemini CLI"));
   });
 

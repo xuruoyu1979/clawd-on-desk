@@ -65,7 +65,36 @@
       "cloudling-sweeping.svg",
       "cloudling-thinking.svg",
       "cloudling-typing.svg"
-    ]
+    ],
+    "scriptedSvgCycleMs": {
+      "cloudling-attention.svg": 3660,
+      "cloudling-building.svg": 5400,
+      "cloudling-carrying.svg": 4500,
+      "cloudling-conducting.svg": 12000,
+      "cloudling-dozing-to-sleeping.svg": 4700,
+      "cloudling-dozing.svg": 5800,
+      "cloudling-error.svg": 4000,
+      "cloudling-idle-reading.svg": 7200,
+      "cloudling-idle-to-dozing.svg": 9030,
+      "cloudling-idle-to-sleeping.svg": 4850,
+      "cloudling-idle.svg": 5000,
+      "cloudling-juggling.svg": 5200,
+      "cloudling-mini-alert.svg": 2600,
+      "cloudling-mini-crabwalk.svg": 1160,
+      "cloudling-mini-enter-roll-in.svg": 1250,
+      "cloudling-mini-enter-sleep.svg": 1450,
+      "cloudling-mini-happy.svg": 3600,
+      "cloudling-mini-idle.svg": 5000,
+      "cloudling-mini-peek.svg": 1500,
+      "cloudling-mini-sleep.svg": 6400,
+      "cloudling-mini-typing.svg": 6000,
+      "cloudling-notification.svg": 2600,
+      "cloudling-sleeping-to-idle.svg": 3650,
+      "cloudling-sleeping.svg": 12000,
+      "cloudling-sweeping.svg": 4550,
+      "cloudling-thinking.svg": 6000,
+      "cloudling-typing.svg": 4450
+    }
   },
   "eyeTracking": {
     "enabled": false,
@@ -160,20 +189,20 @@
   },
   "timings": {
     "minDisplay": {
-      "attention": 3600,
+      "attention": 3660,
       "error": 5000,
       "sweeping": 5500,
       "notification": 2600,
-      "carrying": 3000,
+      "carrying": 4500,
       "working": 1000,
       "thinking": 1000
     },
     "autoReturn": {
-      "attention": 3600,
+      "attention": 3660,
       "error": 5000,
       "sweeping": 300000,
       "notification": 2600,
-      "carrying": 3000
+      "carrying": 4500
     },
     "yawnDuration": 9030,
     "collapseDuration": 4700,
