@@ -36,15 +36,43 @@ function resolveHookName(payload, argvEvent) {
 }
 
 function shouldResolvePid(hookName, env = process.env) {
-  return hookName === "SessionStart" && !env.CLAWD_REMOTE;
+  return !!HOOK_MAP[hookName] && !env.CLAWD_REMOTE;
 }
 
-function buildStateBody(hookName, payload, options = {}) {
+function normalizeSessionId(value) {
+  const raw = value != null && value !== "" ? String(value) : "default";
+  return raw.startsWith("gemini:") ? raw : `gemini:${raw}`;
+}
+
+function hasToolResponseError(payload) {
+  const response = payload && payload.tool_response;
+  if (!response || typeof response !== "object") return false;
+  const error = response.error;
+  return error !== undefined && error !== null && error !== false && error !== "";
+}
+
+function resolveHookMapping(hookName, payload) {
   const mapped = HOOK_MAP[hookName];
   if (!mapped) return null;
 
+  if (hookName === "AfterTool" && hasToolResponseError(payload)) {
+    return { state: "error", event: "PostToolUseFailure" };
+  }
+
+  const reason = payload && (payload.reason || payload.source);
+  if (hookName === "SessionEnd" && reason === "clear") {
+    return { state: "sweeping", event: "SessionEnd" };
+  }
+
+  return mapped;
+}
+
+function buildStateBody(hookName, payload, options = {}) {
+  const mapped = resolveHookMapping(hookName, payload);
+  if (!mapped) return null;
+
   const { state, event, preserveState } = mapped;
-  const sessionId = (payload && payload.session_id) || "default";
+  const sessionId = normalizeSessionId(payload && payload.session_id);
   const cwd = (payload && payload.cwd) || "";
   const body = {
     state,

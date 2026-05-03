@@ -5,6 +5,7 @@ const path = require("path");
 
 const { isAgentEnabled, isAgentPermissionsEnabled } = require("../agent-gate");
 const { findHookCommands } = require("../../hooks/json-utils");
+const { GEMINI_HOOK_EVENTS } = require("../../hooks/gemini-install");
 const { findKimiHookCommands } = require("../../hooks/kimi-install");
 const { getAgentDescriptors } = require("./agent-descriptors");
 const { validateHookCommand } = require("./agent-node-bin-parser");
@@ -126,6 +127,92 @@ function validateCommandList(descriptor, commands, options) {
   });
 }
 
+function findHookCommandsForEvent(settings, eventName, marker, options) {
+  if (!settings || !settings.hooks || typeof marker !== "string" || !marker) return [];
+  const entries = settings.hooks[eventName];
+  if (!Array.isArray(entries)) return [];
+
+  const nested = options && options.nested;
+  const commands = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (nested && Array.isArray(entry.hooks)) {
+      for (const hook of entry.hooks) {
+        if (hook && typeof hook.command === "string" && hook.command.includes(marker)) {
+          commands.push(hook.command);
+        }
+      }
+    }
+    if (typeof entry.command === "string" && entry.command.includes(marker)) {
+      commands.push(entry.command);
+    }
+  }
+  return commands;
+}
+
+function validateGeminiHookEvents(descriptor, settings, options) {
+  const missingEvents = [];
+  let commandCount = 0;
+  let firstOk = null;
+  let firstFailure = null;
+
+  for (const eventName of GEMINI_HOOK_EVENTS) {
+    const commands = findHookCommandsForEvent(settings, eventName, descriptor.marker, { nested: !!descriptor.nested });
+    commandCount += commands.length;
+    if (!commands.length) {
+      missingEvents.push(eventName);
+      continue;
+    }
+
+    const results = commands.map((command) => options.validateCommand(command, {
+      platform: options.platform,
+      fs: options.fs,
+    }));
+    const ok = results.find((result) => result.ok);
+    if (ok) {
+      if (!firstOk) firstOk = ok;
+      continue;
+    }
+    if (!firstFailure) {
+      firstFailure = {
+        eventName,
+        result: results[0] || { issue: "parse-failed" },
+        command: commands[0],
+      };
+    }
+  }
+
+  if (missingEvents.length) {
+    return makeDetail(descriptor, "not-connected", {
+      level: "warning",
+      detail: `${descriptor.configPath} missing Gemini hook event(s): ${missingEvents.join(", ")}`,
+      commandCount,
+      missingGeminiHookEvents: missingEvents,
+    });
+  }
+
+  if (firstFailure) {
+    const first = firstFailure.result;
+    return makeDetail(descriptor, "broken-path", {
+      level: "warning",
+      detail: `Gemini hook command failed validation for ${firstFailure.eventName}: ${first.issue || "parse-failed"}`,
+      commandCount,
+      hookCommandIssue: first.issue || "parse-failed",
+      nodeBin: first.nodeBin || null,
+      scriptPath: first.scriptPath || null,
+      commandFragment: first.fragment || String(firstFailure.command || "").slice(0, 128),
+      brokenGeminiHookEvent: firstFailure.eventName,
+    });
+  }
+
+  return makeDetail(descriptor, "ok", {
+    level: null,
+    detail: `${descriptor.configPath} Gemini hooks registered for ${GEMINI_HOOK_EVENTS.length} events, scriptPath verified`,
+    commandCount,
+    scriptPath: firstOk && firstOk.scriptPath ? firstOk.scriptPath : null,
+  });
+}
+
 function applyCodexSupplementary(detail, descriptor, options) {
   if (!descriptor.supplementary || descriptor.supplementary.key !== "codex_hooks") return detail;
   if (detail.status !== "ok") return detail;
@@ -190,7 +277,6 @@ function getGeminiHooksSupplementary(settings, descriptor) {
 
 function applyGeminiSupplementary(detail, descriptor, settings) {
   if (descriptor.agentId !== "gemini-cli") return detail;
-  if (detail.status !== "ok") return detail;
 
   const supplementary = getGeminiHooksSupplementary(settings, descriptor);
   if (supplementary.value !== "enabled") {
@@ -236,11 +322,13 @@ function checkFileMode(descriptor, options) {
     return checkOpencodeSettings(descriptor, settings, options);
   }
 
-  let detail = validateCommandList(
-    descriptor,
-    findHookCommands(settings, descriptor.marker, { nested: !!descriptor.nested }),
-    options
-  );
+  let detail = descriptor.agentId === "gemini-cli"
+    ? validateGeminiHookEvents(descriptor, settings, options)
+    : validateCommandList(
+      descriptor,
+      findHookCommands(settings, descriptor.marker, { nested: !!descriptor.nested }),
+      options
+    );
   detail = {
     ...detail,
     parentDirExists: true,

@@ -168,7 +168,7 @@ sidebar
 | `codex` | `~/.codex` | file `~/.codex/hooks.json` | ✓ | `findHookCommands(settings, "codex-hook.js", {nested:true})` | `[features].codex_hooks` tri-state（4.2.6）|
 | `copilot-cli` | — | none-global | ✗ | 仅检查 hook 脚本可执行 | — |
 | `cursor-agent` | `~/.cursor` | file `~/.cursor/hooks.json` | ✓ | `findHookCommands(settings, "cursor-hook.js")` | — |
-| `gemini-cli` | `~/.gemini` | file `~/.gemini/settings.json` | ✓ | `findHookCommands(settings, "gemini-hook.js")` | — |
+| `gemini-cli` | `~/.gemini` | file `~/.gemini/settings.json` | ✓ | nested hooks: verify `gemini-hook.js` for every required Gemini event | `hooksConfig.enabled` / `disabled` |
 | `codebuddy` | `~/.codebuddy` | file `~/.codebuddy/settings.json` | ✓ | `findHookCommands(settings, "codebuddy-hook.js", {nested:true})` | — |
 | `kiro-cli` | `~/.kiro` | dir `~/.kiro/agents/` | ✓ | 扫每个 *.json 跑 `findHookCommands(...)` → 每条跑 4.2.3（4.2.5）| — |
 | `kimi-cli` | `~/.kimi` | toml-text `~/.kimi/config.toml` | ✓ | **`findKimiHookCommands(text, "kimi-hook.js")`** → 每条跑 4.2.3（v9）| — |

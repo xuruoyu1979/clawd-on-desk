@@ -74,6 +74,7 @@ describe("Gemini hook script", () => {
     assert.strictEqual(result.posted, true);
     assert.strictEqual(postedBodies.length, 1);
     assert.strictEqual(postedBodies[0].agent_id, "gemini-cli");
+    assert.strictEqual(postedBodies[0].session_id, "gemini:s1");
     assert.strictEqual(postedBodies[0].event, "SessionStart");
     assert.strictEqual(postedBodies[0].cwd, process.cwd());
     assert.strictEqual(postedBodies[0].source_pid, 4242);
@@ -82,7 +83,7 @@ describe("Gemini hook script", () => {
     assert.deepStrictEqual(postedBodies[0].pid_chain, [4343, 4242]);
   });
 
-  it("does not post PID metadata on non-SessionStart events", async () => {
+  it("posts PID metadata on non-SessionStart events", async () => {
     const postedBodies = [];
     let resolveCalls = 0;
     const result = await __test.sendHookEvent({
@@ -105,16 +106,17 @@ describe("Gemini hook script", () => {
       },
     });
 
-    assert.strictEqual(resolveCalls, 0);
+    assert.strictEqual(resolveCalls, 1);
     assert.deepStrictEqual(result.stdout, JSON.stringify({ decision: "allow" }));
     assert.strictEqual(postedBodies.length, 1);
     assert.strictEqual(postedBodies[0].agent_id, "gemini-cli");
+    assert.strictEqual(postedBodies[0].session_id, "gemini:s1");
     assert.strictEqual(postedBodies[0].event, "PreToolUse");
     assert.strictEqual(postedBodies[0].cwd, process.cwd());
-    assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "source_pid"));
-    assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "agent_pid"));
-    assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "pid_chain"));
-    assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "editor"));
+    assert.strictEqual(postedBodies[0].source_pid, 4242);
+    assert.strictEqual(postedBodies[0].agent_pid, 4343);
+    assert.deepStrictEqual(postedBodies[0].pid_chain, [4343, 4242]);
+    assert.strictEqual(postedBodies[0].editor, "code");
   });
 
   it("posts host instead of local PID metadata in remote mode", async () => {
@@ -140,6 +142,7 @@ describe("Gemini hook script", () => {
     assert.deepStrictEqual(result.stdout, "{}");
     assert.strictEqual(postedBodies.length, 1);
     assert.strictEqual(postedBodies[0].agent_id, "gemini-cli");
+    assert.strictEqual(postedBodies[0].session_id, "gemini:s1");
     assert.strictEqual(postedBodies[0].event, "AfterAgent");
     assert.strictEqual(postedBodies[0].host, "remote-host");
     assert.ok(!Object.prototype.hasOwnProperty.call(postedBodies[0], "source_pid"));
@@ -162,6 +165,63 @@ describe("Gemini hook script", () => {
     assert.strictEqual(postedBodies.length, 1);
     assert.strictEqual(postedBodies[0].state, "idle");
     assert.strictEqual(postedBodies[0].event, "AfterAgent");
+  });
+
+  it("keeps already-prefixed Gemini session ids stable", async () => {
+    const postedBodies = [];
+    await __test.sendHookEvent({
+      session_id: "gemini:s1",
+      cwd: process.cwd(),
+    }, "BeforeTool", {
+      env: {},
+      postState: (body, _options, callback) => {
+        postedBodies.push(JSON.parse(body));
+        callback(true, 23333);
+      },
+    });
+
+    assert.strictEqual(postedBodies.length, 1);
+    assert.strictEqual(postedBodies[0].session_id, "gemini:s1");
+  });
+
+  it("maps Gemini AfterTool error payloads to PostToolUseFailure", async () => {
+    const postedBodies = [];
+    const result = await __test.sendHookEvent({
+      session_id: "s1",
+      cwd: process.cwd(),
+      tool_response: { error: "tool failed" },
+    }, "AfterTool", {
+      env: {},
+      postState: (body, _options, callback) => {
+        postedBodies.push(JSON.parse(body));
+        callback(true, 23333);
+      },
+    });
+
+    assert.deepStrictEqual(result.stdout, JSON.stringify({ decision: "allow" }));
+    assert.strictEqual(postedBodies.length, 1);
+    assert.strictEqual(postedBodies[0].state, "error");
+    assert.strictEqual(postedBodies[0].event, "PostToolUseFailure");
+  });
+
+  it("maps Gemini SessionEnd reason=clear to sweeping", async () => {
+    const postedBodies = [];
+    const result = await __test.sendHookEvent({
+      session_id: "s1",
+      cwd: process.cwd(),
+      reason: "clear",
+    }, "SessionEnd", {
+      env: {},
+      postState: (body, _options, callback) => {
+        postedBodies.push(JSON.parse(body));
+        callback(true, 23333);
+      },
+    });
+
+    assert.deepStrictEqual(result.stdout, "{}");
+    assert.strictEqual(postedBodies.length, 1);
+    assert.strictEqual(postedBodies[0].state, "sweeping");
+    assert.strictEqual(postedBodies[0].event, "SessionEnd");
   });
 
   it("keeps Gemini PreCompress visible without remapping to PreCompact/sweeping", async () => {
