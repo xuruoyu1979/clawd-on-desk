@@ -43,10 +43,12 @@ function buildCursorHookCommand(nodeBin, hookScript, platform = process.platform
  * @param {object} [options]
  * @param {boolean} [options.silent]
  * @param {string} [options.hooksPath]
+ * @param {string} [options.homeDir] internal override for tests
  * @returns {{ added: number, skipped: number, updated: number }}
  */
 function registerCursorHooks(options = {}) {
-  const hooksPath = options.hooksPath || path.join(os.homedir(), ".cursor", "hooks.json");
+  const homeDir = options.homeDir || os.homedir();
+  const hooksPath = options.hooksPath || path.join(homeDir, ".cursor", "hooks.json");
 
   // Skip if ~/.cursor/ doesn't exist (Cursor not installed) — unless caller overrides path
   if (!options.hooksPath) {

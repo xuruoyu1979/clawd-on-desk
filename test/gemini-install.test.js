@@ -274,13 +274,15 @@ describe("Gemini hook installer", () => {
   });
 
   it("skips when ~/.gemini/ does not exist", () => {
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-gemini-home-"));
+    tempDirs.push(fakeHome);
     const result = registerGeminiHooks({
       silent: true,
       nodeBin: "/usr/local/bin/node",
+      homeDir: fakeHome,
     });
 
-    assert.strictEqual(typeof result.added, "number");
-    assert.strictEqual(typeof result.skipped, "number");
-    assert.strictEqual(typeof result.updated, "number");
+    assert.deepStrictEqual(result, { added: 0, skipped: 0, updated: 0 });
+    assert.strictEqual(fs.existsSync(path.join(fakeHome, ".gemini", "settings.json")), false);
   });
 });

@@ -168,10 +168,12 @@ function normalizeGeminiDisabledHooks(settings) {
  * @param {object} [options]
  * @param {boolean} [options.silent]
  * @param {string} [options.settingsPath]
+ * @param {string} [options.homeDir] internal override for tests
  * @returns {{ added: number, skipped: number, updated: number }}
  */
 function registerGeminiHooks(options = {}) {
-  const settingsPath = options.settingsPath || path.join(os.homedir(), ".gemini", "settings.json");
+  const homeDir = options.homeDir || os.homedir();
+  const settingsPath = options.settingsPath || path.join(homeDir, ".gemini", "settings.json");
 
   // Skip if ~/.gemini/ doesn't exist (Gemini CLI not installed)
   const geminiDir = path.dirname(settingsPath);
