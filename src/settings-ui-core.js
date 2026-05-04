@@ -362,6 +362,10 @@
       return `${body.scrollHeight}px`;
     }
 
+    function isGroupConnected() {
+      return !!(document.body && document.body.contains(group));
+    }
+
     function setExpandedBodyHeight() {
       body.style.setProperty("--collapsible-body-height", measureCollapsibleBodyHeight());
     }
@@ -401,7 +405,16 @@
       if (!animate) {
         group.classList.toggle("collapsed", collapsed);
         setBodyInteractivity(collapsed);
-        body.style.setProperty("--collapsible-body-height", collapsed ? "0px" : measureCollapsibleBodyHeight());
+        if (collapsed) {
+          body.style.setProperty("--collapsible-body-height", "0px");
+        } else {
+          // Detached groups report scrollHeight=0 in some engines. Keep the
+          // body fully expanded until the post-mount RAF can measure a real height.
+          body.style.setProperty(
+            "--collapsible-body-height",
+            isGroupConnected() ? measureCollapsibleBodyHeight() : "none"
+          );
+        }
         return;
       }
 

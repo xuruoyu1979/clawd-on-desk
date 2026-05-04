@@ -80,6 +80,22 @@ function loadSettingsCoreForTest(settingsAPI) {
   return context.ClawdSettingsCore;
 }
 
+function createQueuedRaf() {
+  const queue = [];
+  return {
+    requestAnimationFrame(cb) {
+      queue.push(cb);
+      return queue.length;
+    },
+    flush() {
+      while (queue.length) {
+        const cb = queue.shift();
+        cb();
+      }
+    },
+  };
+}
+
 class FakeClassList {
   constructor(el) {
     this.el = el;
@@ -133,7 +149,16 @@ class FakeElement {
     this.disabled = false;
     this.open = false;
     this.parentNode = null;
-    this.style = { setProperty: () => {} };
+    this.scrollTop = 0;
+    this.style = {
+      _values: {},
+      setProperty(name, value) {
+        this._values[name] = String(value);
+      },
+      getPropertyValue(name) {
+        return this._values[name] || "";
+      },
+    };
     this.classList = new FakeClassList(this);
   }
 
@@ -146,6 +171,13 @@ class FakeElement {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
     if (name === "class") this.className = String(value);
+    if (name === "id") this.id = String(value);
+  }
+
+  removeAttribute(name) {
+    delete this.attributes[name];
+    if (name === "class") this.className = "";
+    if (name === "id") delete this.id;
   }
 
   addEventListener(type, cb) {
@@ -186,6 +218,133 @@ class FakeElement {
     if (target === this) return true;
     return this.children.some((child) => child.contains(target));
   }
+
+  getBoundingClientRect() {
+    return { top: 0, left: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  }
+
+  get isConnected() {
+    let current = this;
+    while (current) {
+      if (current.tagName === "BODY") return true;
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  get scrollHeight() {
+    if (!this.isConnected) return 0;
+    return Math.max(40, this.children.length * 40);
+  }
+}
+
+function loadAgentsTabForTest({
+  snapshot,
+  agentMetadata,
+  collapsedGroups = {},
+} = {}) {
+  const raf = createQueuedRaf();
+  const body = new FakeElement("body");
+  const content = new FakeElement("main");
+  content.id = "content";
+  body.appendChild(content);
+
+  const localStorageData = {
+    "clawd.settings.collapsedGroups.v1": JSON.stringify(collapsedGroups),
+  };
+
+  const document = {
+    body,
+    createElement: (tagName) => new FakeElement(tagName),
+    getElementById(id) {
+      if (id === "content") return content;
+      return null;
+    },
+  };
+
+  const context = {
+    console,
+    navigator: { platform: "Win32" },
+    localStorage: {
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(localStorageData, key) ? localStorageData[key] : null),
+      setItem: (key, value) => {
+        localStorageData[key] = String(value);
+      },
+    },
+    document,
+    requestAnimationFrame: (cb) => raf.requestAnimationFrame(cb),
+    window: null,
+    globalThis: null,
+    settingsAPI: {
+      command: () => Promise.resolve({ status: "ok" }),
+    },
+    ClawdSettingsSizeSlider: {
+      SIZE_UI_MIN: 1,
+      SIZE_UI_MAX: 100,
+      SIZE_TICK_VALUES: [25, 50, 75, 100],
+      SIZE_SLIDER_THUMB_DIAMETER: 18,
+      prefsSizeToUi: (value) => value,
+      clampSizeUi: (value) => value,
+      sizeUiToPct: (value) => value,
+      getSizeSliderAnchorPx: () => 0,
+      createSizeSliderController: () => ({}),
+    },
+    ClawdSettingsI18n: {
+      STRINGS: {
+        en: {
+          agentsTitle: "Agents",
+          agentsSubtitle: "subtitle",
+          agentsEmpty: "empty",
+          rowAgentIdleAlerts: "Idle alerts",
+          rowAgentIdleAlertsDesc: "Idle alert desc",
+          rowAgentPermissions: "Permissions",
+          rowAgentPermissionsDesc: "Permissions desc",
+          rowCodexPermissionMode: "Permission mode",
+          rowCodexPermissionModeDesc: "Permission mode desc",
+          codexPermissionModeNative: "Native",
+          codexPermissionModeIntercept: "Intercept",
+          badgePermissionBubble: "Permission bubble",
+          eventSourceHook: "Hook",
+          eventSourceLogPoll: "Log poll",
+          eventSourcePlugin: "Plugin",
+          collapsibleExpand: "Expand",
+          collapsibleCollapse: "Collapse",
+          toastSaveFailed: "Failed: ",
+        },
+      },
+      CONTRIBUTORS: [],
+      MAINTAINERS: [],
+    },
+  };
+  context.window = context;
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
+  vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8"), context);
+
+  const core = context.ClawdSettingsCore;
+  core.state.snapshot = snapshot || { agents: {} };
+  core.state.activeTab = "agents";
+  core.runtime.agentMetadata = Array.isArray(agentMetadata) ? agentMetadata : [];
+  context.ClawdSettingsTabAgents.init(core);
+
+  let contentRenderCount = 0;
+  function renderContent() {
+    contentRenderCount++;
+    core.ops.clearMountedControls();
+    content.innerHTML = "";
+    core.tabs.agents.render(content, core);
+  }
+  core.ops.installRenderHooks({ content: renderContent });
+
+  return {
+    core,
+    content,
+    raf,
+    getContentRenderCount: () => contentRenderCount,
+  };
 }
 
 function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
@@ -649,6 +808,92 @@ describe("settings renderer browser environment", () => {
     assert.ok(!agentsSource.includes('agent.id === "gemini-cli"'));
     assert.ok(!agentsSource.includes('agent.id !== "gemini-cli"'));
     assert.ok(!agentsSource.includes("Gemini CLI"));
+  });
+
+  it("patches agent-only broadcasts in place without requiring Codex-specific rows", () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        agents: {
+          "gemini-cli": {
+            enabled: true,
+            notificationHookEnabled: true,
+          },
+        },
+      },
+      agentMetadata: [{
+        id: "gemini-cli",
+        name: "Gemini CLI",
+        eventSource: "hook",
+        capabilities: {
+          notificationHook: true,
+        },
+      }],
+      collapsedGroups: {
+        "agents:gemini-cli": false,
+      },
+    });
+
+    harness.core.ops.requestRender({ content: true });
+    harness.raf.flush();
+    const before = harness.getContentRenderCount();
+
+    harness.core.ops.applyChanges({
+      changes: {
+        agents: {
+          "gemini-cli": {
+            enabled: true,
+            notificationHookEnabled: false,
+          },
+        },
+      },
+      snapshot: {
+        agents: {
+          "gemini-cli": {
+            enabled: true,
+            notificationHookEnabled: false,
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(
+      harness.getContentRenderCount(),
+      before,
+      "agent-only broadcasts should update mounted controls in place instead of rebuilding the expanded group"
+    );
+  });
+
+  it("does not initialize an expanded agent group at 0px height during rerender", () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        agents: {
+          "gemini-cli": {
+            enabled: true,
+            notificationHookEnabled: true,
+          },
+        },
+      },
+      agentMetadata: [{
+        id: "gemini-cli",
+        name: "Gemini CLI",
+        eventSource: "hook",
+        capabilities: {
+          notificationHook: true,
+        },
+      }],
+      collapsedGroups: {
+        "agents:gemini-cli": false,
+      },
+    });
+
+    harness.core.ops.requestRender({ content: true });
+    const expandedBody = harness.content.querySelector(".collapsible-group-body");
+    assert.ok(expandedBody, "agent group body should render");
+    assert.notStrictEqual(
+      expandedBody.style.getPropertyValue("--collapsible-body-height"),
+      "0px",
+      "expanded groups should not paint one frame at 0px height before the next animation frame runs"
+    );
   });
 
   it("keeps stale sound override prefs resettable from the settings UI", () => {
