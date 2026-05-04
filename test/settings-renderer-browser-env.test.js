@@ -579,6 +579,46 @@ describe("settings renderer browser environment", () => {
     assert.ok(!/\.size-bubble::after\s*\{[\s\S]*margin-top:\s*-1px;/.test(html));
   });
 
+  it("uses transform-based Settings switch motion with a calmer shared timing", () => {
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    const switchRule = html.match(/\.switch\s*\{([\s\S]*?)\n\}/);
+    const knobRule = html.match(/\.switch::after\s*\{([\s\S]*?)\n\}/);
+    const onKnobRule = html.match(/\.switch\.on::after\s*\{([\s\S]*?)\n\}/);
+    assert.ok(switchRule, "settings.html should define the switch track");
+    assert.ok(knobRule, "settings.html should define the switch knob");
+    assert.ok(onKnobRule, "settings.html should define the on-state knob transform");
+    assert.ok(/transition:\s*background 0\.26s ease,\s*box-shadow 0\.26s ease,\s*transform 0\.16s ease;/.test(switchRule[1]));
+    assert.ok(/transform:\s*translateX\(0\)\s+scale\(1\);/.test(knobRule[1]));
+    assert.ok(!/transition:\s*left\b/.test(knobRule[1]));
+    assert.ok(/transition:\s*transform 0\.28s cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\),\s*box-shadow 0\.2s ease;/.test(knobRule[1]));
+    assert.ok(/transform:\s*translateX\(16px\)\s+scale\(1\);/.test(onKnobRule[1]));
+    assert.ok(!html.includes(".switch.on::after { left: 18px; }"));
+    assert.ok(/\.switch:not\(\.disabled\):active::after\s*\{[\s\S]*transform:\s*translateX\(var\(--switch-knob-x,\s*0\)\)\s+scale\(0\.94\);/.test(html));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.switch,[\s\S]*\.switch::after\s*\{[\s\S]*transition:\s*none;/.test(html));
+  });
+
+  it("animates the Settings language segmented control with a sliding active pill", () => {
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
+    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+
+    assert.ok(generalSource.includes("const LANGUAGE_OPTIONS = [\"en\", \"zh\", \"ko\", \"ja\"];"));
+    assert.ok(generalSource.includes("language-segmented"));
+    assert.ok(generalSource.includes("runtime.languageTransition"));
+    assert.ok(generalSource.includes('segmented.style.setProperty("--language-active-index", String(fromIndex));'));
+    assert.ok(generalSource.includes("requestAnimationFrame(() => {"));
+    assert.ok(generalSource.includes("segmented.getBoundingClientRect();"));
+    assert.ok(generalSource.includes('segmented.style.setProperty("--language-active-index", String(currentIndex));'));
+    assert.ok(coreSource.includes("languageTransition: null"));
+    assert.ok(coreSource.includes("const previousLang = getLang();"));
+    assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "lang")'));
+    assert.ok(coreSource.includes("runtime.languageTransition = previousLang !== nextLang"));
+    assert.ok(/\.language-segmented\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/.test(html));
+    assert.ok(/\.language-segmented::before\s*\{[\s\S]*transform:\s*translateX\(calc\(var\(--language-active-index\)\s*\*\s*100%\)\);[\s\S]*transition:\s*transform 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/.test(html));
+    assert.ok(/\.language-segmented button\.active\s*\{[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/.test(html));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.language-segmented::before\s*\{[\s\S]*transition:\s*none;/.test(html));
+  });
+
   it("exposes aggregate and split bubble controls in the General tab", () => {
     const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
@@ -808,6 +848,64 @@ describe("settings renderer browser environment", () => {
     assert.ok(!agentsSource.includes('agent.id === "gemini-cli"'));
     assert.ok(!agentsSource.includes('agent.id !== "gemini-cli"'));
     assert.ok(!agentsSource.includes("Gemini CLI"));
+    assert.ok(!agentsSource.includes("if (disabled || btn.classList.contains(\"active\")) return;"));
+    assert.ok(agentsSource.includes("if (btn.disabled || btn.classList.contains(\"active\")) return;"));
+  });
+
+  it("keeps Agent management switch broadcasts in place even when Codex permission rows are mounted", () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "intercept",
+          },
+        },
+      },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
+        },
+      }],
+      collapsedGroups: {
+        "agents:codex": false,
+      },
+    });
+
+    harness.core.ops.requestRender({ content: true });
+    harness.raf.flush();
+    const before = harness.getContentRenderCount();
+
+    harness.core.ops.applyChanges({
+      changes: {
+        agents: {
+          codex: {
+            enabled: false,
+            permissionsEnabled: true,
+            permissionMode: "intercept",
+          },
+        },
+      },
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: false,
+            permissionsEnabled: true,
+            permissionMode: "intercept",
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(
+      harness.getContentRenderCount(),
+      before,
+      "Codex agent broadcasts should patch mounted switches instead of rebuilding and truncating switch motion"
+    );
   });
 
   it("patches agent-only broadcasts in place without requiring Codex-specific rows", () => {
@@ -894,6 +992,22 @@ describe("settings renderer browser environment", () => {
       "0px",
       "expanded groups should not paint one frame at 0px height before the next animation frame runs"
     );
+  });
+
+  it("uses animated switches and local theme override patching in Animation Map", () => {
+    const animMapSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8");
+    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
+    assert.ok(animMapSource.includes("state.transientUiState.animMapSwitches"));
+    assert.ok(animMapSource.includes("state.mountedControls.animMapSwitches"));
+    assert.ok(animMapSource.includes("helpers.attachAnimatedSwitch(sw, {"));
+    assert.ok(animMapSource.includes('command("setThemeOverrideDisabled"'));
+    assert.ok(!animMapSource.includes("helpers.attachActivation(sw"));
+    assert.ok(animMapSource.includes("function patchInPlace(changes)"));
+    assert.ok(animMapSource.includes('Object.prototype.hasOwnProperty.call(changes, "themeOverrides")'));
+    assert.ok(animMapSource.includes("helpers.setSwitchVisual(meta.element, readAnimMapVisualOn(meta.themeId, meta.stateKey), { pending: false });"));
+    assert.ok(animMapSource.includes("patchInPlace,"));
+    assert.ok(coreSource.includes('if (state.activeTab !== "animMap") {'));
+    assert.ok(coreSource.includes("activeTab.patchInPlace(changes)"));
   });
 
   it("keeps stale sound override prefs resettable from the settings UI", () => {

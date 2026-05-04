@@ -51,6 +51,7 @@
     transientUiState: {
       generalSwitches: new Map(),
       agentSwitches: new Map(),
+      animMapSwitches: new Map(),
       size: {
         draftUi: null,
         dragging: false,
@@ -63,6 +64,8 @@
       bubblePolicyControls: new Map(),
       agentSwitches: new Map(),
       agentPermissionModes: new Map(),
+      animMapSwitches: new Map(),
+      animMapReset: null,
       bubblePolicySummary: null,
       size: null,
       soundVolume: null,
@@ -94,6 +97,7 @@
       clickCount: 0,
       contributorsExpanded: false,
     },
+    languageTransition: null,
   };
 
   const renderHooks = {
@@ -601,6 +605,8 @@
     state.mountedControls.bubblePolicyControls.clear();
     state.mountedControls.agentSwitches.clear();
     state.mountedControls.agentPermissionModes.clear();
+    state.mountedControls.animMapSwitches.clear();
+    state.mountedControls.animMapReset = null;
     state.mountedControls.bubblePolicySummary = null;
     state.mountedControls.size = null;
     state.mountedControls.soundVolume = null;
@@ -856,9 +862,13 @@
     if (Object.prototype.hasOwnProperty.call(changes, "agents")) {
       state.transientUiState.agentSwitches.clear();
     }
+    if (Object.prototype.hasOwnProperty.call(changes, "themeOverrides")) {
+      state.transientUiState.animMapSwitches.clear();
+    }
   }
 
   function applyChanges(payload) {
+    const previousLang = getLang();
     if (payload && payload.snapshot) {
       state.snapshot = payload.snapshot;
     } else if (payload && payload.changes && state.snapshot) {
@@ -867,6 +877,12 @@
     if (!state.snapshot) return;
 
     const changes = payload && payload.changes;
+    if (changes && Object.prototype.hasOwnProperty.call(changes, "lang")) {
+      const nextLang = getLang();
+      runtime.languageTransition = previousLang !== nextLang
+        ? { from: previousLang, to: nextLang }
+        : null;
+    }
     clearTransientStateForChanges(changes);
     const needsAnimOverridesRefresh = !!(changes && (
       "theme" in changes || "themeVariant" in changes || "themeOverrides" in changes
@@ -887,8 +903,10 @@
         });
         return;
       }
-      requestRender({ sidebar: true, content: true });
-      return;
+      if (state.activeTab !== "animMap") {
+        requestRender({ sidebar: true, content: true });
+        return;
+      }
     }
 
     if (needsAnimOverridesRefresh && (state.activeTab === "animOverrides" || runtime.assetPicker.state)) {

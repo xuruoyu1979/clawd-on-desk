@@ -169,7 +169,7 @@
       btn.disabled = !!disabled;
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (disabled || btn.classList.contains("active")) return;
+        if (btn.disabled || btn.classList.contains("active")) return;
         window.settingsAPI.command("setAgentPermissionMode", {
           agentId: agent.id,
           mode: mode.id,
@@ -186,8 +186,21 @@
     }
     ctrl.appendChild(segmented);
     row.appendChild(ctrl);
-    state.mountedControls.agentPermissionModes.set(agent.id, { row });
+    state.mountedControls.agentPermissionModes.set(agent.id, {
+      row,
+      agentId: agent.id,
+      syncFromSnapshot: () => syncCodexPermissionModeRow(row, agent.id),
+    });
     return row;
+  }
+
+  function syncCodexPermissionModeRow(row, agentId) {
+    const disabled = !readers.readAgentFlagValue(agentId, "enabled");
+    const current = readers.readAgentPermissionMode(agentId);
+    for (const btn of row.querySelectorAll("button")) {
+      btn.classList.toggle("active", btn.dataset.mode === current);
+      btn.disabled = !!disabled;
+    }
   }
 
   function syncAgentSwitchDisabledState(meta, disabled) {
@@ -257,13 +270,13 @@
 
   function patchInPlace(changes) {
     const keys = changes ? Object.keys(changes) : [];
-    if (keys.length === 1 && keys[0] === "agents" && state.mountedControls.agentPermissionModes.size > 0) {
-      return false;
-    }
     if (!(keys.length === 1 && keys[0] === "agents")) return false;
     if (state.mountedControls.agentSwitches.size === 0) return false;
     for (const [, meta] of state.mountedControls.agentSwitches) {
       if (!meta || !document.body.contains(meta.element)) return false;
+    }
+    for (const [, meta] of state.mountedControls.agentPermissionModes) {
+      if (!meta || !meta.row || !document.body.contains(meta.row)) return false;
     }
     for (const [id, meta] of state.mountedControls.agentSwitches) {
       state.transientUiState.agentSwitches.delete(id);
@@ -271,6 +284,9 @@
         meta.syncDisabledState(!readers.readAgentFlagValue(meta.agentId, "enabled"));
       }
       helpers.setSwitchVisual(meta.element, readers.readAgentFlagValue(meta.agentId, meta.flag), { pending: false });
+    }
+    for (const [, meta] of state.mountedControls.agentPermissionModes) {
+      meta.syncFromSnapshot();
     }
     return true;
   }

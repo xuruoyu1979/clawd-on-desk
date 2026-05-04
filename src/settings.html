@@ -439,6 +439,7 @@ html, body {
 
 /* ── Switch (iOS-style) ── */
 .switch {
+  --switch-knob-x: 0;
   position: relative;
   width: 40px;
   height: 24px;
@@ -446,7 +447,7 @@ html, body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)), var(--switch-off);
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06), inset 0 1px 3px rgba(0, 0, 0, 0.14);
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.12s ease;
+  transition: background 0.26s ease, box-shadow 0.26s ease, transform 0.16s ease;
   flex-shrink: 0;
 }
 .switch::after {
@@ -459,17 +460,21 @@ html, body {
   border-radius: 50%;
   background: var(--switch-knob);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
-  transition: left 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.14s ease, box-shadow 0.18s ease;
+  transform: translateX(0) scale(1);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease;
 }
 .switch.on {
+  --switch-knob-x: 16px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0)), var(--switch-on);
 }
-.switch.on::after { left: 18px; }
+.switch.on::after {
+  transform: translateX(16px) scale(1);
+}
 .switch:not(.disabled):hover::after {
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.26);
 }
 .switch:not(.disabled):active::after {
-  transform: scale(0.92);
+  transform: translateX(var(--switch-knob-x, 0)) scale(0.94);
 }
 .switch.pending {
   opacity: 0.82;
@@ -482,6 +487,12 @@ html, body {
 .switch:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch::after {
+    transition: none;
+  }
 }
 
 /* ── Size slider ── */
@@ -720,6 +731,8 @@ html, body {
   .segmented { background: rgba(255, 255, 255, 0.08); }
 }
 .segmented button {
+  position: relative;
+  z-index: 1;
   border: none;
   background: transparent;
   padding: 4px 12px;
@@ -739,6 +752,42 @@ html, body {
 .segmented button:disabled {
   opacity: 0.48;
   cursor: not-allowed;
+}
+.language-segmented {
+  --language-active-index: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+}
+.language-segmented::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 4);
+  border-radius: 5px;
+  background: var(--panel-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transform: translateX(calc(var(--language-active-index) * 100%));
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.language-segmented button {
+  min-width: 56px;
+  background: transparent;
+  white-space: nowrap;
+}
+.language-segmented button.active {
+  background: transparent;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .language-segmented::before {
+    transition: none;
+  }
 }
 
 /* ── Coming soon placeholder ── */
