@@ -77,6 +77,7 @@
     agentMetadata: null,
     themeList: null,
     codexPetsRefreshPending: false,
+    codexPetZipImportPending: false,
     animationOverridesData: null,
     animationOverridesFetchSeq: 0,
     animationPosterRenderPending: false,

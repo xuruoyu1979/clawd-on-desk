@@ -702,6 +702,22 @@ async function _confirmReplaceExistingCodexPetPackage(payload) {
     return false;
   }
 }
+
+async function _materializeAndActivateImportedCodexPet(imported) {
+  const activeId = activeTheme ? activeTheme._id : (_settingsController.get("theme") || "clawd");
+  const summary = _syncCodexPetThemesForMain(activeId);
+  if (summary.error) throw new Error(summary.error);
+  const generated = (summary.themes || []).find((theme) => _sameFsPath(theme.packageDir, imported.packageDir));
+  if (!generated || !generated.themeId) {
+    throw new Error("imported package did not materialize into a Clawd theme");
+  }
+  const result = await _settingsController.applyCommand("setThemeSelection", { themeId: generated.themeId });
+  if (!result || result.status !== "ok") {
+    throw new Error((result && result.message) || "failed to switch to imported theme");
+  }
+  try { rebuildAllMenus(); } catch {}
+  return { themeId: generated.themeId, summary };
+}
 async function _handleCodexPetImportProtocolUrl(rawUrl) {
   let parsed;
   try {
@@ -733,18 +749,7 @@ async function _handleCodexPetImportProtocolUrl(rawUrl) {
     const imported = await codexPetImporter.importCodexPetFromUrl(parsed.url, {
       confirmReplaceExistingPackage: _confirmReplaceExistingCodexPetPackage,
     });
-    const activeId = activeTheme ? activeTheme._id : (_settingsController.get("theme") || "clawd");
-    const summary = _syncCodexPetThemesForMain(activeId);
-    if (summary.error) throw new Error(summary.error);
-    const generated = (summary.themes || []).find((theme) => _sameFsPath(theme.packageDir, imported.packageDir));
-    if (!generated || !generated.themeId) {
-      throw new Error("imported package did not materialize into a Clawd theme");
-    }
-    const result = await _settingsController.applyCommand("setThemeSelection", { themeId: generated.themeId });
-    if (!result || result.status !== "ok") {
-      throw new Error((result && result.message) || "failed to switch to imported theme");
-    }
-    try { rebuildAllMenus(); } catch {}
+    await _materializeAndActivateImportedCodexPet(imported);
     await dialog.showMessageBox(parent, {
       type: "info",
       buttons: [s.ok],
@@ -3464,6 +3469,64 @@ ipcMain.handle("settings:list-themes", () => {
 });
 
 ipcMain.handle("settings:refresh-codex-pets", () => _refreshCodexPetThemesFromSettings());
+
+ipcMain.handle("settings:open-codex-pets-dir", async () => {
+  try {
+    const dir = codexPetImporter.getDefaultCodexPetsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const message = await shell.openPath(dir);
+    if (message) return { status: "error", message };
+    return { status: "ok", path: dir };
+  } catch (err) {
+    console.warn("Clawd: settings:open-codex-pets-dir failed:", err && err.message);
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+});
+
+ipcMain.handle("settings:import-codex-pet-zip", async (event) => {
+  const parent = BrowserWindow.fromWebContents(event.sender) || settingsWindow || null;
+  let picked;
+  try {
+    picked = await dialog.showOpenDialog(parent, {
+      properties: ["openFile"],
+      filters: [
+        { name: "Codex Pet zip", extensions: ["zip"] },
+      ],
+    });
+  } catch (err) {
+    console.warn("Clawd: Codex Pet zip picker failed:", err && err.message);
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+  if (!picked || picked.canceled || !Array.isArray(picked.filePaths) || !picked.filePaths[0]) {
+    return { status: "cancel" };
+  }
+
+  try {
+    const zipPath = picked.filePaths[0];
+    const stat = fs.statSync(zipPath);
+    if (stat.size > codexPetImporter.MAX_ZIP_BYTES) {
+      throw new Error(`zip package exceeds ${codexPetImporter.MAX_ZIP_BYTES} bytes`);
+    }
+    const imported = await codexPetImporter.importCodexPetFromZipBuffer(fs.readFileSync(zipPath), {
+      confirmReplaceExistingPackage: _confirmReplaceExistingCodexPetPackage,
+    });
+    const activated = await _materializeAndActivateImportedCodexPet(imported);
+    return {
+      status: "ok",
+      themeId: activated.themeId,
+      summary: activated.summary,
+      imported: {
+        id: imported.packageInfo.id,
+        displayName: imported.packageInfo.displayName,
+        packageDir: imported.packageDir,
+      },
+    };
+  } catch (err) {
+    if (err && err.code === codexPetImporter.ERR_REPLACE_DECLINED) return { status: "cancel" };
+    console.warn("Clawd: Codex Pet zip import failed:", err && err.message);
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+});
 
 // Kept in main so `dialog.showMessageBox` can take a BrowserWindow ref.
 const REMOVE_THEME_DIALOG_STRINGS = {

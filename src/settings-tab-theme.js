@@ -42,12 +42,43 @@
       return;
     }
 
-    const grid = document.createElement("div");
-    grid.className = "theme-grid";
-    for (const theme of runtime.themeList) {
-      grid.appendChild(buildThemeCard(theme));
+    for (const section of getThemeSections(runtime.themeList)) {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = "theme-section";
+      sectionEl.setAttribute("aria-labelledby", `theme-section-${section.id}`);
+
+      const title = document.createElement("h2");
+      title.id = `theme-section-${section.id}`;
+      title.className = "theme-section-title";
+      title.textContent = section.title;
+      sectionEl.appendChild(title);
+
+      const grid = document.createElement("div");
+      grid.className = "theme-grid";
+      for (const theme of section.themes) {
+        grid.appendChild(buildThemeCard(theme));
+      }
+      sectionEl.appendChild(grid);
+      parent.appendChild(sectionEl);
     }
-    parent.appendChild(grid);
+  }
+
+  function getThemeSections(themes) {
+    const groups = {
+      builtin: [],
+      importedCodexPets: [],
+      user: [],
+    };
+    for (const theme of themes || []) {
+      if (theme && theme.builtin) groups.builtin.push(theme);
+      else if (theme && theme.managedCodexPet) groups.importedCodexPets.push(theme);
+      else groups.user.push(theme);
+    }
+    return [
+      { id: "builtin", title: t("themeGroupBuiltIn"), themes: groups.builtin },
+      { id: "imported-codex-pets", title: t("themeGroupImportedCodexPets"), themes: groups.importedCodexPets },
+      { id: "user", title: t("themeGroupUserThemes"), themes: groups.user },
+    ].filter((section) => section.themes.length > 0);
   }
 
   function localizeField(value) {
@@ -97,6 +128,26 @@
   function buildThemeActions() {
     const row = document.createElement("div");
     row.className = "theme-actions";
+
+    const importBtn = document.createElement("button");
+    importBtn.type = "button";
+    importBtn.className = "soft-btn";
+    importBtn.textContent = t("themeImportPetZip");
+    importBtn.disabled = !!runtime.codexPetZipImportPending
+      || !window.settingsAPI
+      || typeof window.settingsAPI.importCodexPetZip !== "function";
+    if (runtime.codexPetZipImportPending) importBtn.classList.add("pending");
+    importBtn.addEventListener("click", handleImportCodexPetZip);
+    row.appendChild(importBtn);
+
+    const folderBtn = document.createElement("button");
+    folderBtn.type = "button";
+    folderBtn.className = "soft-btn";
+    folderBtn.textContent = t("themeOpenCodexPetsFolder");
+    folderBtn.disabled = !window.settingsAPI
+      || typeof window.settingsAPI.openCodexPetsDir !== "function";
+    folderBtn.addEventListener("click", handleOpenCodexPetsFolder);
+    row.appendChild(folderBtn);
 
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
@@ -243,6 +294,58 @@
       })
       .finally(() => {
         runtime.codexPetsRefreshPending = false;
+        if (state.activeTab === "theme") ops.requestRender({ content: true });
+      });
+  }
+
+  function handleOpenCodexPetsFolder() {
+    if (!window.settingsAPI || typeof window.settingsAPI.openCodexPetsDir !== "function") return;
+    window.settingsAPI.openCodexPetsDir()
+      .then((result) => {
+        if (!result || result.status !== "ok") {
+          ops.showToast(t("toastCodexPetsFolderFailed") + ((result && result.message) || "unknown error"), { error: true });
+        }
+      })
+      .catch((err) => {
+        ops.showToast(t("toastCodexPetsFolderFailed") + (err && err.message), { error: true });
+      });
+  }
+
+  function formatCodexPetZipImportOk(result) {
+    const imported = result && result.imported;
+    const name = imported && (imported.displayName || imported.id);
+    const formatter = t("toastCodexPetZipImportOk");
+    if (typeof formatter === "function") return formatter(name || "Codex Pet");
+    return String(formatter);
+  }
+
+  function formatCodexPetZipImportFailed(message) {
+    const formatter = t("toastCodexPetZipImportFailed");
+    if (typeof formatter === "function") return formatter(message || "unknown error");
+    return String(formatter) + (message || "unknown error");
+  }
+
+  function handleImportCodexPetZip() {
+    if (!window.settingsAPI || typeof window.settingsAPI.importCodexPetZip !== "function") return;
+    runtime.codexPetZipImportPending = true;
+    if (state.activeTab === "theme") ops.requestRender({ content: true });
+    window.settingsAPI.importCodexPetZip()
+      .then((result) => {
+        if (!result || result.status === "cancel") return null;
+        if (result.status !== "ok") {
+          ops.showToast(formatCodexPetZipImportFailed(result && result.message), { error: true });
+          return null;
+        }
+        ops.showToast(formatCodexPetZipImportOk(result));
+        return ops.fetchThemes().then(() => {
+          if (state.activeTab === "theme") ops.requestRender({ content: true });
+        });
+      })
+      .catch((err) => {
+        ops.showToast(formatCodexPetZipImportFailed(err && err.message), { error: true });
+      })
+      .finally(() => {
+        runtime.codexPetZipImportPending = false;
         if (state.activeTab === "theme") ops.requestRender({ content: true });
       });
   }

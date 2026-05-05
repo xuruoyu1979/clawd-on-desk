@@ -771,6 +771,7 @@ html, body {
 /* ── Theme grid ── */
 .theme-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
@@ -780,6 +781,18 @@ html, body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 14px;
+}
+.theme-section + .theme-section {
+  margin-top: 18px;
+}
+.theme-section-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
 }
 .theme-card {
   position: relative;

@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
   refreshCodexPets: () => ipcRenderer.invoke("settings:refresh-codex-pets"),
+  openCodexPetsDir: () => ipcRenderer.invoke("settings:open-codex-pets-dir"),
+  importCodexPetZip: () => ipcRenderer.invoke("settings:import-codex-pet-zip"),
   confirmRemoveTheme: (themeId) =>
     ipcRenderer.invoke("settings:confirm-remove-theme", themeId),
   onChanged: (cb) => {

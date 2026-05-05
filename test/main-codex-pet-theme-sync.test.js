@@ -28,12 +28,21 @@ test("settings exposes Codex Pet refresh and managed theme metadata", () => {
   const tabSource = fs.readFileSync(SETTINGS_TAB_THEME, "utf8");
 
   assert.ok(mainSource.includes('ipcMain.handle("settings:refresh-codex-pets"'));
+  assert.ok(mainSource.includes('ipcMain.handle("settings:open-codex-pets-dir"'));
+  assert.ok(mainSource.includes('ipcMain.handle("settings:import-codex-pet-zip"'));
+  assert.ok(mainSource.includes("codexPetImporter.importCodexPetFromZipBuffer"));
   assert.ok(mainSource.includes("_decorateCodexPetThemeMetadata({"));
   assert.ok(mainSource.includes("managedCodexPet: true"));
   assert.ok(mainSource.includes("unchanged: (a.unchanged || 0) + (b.unchanged || 0)"));
   assert.ok(preloadSource.includes('refreshCodexPets: () => ipcRenderer.invoke("settings:refresh-codex-pets")'));
+  assert.ok(preloadSource.includes('openCodexPetsDir: () => ipcRenderer.invoke("settings:open-codex-pets-dir")'));
+  assert.ok(preloadSource.includes('importCodexPetZip: () => ipcRenderer.invoke("settings:import-codex-pet-zip")'));
   assert.ok(tabSource.includes("theme.managedCodexPet"));
   assert.ok(tabSource.includes("themeRefreshImportedPets"));
+  assert.ok(tabSource.includes("themeImportPetZip"));
+  assert.ok(tabSource.includes("themeOpenCodexPetsFolder"));
+  assert.ok(tabSource.includes("getThemeSections"));
+  assert.ok(tabSource.includes("themeGroupImportedCodexPets"));
 });
 
 test("managed Codex Pet themes cannot be removed through the user-theme delete command", () => {
