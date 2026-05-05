@@ -10,6 +10,10 @@
   let readers = null;
   let helpers = null;
   let ops = null;
+  const CODEX_PERMISSION_MODE_OPTIONS = [
+    { id: "native", labelKey: "codexPermissionModeNative" },
+    { id: "intercept", labelKey: "codexPermissionModeIntercept" },
+  ];
 
   function t(key) {
     return helpers.t(key);
@@ -161,14 +165,11 @@
     const ctrl = document.createElement("div");
     ctrl.className = "row-control";
     const segmented = document.createElement("div");
-    segmented.className = "segmented";
+    segmented.className = "segmented codex-permission-mode-segmented";
     segmented.setAttribute("role", "tablist");
     const current = readers.readAgentPermissionMode(agent.id);
-    const modes = [
-      { id: "native", labelKey: "codexPermissionModeNative" },
-      { id: "intercept", labelKey: "codexPermissionModeIntercept" },
-    ];
-    for (const mode of modes) {
+    segmented.style.setProperty("--codex-permission-mode-active-index", String(getCodexPermissionModeIndex(current)));
+    for (const mode of CODEX_PERMISSION_MODE_OPTIONS) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.dataset.mode = mode.id;
@@ -205,10 +206,34 @@
   function syncCodexPermissionModeRow(row, agentId) {
     const disabled = !readers.readAgentFlagValue(agentId, "enabled");
     const current = readers.readAgentPermissionMode(agentId);
+    const segmented = row.querySelector(".codex-permission-mode-segmented");
+    const currentIndex = getCodexPermissionModeIndex(current);
+    const previousActive = segmented && [...segmented.querySelectorAll("button")]
+      .find((btn) => btn.classList.contains("active"));
+    const previousIndex = previousActive
+      ? getCodexPermissionModeIndex(previousActive.dataset.mode)
+      : currentIndex;
+    if (segmented) {
+      segmented.style.setProperty("--codex-permission-mode-active-index", String(previousIndex));
+    }
     for (const btn of row.querySelectorAll("button")) {
       btn.classList.toggle("active", btn.dataset.mode === current);
       btn.disabled = !!disabled;
     }
+    if (segmented && previousIndex !== currentIndex) {
+      segmented.classList.add("codex-permission-mode-transitioning");
+      requestAnimationFrame(() => {
+        segmented.getBoundingClientRect();
+        segmented.style.setProperty("--codex-permission-mode-active-index", String(currentIndex));
+        segmented.classList.remove("codex-permission-mode-transitioning");
+      });
+    } else if (segmented) {
+      segmented.style.setProperty("--codex-permission-mode-active-index", String(currentIndex));
+    }
+  }
+
+  function getCodexPermissionModeIndex(mode) {
+    return Math.max(0, CODEX_PERMISSION_MODE_OPTIONS.findIndex((option) => option.id === mode));
   }
 
   function syncAgentSwitchDisabledState(meta, disabled) {

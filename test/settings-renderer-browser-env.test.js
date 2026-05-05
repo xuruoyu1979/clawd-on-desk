@@ -1060,6 +1060,64 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(permissionsSwitch.element.attributes.tabindex, "-1");
   });
 
+  it("slides the Codex permission mode pill when mode broadcasts patch in place", () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "intercept",
+          },
+        },
+      },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
+        },
+      }],
+      collapsedGroups: {
+        "agents:codex": false,
+      },
+    });
+
+    harness.core.ops.requestRender({ content: true });
+    harness.raf.flush();
+    const segmented = harness.content.querySelector(".codex-permission-mode-segmented");
+    assert.ok(segmented, "Codex permission mode should use the sliding segmented control");
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "1");
+
+    harness.core.ops.applyChanges({
+      changes: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "native",
+          },
+        },
+      },
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "native",
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "1");
+    assert.strictEqual(segmented.classList.contains("codex-permission-mode-transitioning"), true);
+    harness.raf.flush();
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "0");
+    assert.strictEqual(segmented.classList.contains("codex-permission-mode-transitioning"), false);
+  });
+
   it("patches agent-only broadcasts in place without requiring Codex-specific rows", () => {
     const harness = loadAgentsTabForTest({
       snapshot: {
