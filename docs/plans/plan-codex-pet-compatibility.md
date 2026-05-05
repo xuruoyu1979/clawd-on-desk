@@ -107,9 +107,10 @@ This is the lowest-risk MVP because Petdex and compatible installers already est
    ```
 
 3. OS asks whether to open Clawd.
-4. Clawd opens an import confirmation with pet name, source host, and package size. Author/license are shown only when metadata exists.
+4. Clawd opens a pre-download import confirmation with the source host and package URL.
 5. User clicks `Import and Use`.
 6. Clawd downloads, validates, installs, materializes a Clawd-compatible wrapper theme, and switches to the pet.
+7. Clawd shows the pet display name after validation succeeds. MVP enforces strict download/package size caps instead of adding a second preflight dialog for display name and package size; a richer preflight can be revisited during polish.
 
 This should be the primary consumer-facing experience after MVP.
 
@@ -957,14 +958,14 @@ Rules:
 - treat `displayName`, `description`, and any optional metadata as untrusted text; trim, length-cap, and render with text APIs
 - never put imported text into `innerHTML`; generated `theme.json.name` and `description` remain untrusted all the way through Settings UI
 - sanitize generated or imported SVG
-- keep protocol import confirmation in MVP
+- keep protocol import confirmation in MVP. Phase 3 uses a one-step pre-download confirmation with source host and URL, then shows pet display name after validation succeeds. Package size is protected by strict caps; showing name + size before download is deferred polish unless the website provides trusted preview metadata separately.
 - treat agent-assisted prompts as a fallback, not the safest path. The prompt should include zip-slip checks, but damage can occur before Clawd's later scan. Prefer `clawd://` import or Petdex for normal users.
 
 Rights:
 
 - imported pets may be fan art or third-party character art
 - Clawd should not imply the project owns or endorses imported art
-- import UI should always show pet display name, package origin host, and package size
+- MVP import UI must show package origin host before download and pet display name after validation. Package size must be capped strictly. A richer preflight that shows pet display name and package size before install is deferred until the protocol/gallery contract can provide preview metadata without trusting arbitrary remote text too early.
 - import UI may show source, author, or license only when explicit metadata exists
 - website/package metadata can carry source and license fields as optional extensions, but Clawd must not require them
 

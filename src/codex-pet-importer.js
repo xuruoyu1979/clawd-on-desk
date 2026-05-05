@@ -17,6 +17,7 @@ const MAX_SPRITESHEET_BYTES = 16 * 1024 * 1024;
 const MAX_PET_JSON_BYTES = 64 * 1024;
 const MAX_REDIRECTS = 5;
 const IMPORT_MARKER_FILENAME = ".clawd-imported-pet.json";
+const ERR_REPLACE_DECLINED = "ERR_CLAWD_CODEX_PET_REPLACE_DECLINED";
 const INTERNAL_HOST_SUFFIXES = [".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp"];
 
 function getDefaultCodexPetsDir(homeDir = os.homedir()) {
@@ -151,7 +152,8 @@ async function downloadHttpsBuffer(rawUrl, options = {}) {
   const resolved = await guardedLookup(url.hostname, { lookup: options.lookup });
 
   return new Promise((resolve, reject) => {
-    const req = https.request({
+    const request = options.request || https.request;
+    const req = request({
       protocol: "https:",
       hostname: url.hostname,
       servername: url.hostname,
@@ -208,11 +210,13 @@ async function importCodexPetFromUrl(rawUrl, options = {}) {
   const url = normalizeRemotePetUrl(rawUrl);
   const fetchBuffer = options.fetchBuffer || ((href, fetchOptions) => downloadHttpsBuffer(href, {
     lookup: options.lookup,
+    request: options.request,
     maxBytes: fetchOptions && fetchOptions.maxBytes,
   }));
 
   if (url.pathname.toLowerCase().endsWith(".zip")) {
     const zipBuffer = await fetchBuffer(url.href, { maxBytes: MAX_ZIP_BYTES, kind: "zip" });
+    if (zipBuffer.length > MAX_ZIP_BYTES) throw new Error(`zip package exceeds ${MAX_ZIP_BYTES} bytes`);
     return importCodexPetFromZipBuffer(zipBuffer, options);
   }
 
@@ -226,10 +230,14 @@ async function importCodexPetFromUrl(rawUrl, options = {}) {
     maxBytes: MAX_SPRITESHEET_BYTES,
     kind: "spritesheet",
   });
+  if (spritesheetBuffer.length > MAX_SPRITESHEET_BYTES) {
+    throw new Error(`spritesheet exceeds ${MAX_SPRITESHEET_BYTES} bytes`);
+  }
   return installCodexPetPackage({
     manifest,
     files: [{ relativePath: manifest.spritesheetPath, buffer: spritesheetBuffer }],
     codexPetsDir: options.codexPetsDir,
+    confirmReplaceExistingPackage: options.confirmReplaceExistingPackage,
   });
 }
 
@@ -239,6 +247,7 @@ async function importCodexPetFromZipBuffer(zipBuffer, options = {}) {
     manifest: extracted.manifest,
     files: [{ relativePath: extracted.manifest.spritesheetPath, buffer: extracted.spritesheetBuffer }],
     codexPetsDir: options.codexPetsDir,
+    confirmReplaceExistingPackage: options.confirmReplaceExistingPackage,
   });
 }
 
@@ -266,7 +275,7 @@ function resolveDirectSpritesheetUrl(petUrl, manifest) {
   return normalizeRemotePetUrl(target.href);
 }
 
-function installCodexPetPackage({ manifest, files, codexPetsDir } = {}) {
+async function installCodexPetPackage({ manifest, files, codexPetsDir, confirmReplaceExistingPackage } = {}) {
   if (!manifest || typeof manifest !== "object") throw new Error("manifest is required");
   const rootDir = path.resolve(codexPetsDir || getDefaultCodexPetsDir());
   const packageName = derivePackageDirName(manifest);
@@ -294,6 +303,24 @@ function installCodexPetPackage({ manifest, files, codexPetsDir } = {}) {
       if (!fs.existsSync(path.join(targetDir, "pet.json"))) {
         throw new Error(`refusing to overwrite non-pet directory: ${targetDir}`);
       }
+      const existingMarker = readImportMarker(targetDir);
+      if (!existingMarker) {
+        if (typeof confirmReplaceExistingPackage !== "function") {
+          throw new Error(`Codex Pet package already exists locally: ${targetDir}`);
+        }
+        const existingManifest = readPetManifestIfPresent(targetDir);
+        const confirmed = await confirmReplaceExistingPackage({
+          packageDir: targetDir,
+          packageName,
+          existingManifest,
+          incomingManifest: manifest,
+        });
+        if (!confirmed) {
+          const err = new Error("Codex Pet package replacement was cancelled");
+          err.code = ERR_REPLACE_DECLINED;
+          throw err;
+        }
+      }
       fs.rmSync(targetDir, { recursive: true, force: true });
     }
     fs.renameSync(stagingDir, targetDir);
@@ -312,6 +339,29 @@ function installCodexPetPackage({ manifest, files, codexPetsDir } = {}) {
   } catch (err) {
     fs.rmSync(stagingDir, { recursive: true, force: true });
     throw err;
+  }
+}
+
+function readImportMarker(packageDir) {
+  try {
+    const marker = JSON.parse(fs.readFileSync(path.join(packageDir, IMPORT_MARKER_FILENAME), "utf8"));
+    if (
+      marker
+      && marker.managedBy === "clawd"
+      && marker.kind === "codex-pet-import"
+      && marker.schemaVersion === 1
+    ) {
+      return marker;
+    }
+  } catch {}
+  return null;
+}
+
+function readPetManifestIfPresent(packageDir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(packageDir, "pet.json"), "utf8"));
+  } catch {
+    return null;
   }
 }
 
@@ -437,6 +487,8 @@ function normalizePackageRelativePath(value, fieldName) {
 }
 
 function derivePackageDirName(manifest) {
+  // Import package directories may preserve Unicode names. The adapter derives
+  // separate ASCII-safe Clawd theme ids from the installed package metadata.
   const candidate = sanitizePackageDirName(manifest.id) || sanitizePackageDirName(manifest.displayName);
   if (candidate) return candidate;
   const hash = crypto.createHash("sha1").update(JSON.stringify(manifest)).digest("hex").slice(0, 8);
@@ -466,6 +518,7 @@ module.exports = {
   MAX_SPRITESHEET_BYTES,
   MAX_PET_JSON_BYTES,
   IMPORT_MARKER_FILENAME,
+  ERR_REPLACE_DECLINED,
   getDefaultCodexPetsDir,
   parseClawdImportUrl,
   normalizeRemotePetUrl,
@@ -478,4 +531,5 @@ module.exports = {
   extractCodexPetZip,
   resolveDirectSpritesheetUrl,
   installCodexPetPackage,
+  readImportMarker,
 };

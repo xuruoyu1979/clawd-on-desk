@@ -707,6 +707,7 @@ function removeOrphanManagedThemes(userThemesDir, options = {}) {
 }
 
 function derivePetSlug({ packageDir, id, displayName }) {
+  // Theme ids stay ASCII-safe even when the installed package folder preserves Unicode.
   const folder = path.basename(packageDir || "");
   if (isSafeSlug(folder)) return folder;
   const fromId = slugifyAscii(id);

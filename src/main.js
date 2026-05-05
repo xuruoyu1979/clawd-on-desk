@@ -621,6 +621,8 @@ function _getCodexPetImportDialogStrings() {
       ok: "OK",
       confirmMessage: (host) => `Import Codex Pet from ${host}?`,
       confirmDetail: (url) => `Clawd will download, validate, and install this pet package before switching to it.\n\n${url}`,
+      replaceMessage: (name) => `Replace existing local pet "${name}"?`,
+      replaceDetail: "A Codex Pet package with the same id already exists locally and was not imported by Clawd. Replacing it will overwrite that local package.",
       successMessage: (name) => `Imported "${name}"`,
       successDetail: "The imported Codex Pet is now active.",
       failedMessage: "Couldn't import Codex Pet",
@@ -631,6 +633,8 @@ function _getCodexPetImportDialogStrings() {
       ok: "确定",
       confirmMessage: (host) => `从 ${host} 导入 Codex Pet？`,
       confirmDetail: (url) => `Clawd 会先下载、校验并安装这个宠物包，然后切换到它。\n\n${url}`,
+      replaceMessage: (name) => `替换已有本地宠物 "${name}"？`,
+      replaceDetail: "本地已经有同 id 的 Codex Pet 包，而且它不是由 Clawd 导入的。继续会覆盖这个本地包。",
       successMessage: (name) => `已导入 "${name}"`,
       successDetail: "导入的 Codex Pet 已设为当前主题。",
       failedMessage: "导入 Codex Pet 失败",
@@ -641,6 +645,8 @@ function _getCodexPetImportDialogStrings() {
       ok: "확인",
       confirmMessage: (host) => `${host}에서 Codex Pet을 가져올까요?`,
       confirmDetail: (url) => `Clawd가 이 펫 패키지를 다운로드, 검증, 설치한 뒤 전환합니다.\n\n${url}`,
+      replaceMessage: (name) => `기존 로컬 펫 "${name}"을(를) 교체할까요?`,
+      replaceDetail: "같은 id의 Codex Pet 패키지가 이미 로컬에 있으며 Clawd가 가져온 패키지가 아닙니다. 계속하면 해당 로컬 패키지를 덮어씁니다.",
       successMessage: (name) => `"${name}"을(를) 가져왔습니다`,
       successDetail: "가져온 Codex Pet이 활성 테마로 설정되었습니다.",
       failedMessage: "Codex Pet을 가져오지 못했습니다",
@@ -651,6 +657,8 @@ function _getCodexPetImportDialogStrings() {
       ok: "OK",
       confirmMessage: (host) => `${host} から Codex Pet をインポートしますか？`,
       confirmDetail: (url) => `Clawd はこのペットパッケージをダウンロード、検証、インストールしてから切り替えます。\n\n${url}`,
+      replaceMessage: (name) => `既存のローカルペット "${name}" を置き換えますか？`,
+      replaceDetail: "同じ id の Codex Pet パッケージがローカルにあり、Clawd がインポートしたものではありません。続行するとそのローカルパッケージを上書きします。",
       successMessage: (name) => `"${name}" をインポートしました`,
       successDetail: "インポートした Codex Pet を現在のテーマにしました。",
       failedMessage: "Codex Pet をインポートできませんでした",
@@ -669,6 +677,30 @@ async function _showCodexPetImportError(message) {
       noLink: true,
     });
   } catch {}
+}
+async function _confirmReplaceExistingCodexPetPackage(payload) {
+  const s = _getCodexPetImportDialogStrings();
+  const existing = payload && payload.existingManifest;
+  const incoming = payload && payload.incomingManifest;
+  const displayName = (incoming && (incoming.displayName || incoming.id))
+    || (existing && (existing.displayName || existing.id))
+    || (payload && payload.packageName)
+    || "Codex Pet";
+  try {
+    const { response } = await dialog.showMessageBox(_getCodexPetImportDialogParent(), {
+      type: "warning",
+      buttons: [s.import, s.cancel],
+      defaultId: 1,
+      cancelId: 1,
+      message: s.replaceMessage(displayName),
+      detail: s.replaceDetail,
+      noLink: true,
+    });
+    return response === 0;
+  } catch (err) {
+    console.warn("Clawd: Codex Pet replace confirmation failed:", err && err.message);
+    return false;
+  }
 }
 async function _handleCodexPetImportProtocolUrl(rawUrl) {
   let parsed;
@@ -698,7 +730,9 @@ async function _handleCodexPetImportProtocolUrl(rawUrl) {
   }
 
   try {
-    const imported = await codexPetImporter.importCodexPetFromUrl(parsed.url);
+    const imported = await codexPetImporter.importCodexPetFromUrl(parsed.url, {
+      confirmReplaceExistingPackage: _confirmReplaceExistingCodexPetPackage,
+    });
     const activeId = activeTheme ? activeTheme._id : (_settingsController.get("theme") || "clawd");
     const summary = _syncCodexPetThemesForMain(activeId);
     if (summary.error) throw new Error(summary.error);
@@ -719,6 +753,7 @@ async function _handleCodexPetImportProtocolUrl(rawUrl) {
       noLink: true,
     });
   } catch (err) {
+    if (err && err.code === codexPetImporter.ERR_REPLACE_DECLINED) return;
     console.warn("Clawd: Codex Pet import failed:", err && err.message);
     await _showCodexPetImportError(err && err.message);
   }

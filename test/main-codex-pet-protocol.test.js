@@ -17,7 +17,10 @@ test("main wires clawd:// protocol dispatch through the Codex Pet importer", () 
   assert.ok(source.includes("_enqueueCodexPetImportUrlsFromArgv(commandLine);"));
   assert.ok(source.includes("_enqueueCodexPetImportUrlsFromArgv(process.argv);"));
   assert.ok(source.includes("codexPetImporter.parseClawdImportUrl(rawUrl)"));
-  assert.ok(source.includes("codexPetImporter.importCodexPetFromUrl(parsed.url)"));
+  assert.ok(source.includes("codexPetImporter.importCodexPetFromUrl(parsed.url, {"));
+  assert.ok(source.includes("confirmReplaceExistingPackage: _confirmReplaceExistingCodexPetPackage"));
+  assert.ok(source.includes("codexPetImporter.ERR_REPLACE_DECLINED"));
+  assert.ok(source.includes("async function _confirmReplaceExistingCodexPetPackage"));
   assert.ok(source.includes('setThemeSelection", { themeId: generated.themeId }'));
 });
 
