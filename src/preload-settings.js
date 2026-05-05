@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   checkForUpdates: () => ipcRenderer.invoke("settings:check-for-updates"),
   openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
+  refreshCodexPets: () => ipcRenderer.invoke("settings:refresh-codex-pets"),
   confirmRemoveTheme: (themeId) =>
     ipcRenderer.invoke("settings:confirm-remove-theme", themeId),
   onChanged: (cb) => {

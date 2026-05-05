@@ -76,6 +76,7 @@
   const runtime = {
     agentMetadata: null,
     themeList: null,
+    codexPetsRefreshPending: false,
     animationOverridesData: null,
     animationOverridesFetchSeq: 0,
     animationPosterRenderPending: false,

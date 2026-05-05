@@ -491,6 +491,7 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
     const second = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir, activeThemeId: themeId });
 
     assert.strictEqual(second.removed, 0);
+    assert.deepStrictEqual(second.activeOrphanThemeIds, [themeId]);
     assert.strictEqual(fs.existsSync(themeDir), true);
     assert.match(second.diagnostics[0].errors.join("; "), /source package is missing but theme is active/);
   });

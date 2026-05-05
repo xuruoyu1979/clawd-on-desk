@@ -1056,6 +1056,12 @@ async function removeTheme(payload, deps) {
       message: `removeTheme: cannot delete active theme "${themeId}" — switch to another theme first`,
     };
   }
+  if (info.managedCodexPet) {
+    return {
+      status: "error",
+      message: `removeTheme: cannot delete managed Codex Pet theme "${themeId}" — remove it from Petdex instead`,
+    };
+  }
 
   try {
     await deps.removeThemeDir(themeId);

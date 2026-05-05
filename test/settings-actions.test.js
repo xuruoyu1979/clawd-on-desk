@@ -1047,6 +1047,22 @@ describe("removeTheme command", () => {
     assert.deepStrictEqual(calls.removeThemeDir, []);
   });
 
+  it("rejects managed Codex Pet themes", async () => {
+    const { deps, calls } = makeDeps({
+      getThemeInfo: (id) => {
+        calls.getThemeInfo.push(id);
+        if (id === "codex-pet-yoimiya") {
+          return { builtin: false, active: false, managedCodexPet: true };
+        }
+        return { builtin: false, active: false };
+      },
+    });
+    const r = await commandRegistry.removeTheme("codex-pet-yoimiya", deps);
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /managed Codex Pet/);
+    assert.deepStrictEqual(calls.removeThemeDir, []);
+  });
+
   it("rejects unknown themes", async () => {
     const { deps, calls } = makeDeps();
     const r = await commandRegistry.removeTheme("missing", deps);

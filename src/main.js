@@ -417,8 +417,137 @@ function safeConsoleError(...args) {
 
 // ── Theme loader ──
 const themeLoader = require("./theme-loader");
+const codexPetAdapter = require("./codex-pet-adapter");
 const { isPlainObject: _isPlainObject } = themeLoader;
 themeLoader.init(__dirname, app.getPath("userData"));
+
+let _lastCodexPetSyncSummary = null;
+function _emptyCodexPetSyncSummary(overrides = {}) {
+  return {
+    codexPetsDir: "",
+    userThemesDir: "",
+    imported: 0,
+    updated: 0,
+    invalid: 0,
+    removed: 0,
+    activeOrphanThemeIds: [],
+    themes: [],
+    diagnostics: [],
+    ...overrides,
+  };
+}
+function _mergeCodexPetSyncSummaries(base, extra) {
+  const a = base || _emptyCodexPetSyncSummary();
+  const b = extra || _emptyCodexPetSyncSummary();
+  return {
+    codexPetsDir: b.codexPetsDir || a.codexPetsDir || "",
+    userThemesDir: b.userThemesDir || a.userThemesDir || "",
+    imported: (a.imported || 0) + (b.imported || 0),
+    updated: (a.updated || 0) + (b.updated || 0),
+    invalid: (a.invalid || 0) + (b.invalid || 0),
+    removed: (a.removed || 0) + (b.removed || 0),
+    activeOrphanThemeIds: [
+      ...new Set([
+        ...((a.activeOrphanThemeIds || []).map(String)),
+        ...((b.activeOrphanThemeIds || []).map(String)),
+      ]),
+    ],
+    themes: [
+      ...(Array.isArray(a.themes) ? a.themes : []),
+      ...(Array.isArray(b.themes) ? b.themes : []),
+    ],
+    diagnostics: [
+      ...(Array.isArray(a.diagnostics) ? a.diagnostics : []),
+      ...(Array.isArray(b.diagnostics) ? b.diagnostics : []),
+    ],
+    error: a.error || b.error || null,
+  };
+}
+function _syncCodexPetThemesForMain(activeThemeId) {
+  try {
+    const summary = codexPetAdapter.syncCodexPetThemes({
+      userDataDir: app.getPath("userData"),
+      activeThemeId,
+    });
+    _lastCodexPetSyncSummary = summary;
+    return summary;
+  } catch (err) {
+    const summary = _emptyCodexPetSyncSummary({
+      error: err && err.message ? err.message : String(err),
+      diagnostics: [{ errors: [`failed to sync Codex Pet themes: ${err && err.message ? err.message : err}`] }],
+    });
+    _lastCodexPetSyncSummary = summary;
+    console.warn("Clawd: failed to sync Codex Pet themes:", err && err.message);
+    return summary;
+  }
+}
+function _summaryHasActiveCodexPetOrphan(summary, themeId) {
+  return !!(
+    themeId
+    && summary
+    && Array.isArray(summary.activeOrphanThemeIds)
+    && summary.activeOrphanThemeIds.includes(themeId)
+  );
+}
+function _readCodexPetManagedThemeMarker(themeId) {
+  if (typeof themeId !== "string" || !themeId) return null;
+  let userThemesDir;
+  try {
+    userThemesDir = themeLoader.ensureUserThemesDir();
+  } catch {
+    return null;
+  }
+  if (!userThemesDir) return null;
+  const root = path.resolve(userThemesDir);
+  const themeDir = path.resolve(path.join(userThemesDir, themeId));
+  if (!themeDir.startsWith(root + path.sep)) return null;
+  return codexPetAdapter.readManagedMarker(themeDir);
+}
+function _decorateCodexPetThemeMetadata(theme) {
+  const marker = theme && _readCodexPetManagedThemeMarker(theme.id);
+  if (!marker) return theme;
+  return {
+    ...theme,
+    managedCodexPet: true,
+    codexPet: {
+      sourcePetId: marker.sourcePetId || "",
+      sourcePackagePath: marker.sourcePackagePath || "",
+      adapterVersion: marker.adapterVersion || 0,
+    },
+  };
+}
+async function _refreshCodexPetThemesFromSettings() {
+  const activeId = activeTheme ? activeTheme._id : (_settingsController.get("theme") || "clawd");
+  let summary = _syncCodexPetThemesForMain(activeId);
+  let switchedToFallback = false;
+
+  if (summary.error) {
+    return { status: "error", message: summary.error, summary };
+  }
+
+  if (_summaryHasActiveCodexPetOrphan(summary, activeId)) {
+    const result = await _settingsController.applyCommand("setThemeSelection", { themeId: "clawd" });
+    if (!result || result.status !== "ok") {
+      return {
+        status: "error",
+        message: (result && result.message) || "failed to switch active orphan Codex Pet theme back to clawd",
+        summary,
+      };
+    }
+    switchedToFallback = true;
+    const cleanup = _syncCodexPetThemesForMain("clawd");
+    summary = _mergeCodexPetSyncSummaries(summary, cleanup);
+    _lastCodexPetSyncSummary = summary;
+    if (cleanup.error) {
+      return { status: "error", message: cleanup.error, summary, switchedToFallback };
+    }
+  }
+
+  try { rebuildAllMenus(); } catch (err) {
+    console.warn("Clawd: rebuildAllMenus after Codex Pet refresh failed:", err && err.message);
+  }
+  return { status: "ok", summary, switchedToFallback };
+}
 
 // Lenient load so a missing/corrupt user-selected theme can't brick boot.
 // If lenient fell back to "clawd" OR the variant fell back to "default",
@@ -428,11 +557,36 @@ themeLoader.init(__dirname, app.getPath("userData"));
 // directly — not activateTheme (which requires ready windows) and not the
 // setThemeSelection command (which goes through activateTheme). The runtime
 // switch path via UI goes through setThemeSelection post-window-ready.
-const _requestedThemeId = _settingsController.get("theme") || "clawd";
+let _requestedThemeId = _settingsController.get("theme") || "clawd";
 const _initialVariantMap = _settingsController.get("themeVariant") || {};
-const _requestedVariantId = _initialVariantMap[_requestedThemeId] || "default";
+let _requestedVariantId = _initialVariantMap[_requestedThemeId] || "default";
 const _initialThemeOverrides = _settingsController.get("themeOverrides") || {};
-const _requestedThemeOverrides = _initialThemeOverrides[_requestedThemeId] || null;
+let _requestedThemeOverrides = _initialThemeOverrides[_requestedThemeId] || null;
+let _startupCodexPetSyncSummary = _syncCodexPetThemesForMain(_requestedThemeId);
+if (_summaryHasActiveCodexPetOrphan(_startupCodexPetSyncSummary, _requestedThemeId)) {
+  const orphanThemeId = _requestedThemeId;
+  const nextVariantMap = { ...(_settingsController.get("themeVariant") || {}) };
+  const nextOverrides = { ...(_settingsController.get("themeOverrides") || {}) };
+  delete nextVariantMap[orphanThemeId];
+  delete nextOverrides[orphanThemeId];
+
+  _requestedThemeId = "clawd";
+  _requestedVariantId = nextVariantMap[_requestedThemeId] || "default";
+  _requestedThemeOverrides = nextOverrides[_requestedThemeId] || null;
+  const result = _settingsController.hydrate({
+    theme: _requestedThemeId,
+    themeVariant: nextVariantMap,
+    themeOverrides: nextOverrides,
+  });
+  if (result && result.status === "error") {
+    console.warn("Clawd: Codex Pet active theme fallback hydrate failed:", result.message);
+  }
+  _startupCodexPetSyncSummary = _mergeCodexPetSyncSummaries(
+    _startupCodexPetSyncSummary,
+    _syncCodexPetThemesForMain(_requestedThemeId)
+  );
+  _lastCodexPetSyncSummary = _startupCodexPetSyncSummary;
+}
 let activeTheme = themeLoader.loadTheme(_requestedThemeId, {
   variant: _requestedVariantId,
   overrides: _requestedThemeOverrides,
@@ -3087,15 +3241,19 @@ ipcMain.handle("settings:import-animation-overrides", async (event) => {
 ipcMain.handle("settings:list-themes", () => {
   try {
     const activeId = activeTheme ? activeTheme._id : "clawd";
-    return themeLoader.listThemesWithMetadata().map((t) => ({
-      ...t,
-      active: t.id === activeId,
-    }));
+    return themeLoader.listThemesWithMetadata().map((t) =>
+      _decorateCodexPetThemeMetadata({
+        ...t,
+        active: t.id === activeId,
+      })
+    );
   } catch (err) {
     console.warn("Clawd: settings:list-themes failed:", err && err.message);
     return [];
   }
 });
+
+ipcMain.handle("settings:refresh-codex-pets", () => _refreshCodexPetThemesFromSettings());
 
 // Kept in main so `dialog.showMessageBox` can take a BrowserWindow ref.
 const REMOVE_THEME_DIALOG_STRINGS = {
@@ -4125,6 +4283,7 @@ function _deferredGetThemeInfo(themeId) {
   return {
     builtin: !!entry.builtin,
     active: activeTheme && activeTheme._id === themeId,
+    managedCodexPet: !!_readCodexPetManagedThemeMarker(themeId),
   };
 }
 function _deferredRemoveThemeDir(themeId) {

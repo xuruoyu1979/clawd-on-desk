@@ -231,6 +231,7 @@ function syncCodexPetThemes(options = {}) {
     updated: 0,
     invalid: 0,
     removed: 0,
+    activeOrphanThemeIds: [],
     themes: [],
     diagnostics: [],
   };
@@ -249,6 +250,7 @@ function syncCodexPetThemes(options = {}) {
 
   const gc = removeOrphanManagedThemes(userThemesDir, { activeThemeId: options.activeThemeId });
   summary.removed += gc.removed;
+  summary.activeOrphanThemeIds.push(...gc.activeOrphanThemeIds);
   summary.diagnostics.push(...gc.diagnostics);
 
   return summary;
@@ -618,7 +620,7 @@ function normalizePackageRelativePath(value, packageDir) {
 }
 
 function removeOrphanManagedThemes(userThemesDir, options = {}) {
-  const summary = { removed: 0, diagnostics: [] };
+  const summary = { removed: 0, activeOrphanThemeIds: [], diagnostics: [] };
   if (!userThemesDir || !fs.existsSync(userThemesDir)) return summary;
 
   let entries;
@@ -637,6 +639,7 @@ function removeOrphanManagedThemes(userThemesDir, options = {}) {
     if (fs.existsSync(marker.sourcePackagePath)) continue;
 
     if (options.activeThemeId && options.activeThemeId === entry.name) {
+      summary.activeOrphanThemeIds.push(entry.name);
       summary.diagnostics.push({
         themeId: entry.name,
         themeDir,

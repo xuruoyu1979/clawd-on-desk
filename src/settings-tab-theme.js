@@ -22,6 +22,7 @@
     subtitle.className = "subtitle";
     subtitle.textContent = t("themeSubtitle");
     parent.appendChild(subtitle);
+    parent.appendChild(buildThemeActions());
 
     if (runtime.themeList === null) {
       const loading = document.createElement("div");
@@ -93,6 +94,24 @@
     return badges;
   }
 
+  function buildThemeActions() {
+    const row = document.createElement("div");
+    row.className = "theme-actions";
+
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.className = "soft-btn";
+    refreshBtn.textContent = t("themeRefreshImportedPets");
+    refreshBtn.disabled = !!runtime.codexPetsRefreshPending
+      || !window.settingsAPI
+      || typeof window.settingsAPI.refreshCodexPets !== "function";
+    if (runtime.codexPetsRefreshPending) refreshBtn.classList.add("pending");
+    refreshBtn.addEventListener("click", handleRefreshCodexPets);
+    row.appendChild(refreshBtn);
+
+    return row;
+  }
+
   function buildThemeCard(theme) {
     const card = document.createElement("div");
     card.className = "theme-card";
@@ -131,6 +150,12 @@
       badge.textContent = t("themeBadgeBuiltin");
       name.appendChild(badge);
     }
+    if (theme.managedCodexPet) {
+      const badge = document.createElement("span");
+      badge.className = "theme-card-badge accent";
+      badge.textContent = t("themeBadgeCodexPet");
+      name.appendChild(badge);
+    }
     card.appendChild(name);
 
     const capLabels = getThemeCapabilityBadgeLabels(theme);
@@ -146,7 +171,7 @@
       card.appendChild(caps);
     }
 
-    const canDelete = !theme.builtin && !theme.active;
+    const canDelete = !theme.builtin && !theme.active && !theme.managedCodexPet;
     if (theme.active || canDelete) {
       const footer = document.createElement("div");
       footer.className = "theme-card-footer";
@@ -174,6 +199,51 @@
       helpers.attachActivation(card, () => window.settingsAPI.command("setThemeSelection", { themeId: theme.id }));
     }
     return card;
+  }
+
+  function formatCodexPetsRefreshOk(result) {
+    const summary = (result && result.summary) || {};
+    const formatter = t("toastCodexPetsRefreshOk");
+    if (typeof formatter === "function") {
+      return formatter(
+        summary.imported || 0,
+        summary.updated || 0,
+        summary.removed || 0,
+        summary.invalid || 0,
+        !!(result && result.switchedToFallback)
+      );
+    }
+    return String(formatter);
+  }
+
+  function formatCodexPetsRefreshFailed(message) {
+    const formatter = t("toastCodexPetsRefreshFailed");
+    if (typeof formatter === "function") return formatter(message || "unknown error");
+    return String(formatter) + (message || "unknown error");
+  }
+
+  function handleRefreshCodexPets() {
+    if (!window.settingsAPI || typeof window.settingsAPI.refreshCodexPets !== "function") return;
+    runtime.codexPetsRefreshPending = true;
+    if (state.activeTab === "theme") ops.requestRender({ content: true });
+    window.settingsAPI.refreshCodexPets()
+      .then((result) => {
+        if (!result || result.status !== "ok") {
+          ops.showToast(formatCodexPetsRefreshFailed(result && result.message), { error: true });
+          return null;
+        }
+        ops.showToast(formatCodexPetsRefreshOk(result));
+        return ops.fetchThemes().then(() => {
+          if (state.activeTab === "theme") ops.requestRender({ content: true });
+        });
+      })
+      .catch((err) => {
+        ops.showToast(formatCodexPetsRefreshFailed(err && err.message), { error: true });
+      })
+      .finally(() => {
+        runtime.codexPetsRefreshPending = false;
+        if (state.activeTab === "theme") ops.requestRender({ content: true });
+      });
   }
 
   function handleDeleteTheme(theme) {
