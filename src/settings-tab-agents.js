@@ -10,6 +10,10 @@
   let readers = null;
   let helpers = null;
   let ops = null;
+  const CODEX_PERMISSION_MODE_OPTIONS = [
+    { id: "native", labelKey: "codexPermissionModeNative" },
+    { id: "intercept", labelKey: "codexPermissionModeIntercept" },
+  ];
 
   function t(key) {
     return helpers.t(key);
@@ -88,19 +92,17 @@
   }
 
   function buildAgentDetailRows(agent) {
-    const masterOn = readers.readAgentFlagValue(agent.id, "enabled");
     const rows = [];
     const caps = agent.capabilities || {};
     if (agent.id === "codex") {
-      rows.push(buildCodexPermissionModeRow(agent, !masterOn));
+      rows.push(buildCodexPermissionModeRow(agent, computeAgentSubSwitchDisabled(agent.id, "permissionMode")));
     }
     if (caps.permissionApproval || caps.interactiveBubble) {
-      const codexNativeMode = agent.id === "codex" && readers.readAgentPermissionMode(agent.id) !== "intercept";
       rows.push(buildAgentSwitchRow({
         agent,
         flag: "permissionsEnabled",
         extraClass: "row-sub",
-        disabled: !masterOn || codexNativeMode,
+        disabled: computeAgentSubSwitchDisabled(agent.id, "permissionsEnabled"),
         buildText: (text) => {
           const label = document.createElement("span");
           label.className = "row-label";
@@ -118,7 +120,7 @@
         agent,
         flag: "notificationHookEnabled",
         extraClass: "row-sub",
-        disabled: !masterOn,
+        disabled: computeAgentSubSwitchDisabled(agent.id, "notificationHookEnabled"),
         buildText: (text) => {
           const label = document.createElement("span");
           label.className = "row-label";
@@ -132,6 +134,16 @@
       }));
     }
     return rows;
+  }
+
+  function computeAgentSubSwitchDisabled(agentId, flag) {
+    if (flag === "enabled") return false;
+    const masterOn = readers.readAgentFlagValue(agentId, "enabled");
+    if (!masterOn) return true;
+    if (agentId === "codex" && flag === "permissionsEnabled") {
+      return readers.readAgentPermissionMode(agentId) !== "intercept";
+    }
+    return false;
   }
 
   function buildCodexPermissionModeRow(agent, disabled) {
@@ -153,14 +165,11 @@
     const ctrl = document.createElement("div");
     ctrl.className = "row-control";
     const segmented = document.createElement("div");
-    segmented.className = "segmented";
+    segmented.className = "segmented codex-permission-mode-segmented";
     segmented.setAttribute("role", "tablist");
     const current = readers.readAgentPermissionMode(agent.id);
-    const modes = [
-      { id: "native", labelKey: "codexPermissionModeNative" },
-      { id: "intercept", labelKey: "codexPermissionModeIntercept" },
-    ];
-    for (const mode of modes) {
+    segmented.style.setProperty("--codex-permission-mode-active-index", String(getCodexPermissionModeIndex(current)));
+    for (const mode of CODEX_PERMISSION_MODE_OPTIONS) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.dataset.mode = mode.id;
@@ -169,7 +178,7 @@
       btn.disabled = !!disabled;
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (disabled || btn.classList.contains("active")) return;
+        if (btn.disabled || btn.classList.contains("active")) return;
         window.settingsAPI.command("setAgentPermissionMode", {
           agentId: agent.id,
           mode: mode.id,
@@ -186,8 +195,45 @@
     }
     ctrl.appendChild(segmented);
     row.appendChild(ctrl);
-    state.mountedControls.agentPermissionModes.set(agent.id, { row });
+    state.mountedControls.agentPermissionModes.set(agent.id, {
+      row,
+      agentId: agent.id,
+      syncFromSnapshot: () => syncCodexPermissionModeRow(row, agent.id),
+    });
     return row;
+  }
+
+  function syncCodexPermissionModeRow(row, agentId) {
+    const disabled = !readers.readAgentFlagValue(agentId, "enabled");
+    const current = readers.readAgentPermissionMode(agentId);
+    const segmented = row.querySelector(".codex-permission-mode-segmented");
+    const currentIndex = getCodexPermissionModeIndex(current);
+    const previousActive = segmented && [...segmented.querySelectorAll("button")]
+      .find((btn) => btn.classList.contains("active"));
+    const previousIndex = previousActive
+      ? getCodexPermissionModeIndex(previousActive.dataset.mode)
+      : currentIndex;
+    if (segmented) {
+      segmented.style.setProperty("--codex-permission-mode-active-index", String(previousIndex));
+    }
+    for (const btn of row.querySelectorAll("button")) {
+      btn.classList.toggle("active", btn.dataset.mode === current);
+      btn.disabled = !!disabled;
+    }
+    if (segmented && previousIndex !== currentIndex) {
+      segmented.classList.add("codex-permission-mode-transitioning");
+      requestAnimationFrame(() => {
+        segmented.getBoundingClientRect();
+        segmented.style.setProperty("--codex-permission-mode-active-index", String(currentIndex));
+        segmented.classList.remove("codex-permission-mode-transitioning");
+      });
+    } else if (segmented) {
+      segmented.style.setProperty("--codex-permission-mode-active-index", String(currentIndex));
+    }
+  }
+
+  function getCodexPermissionModeIndex(mode) {
+    return Math.max(0, CODEX_PERMISSION_MODE_OPTIONS.findIndex((option) => option.id === mode));
   }
 
   function syncAgentSwitchDisabledState(meta, disabled) {
@@ -257,20 +303,23 @@
 
   function patchInPlace(changes) {
     const keys = changes ? Object.keys(changes) : [];
-    if (keys.length === 1 && keys[0] === "agents" && state.mountedControls.agentPermissionModes.size > 0) {
-      return false;
-    }
     if (!(keys.length === 1 && keys[0] === "agents")) return false;
     if (state.mountedControls.agentSwitches.size === 0) return false;
     for (const [, meta] of state.mountedControls.agentSwitches) {
       if (!meta || !document.body.contains(meta.element)) return false;
     }
+    for (const [, meta] of state.mountedControls.agentPermissionModes) {
+      if (!meta || !meta.row || !document.body.contains(meta.row)) return false;
+    }
     for (const [id, meta] of state.mountedControls.agentSwitches) {
       state.transientUiState.agentSwitches.delete(id);
       if (meta.flag !== "enabled") {
-        meta.syncDisabledState(!readers.readAgentFlagValue(meta.agentId, "enabled"));
+        meta.syncDisabledState(computeAgentSubSwitchDisabled(meta.agentId, meta.flag));
       }
       helpers.setSwitchVisual(meta.element, readers.readAgentFlagValue(meta.agentId, meta.flag), { pending: false });
+    }
+    for (const [, meta] of state.mountedControls.agentPermissionModes) {
+      meta.syncFromSnapshot();
     }
     return true;
   }
