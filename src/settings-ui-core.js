@@ -66,6 +66,7 @@
       agentPermissionModes: new Map(),
       animMapSwitches: new Map(),
       animMapReset: null,
+      animOverrideTimingSliders: new Map(),
       bubblePolicySummary: null,
       size: null,
       soundVolume: null,
@@ -87,6 +88,8 @@
     animationPosterRenderPending: false,
     animationPosterRenderFlags: null,
     animationPreviewPosterCache: new Map(),
+    pendingAnimationOverrideEdits: new Map(),
+    nextAnimationOverrideEditSeq: 1,
     animOverridesSubtab: "animations",
     expandedOverrideRowIds: new Set(),
     assetPicker: {
@@ -610,6 +613,7 @@
     state.mountedControls.agentPermissionModes.clear();
     state.mountedControls.animMapSwitches.clear();
     state.mountedControls.animMapReset = null;
+    state.mountedControls.animOverrideTimingSliders.clear();
     state.mountedControls.bubblePolicySummary = null;
     state.mountedControls.size = null;
     state.mountedControls.soundVolume = null;
@@ -872,6 +876,7 @@
 
   function applyChanges(payload) {
     const previousLang = getLang();
+    const previousSnapshot = state.snapshot;
     if (payload && payload.snapshot) {
       state.snapshot = payload.snapshot;
     } else if (payload && payload.changes && state.snapshot) {
@@ -890,7 +895,31 @@
     const needsAnimOverridesRefresh = !!(changes && (
       "theme" in changes || "themeVariant" in changes || "themeOverrides" in changes
     ));
-    if (needsAnimOverridesRefresh) runtime.animationOverridesData = null;
+    if (changes && (
+      Object.prototype.hasOwnProperty.call(changes, "theme")
+      || Object.prototype.hasOwnProperty.call(changes, "themeVariant")
+    )) {
+      if (runtime.pendingAnimationOverrideEdits && typeof runtime.pendingAnimationOverrideEdits.clear === "function") {
+        runtime.pendingAnimationOverrideEdits.clear();
+      }
+      if (state.mountedControls.animOverrideTimingSliders
+        && typeof state.mountedControls.animOverrideTimingSliders.clear === "function") {
+        state.mountedControls.animOverrideTimingSliders.clear();
+      }
+    }
+    const shouldPreserveAnimOverridesData = !!(
+      needsAnimOverridesRefresh
+      && (state.activeTab === "animOverrides" || runtime.assetPicker.state)
+    );
+    if (needsAnimOverridesRefresh && !shouldPreserveAnimOverridesData) {
+      runtime.animationOverridesData = null;
+    }
+
+    const activeTab = tabs[state.activeTab];
+    if (activeTab && typeof activeTab.patchInPlace === "function"
+      && activeTab.patchInPlace(changes, { previousSnapshot, snapshot: state.snapshot })) {
+      return;
+    }
 
     if (changes && "themeOverrides" in changes) {
       if (state.activeTab === "theme") {
@@ -927,10 +956,6 @@
       }));
     }
 
-    const activeTab = tabs[state.activeTab];
-    if (activeTab && typeof activeTab.patchInPlace === "function" && activeTab.patchInPlace(changes)) {
-      return;
-    }
     requestRender({ sidebar: true, content: true });
   }
 

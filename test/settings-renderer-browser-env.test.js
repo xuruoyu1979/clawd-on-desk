@@ -36,6 +36,14 @@ function createDeferred() {
   return deferred;
 }
 
+function loadSettingsI18nForTest() {
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(SETTINGS_I18N, "utf8"), context);
+  return context.ClawdSettingsI18n.STRINGS;
+}
+
 function loadSettingsCoreForTest(settingsAPI) {
   const context = {
     console,
@@ -192,6 +200,7 @@ class FakeElement {
   }
 
   set innerHTML(_value) {
+    for (const child of this.children) child.parentNode = null;
     this.children = [];
     const html = String(_value || "");
     const stack = [this];
@@ -576,7 +585,13 @@ function loadAnimMapTabForTest({
   };
 }
 
-function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
+function loadAnimOverridesTabForTest({
+  runtime,
+  modalRoot,
+  settingsAPI = {},
+  opsOverrides = {},
+  readersOverrides = {},
+}) {
   const document = {
     body: new FakeElement("body"),
     createElement: (tagName) => new FakeElement(tagName),
@@ -601,6 +616,7 @@ function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
         importAnimationOverrides: () => Promise.resolve({ status: "cancel" }),
         previewAnimationOverride: () => Promise.resolve({ status: "ok" }),
         previewReaction: () => Promise.resolve({ status: "ok" }),
+        ...settingsAPI,
       },
     },
     globalThis: null,
@@ -614,7 +630,10 @@ function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
     runtime,
     helpers: {
       t: (key) => key,
-      attachActivation: (el) => el,
+      attachActivation: (el, invoke) => {
+        if (typeof invoke === "function") el.addEventListener("click", () => invoke());
+        return el;
+      },
     },
     ops: {
       selectTab: () => {},
@@ -626,6 +645,7 @@ function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
       closeAssetPicker: () => {},
       normalizeAssetPickerSelection: () => {},
       showToast: () => {},
+      ...opsOverrides,
     },
     i18n: {
       STRINGS: { en: {} },
@@ -634,12 +654,60 @@ function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
       hasAnyThemeOverride: () => false,
       readThemeOverrideMap: () => null,
       getLang: () => "en",
+      ...readersOverrides,
     },
     renderHooks: {},
     tabs: {},
   };
   context.ClawdSettingsTabAnimOverrides.init(core);
   return { core, document };
+}
+
+function createAnimOverrideCard(overrides = {}) {
+  return {
+    id: "state:thinking",
+    slotType: "state",
+    stateKey: "thinking",
+    triggerKind: "thinking",
+    currentFile: "cloudling-thinking.svg",
+    currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+    currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+    bindingLabel: "states.thinking[0]",
+    transition: { in: 120, out: 180 },
+    supportsAutoReturn: false,
+    supportsDuration: false,
+    assetCycleMs: 1000,
+    assetCycleStatus: "ok",
+    suggestedDurationMs: null,
+    suggestedDurationStatus: "unavailable",
+    previewDurationMs: 1000,
+    displayHintWarning: false,
+    displayHintTarget: null,
+    fallbackTargetState: null,
+    wideHitboxEnabled: false,
+    wideHitboxOverridden: false,
+    aspectRatioWarning: null,
+    ...overrides,
+  };
+}
+
+function createAnimOverridesRuntime(card, overrides = {}) {
+  return {
+    animationOverridesData: {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [{ id: "work", cards: [card] }],
+      cards: [card],
+      sounds: [],
+    },
+    animOverridesSubtab: "animations",
+    expandedOverrideRowIds: new Set([card.id]),
+    assetPicker: {
+      state: null,
+      pollTimer: null,
+    },
+    ...overrides,
+  };
 }
 
 describe("settings renderer browser environment", () => {
@@ -1030,7 +1098,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "agents")'));
     assert.ok(coreSource.includes("state.transientUiState.agentSwitches.clear();"));
     const clearIndex = coreSource.indexOf("clearTransientStateForChanges(changes);");
-    const patchIndex = coreSource.indexOf("activeTab.patchInPlace(changes)");
+    const patchIndex = coreSource.indexOf("activeTab.patchInPlace(changes");
     const renderIndex = coreSource.indexOf("requestRender({ sidebar: true, content: true });", patchIndex);
     assert.notStrictEqual(clearIndex, -1);
     assert.notStrictEqual(patchIndex, -1);
@@ -1448,7 +1516,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(animMapSource.includes("helpers.setSwitchVisual(meta.element, readAnimMapVisualOn(meta.themeId, meta.stateKey), { pending: false });"));
     assert.ok(animMapSource.includes("patchInPlace,"));
     assert.ok(coreSource.includes('if (state.activeTab !== "animMap") {'));
-    assert.ok(coreSource.includes("activeTab.patchInPlace(changes)"));
+    assert.ok(coreSource.includes("activeTab.patchInPlace(changes"));
   });
 
   it("keeps Animation Map theme override broadcasts in place and syncs the mounted switch", () => {
@@ -1866,6 +1934,723 @@ describe("settings renderer browser environment", () => {
       coreSource.includes("...(map.sounds ? Object.keys(map.sounds) : []),"),
       "sound overrides must participate in the global reset-all gate"
     );
+  });
+
+  it("keeps current Animation Overrides data visible while theme override refresh is pending", () => {
+    const deferred = createDeferred();
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => deferred.promise,
+    });
+    const previousData = {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [{ id: "work", cards: [] }],
+      cards: [],
+      sounds: [],
+    };
+    core.state.activeTab = "animOverrides";
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 120, out: 180 },
+            },
+          },
+        },
+      },
+    };
+    core.runtime.animationOverridesData = previousData;
+
+    let renderCount = 0;
+    core.ops.installRenderHooks({
+      sidebar: () => {},
+      content: () => {
+        renderCount++;
+      },
+      modal: () => {},
+    });
+    core.ops.applyChanges({
+      changes: {
+        themeOverrides: {
+          cloudling: {
+            states: {
+              thinking: {
+                transition: { in: 220, out: 180 },
+              },
+            },
+          },
+        },
+      },
+      snapshot: core.state.snapshot,
+    });
+
+    assert.strictEqual(
+      core.runtime.animationOverridesData,
+      previousData,
+      "Animation Overrides should keep the last rendered data while the async refresh is pending"
+    );
+    assert.strictEqual(renderCount, 0, "pending refresh should not immediately rerender into an empty loading page");
+  });
+
+  it("lets Animation Overrides patch theme override broadcasts before a full content render", () => {
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => Promise.resolve({ cards: [], sections: [], sounds: [] }),
+    });
+    core.state.activeTab = "animOverrides";
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeOverrides: {},
+    };
+    core.runtime.animationOverridesData = {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [],
+      cards: [],
+      sounds: [],
+    };
+
+    let patchCount = 0;
+    let contentRenderCount = 0;
+    core.tabs.animOverrides = {
+      patchInPlace(changes) {
+        patchCount++;
+        assert.ok(changes && Object.prototype.hasOwnProperty.call(changes, "themeOverrides"));
+        return true;
+      },
+    };
+    core.ops.installRenderHooks({
+      sidebar: () => {},
+      content: () => {
+        contentRenderCount++;
+      },
+      modal: () => {},
+    });
+
+    core.ops.applyChanges({
+      changes: { themeOverrides: { cloudling: { states: {} } } },
+      snapshot: core.state.snapshot,
+    });
+
+    assert.strictEqual(patchCount, 1);
+    assert.strictEqual(contentRenderCount, 0);
+  });
+
+  it("renders visible loading text for the initial Animation Overrides fetch", () => {
+    const runtime = {
+      animationOverridesData: null,
+      animOverridesSubtab: "animations",
+      expandedOverrideRowIds: new Set(),
+      assetPicker: {
+        state: null,
+        pollTimer: null,
+      },
+    };
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+
+    core.tabs.animOverrides.render(parent, core);
+
+    const placeholders = parent.querySelectorAll(".placeholder-desc");
+    assert.ok(placeholders.length > 0);
+    assert.strictEqual(placeholders[0].textContent, "animOverridesLoading");
+  });
+
+  it("uses specific fade timing labels and gives the slider label enough room", () => {
+    const strings = loadSettingsI18nForTest();
+    assert.strictEqual(strings.en.animOverridesFadeIn, "Fade in on enter");
+    assert.strictEqual(strings.en.animOverridesFadeOut, "Fade out on exit");
+    assert.strictEqual(strings.zh.animOverridesFadeIn, "进入时淡入");
+    assert.strictEqual(strings.zh.animOverridesFadeOut, "退出时淡出");
+    assert.strictEqual(strings.ko.animOverridesFadeIn, "진입 시 페이드 인");
+    assert.strictEqual(strings.ko.animOverridesFadeOut, "종료 시 페이드 아웃");
+    assert.strictEqual(strings.ja.animOverridesFadeIn, "開始時フェードイン");
+    assert.strictEqual(strings.ja.animOverridesFadeOut, "終了時フェードアウト");
+
+    const html = fs.readFileSync(SETTINGS_HTML, "utf8");
+    assert.match(
+      html,
+      /\.anim-override-slider-row\s*\{[\s\S]*grid-template-columns:\s*96px minmax\(0,\s*1fr\) 100px;/
+    );
+    assert.match(
+      html,
+      /\.anim-override-number-field\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*white-space:\s*nowrap;/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="number"\]\s*\{[\s\S]*width:\s*76px;[\s\S]*text-align:\s*center;/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]\s*\{[\s\S]*--anim-override-fill:\s*0%;/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--accent\) var\(--anim-override-fill\)/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--row-border\) var\(--anim-override-fill\)/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*-webkit-appearance:\s*none;[\s\S]*box-shadow:/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--accent\)/
+    );
+    assert.match(
+      html,
+      /\.anim-override-slider-row input\[type="range"\]:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/
+    );
+    assert.match(
+      html,
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*accent-color:\s*Highlight;/
+    );
+  });
+
+  it("keeps committed slider timing visible across a stale animation override refresh", async () => {
+    const card = {
+      id: "state:thinking",
+      slotType: "state",
+      stateKey: "thinking",
+      triggerKind: "thinking",
+      currentFile: "cloudling-thinking.svg",
+      currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      bindingLabel: "states.thinking[0]",
+      transition: { in: 120, out: 180 },
+      supportsAutoReturn: false,
+      supportsDuration: false,
+      assetCycleMs: 1000,
+      assetCycleStatus: "ok",
+      suggestedDurationMs: null,
+      suggestedDurationStatus: "unavailable",
+      previewDurationMs: 1000,
+      displayHintWarning: false,
+      displayHintTarget: null,
+      fallbackTargetState: null,
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: false,
+      aspectRatioWarning: null,
+    };
+    const runtime = {
+      animationOverridesData: {
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [{ id: "work", cards: [card] }],
+        cards: [card],
+        sounds: [],
+      },
+      animOverridesSubtab: "animations",
+      expandedOverrideRowIds: new Set(["state:thinking"]),
+      assetPicker: {
+        state: null,
+        pollTimer: null,
+      },
+    };
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => Promise.resolve({ status: "ok" }),
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
+      },
+    });
+    const parent = new FakeElement("main");
+    let contentRenderCount = 0;
+    const renderContent = () => {
+      contentRenderCount++;
+      parent.innerHTML = "";
+      core.tabs.animOverrides.render(parent, core);
+    };
+    core.ops.requestRender = ({ content = false, modal = false } = {}) => {
+      if (content) renderContent();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
+    };
+    renderContent();
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    assert.ok(range, "expanded animation override row should render a fade-in range input");
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "12%");
+    range.value = "260";
+    for (const listener of range.eventListeners.input || []) listener();
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "26%");
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nextRange = parent.querySelectorAll("input").find((input) => input.type === "range");
+    assert.strictEqual(contentRenderCount, 1, "timing slider commits should not rebuild the content pane");
+    assert.strictEqual(nextRange, range, "timing slider commits should keep the mounted range control in place");
+    assert.strictEqual(
+      nextRange.value,
+      "260",
+      "stale refreshes should not flash the slider back to the old committed timing"
+    );
+  });
+
+  it("keeps sequential fade timing commits from reverting the previous side", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const payloads = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (_name, payload) => {
+          payloads.push(payload);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const ranges = parent.querySelectorAll("input").filter((input) => input.type === "range");
+    assert.ok(ranges.length >= 2, "expanded row should render fade in and fade out sliders");
+
+    ranges[0].value = "260";
+    for (const listener of ranges[0].eventListeners.input || []) listener();
+    for (const listener of ranges[0].eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    ranges[1].value = "300";
+    for (const listener of ranges[1].eventListeners.input || []) listener();
+    for (const listener of ranges[1].eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(payloads.length, 2);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(payloads[0].transition)), { in: 260, out: 180 });
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(payloads[1].transition)),
+      { in: 260, out: 300 },
+      "second fade commit should use the pending/latest fade-in value, not the stale rendered card"
+    );
+  });
+
+  it("does not submit duplicate animation timing commands on number change followed by blur", async () => {
+    const card = {
+      id: "state:thinking",
+      slotType: "state",
+      stateKey: "thinking",
+      triggerKind: "thinking",
+      currentFile: "cloudling-thinking.svg",
+      currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      bindingLabel: "states.thinking[0]",
+      transition: { in: 120, out: 180 },
+      supportsAutoReturn: false,
+      supportsDuration: false,
+      assetCycleMs: 1000,
+      assetCycleStatus: "ok",
+      suggestedDurationMs: null,
+      suggestedDurationStatus: "unavailable",
+      previewDurationMs: 1000,
+      displayHintWarning: false,
+      displayHintTarget: null,
+      fallbackTargetState: null,
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: false,
+      aspectRatioWarning: null,
+    };
+    const runtime = {
+      animationOverridesData: {
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [{ id: "work", cards: [card] }],
+        cards: [card],
+        sounds: [],
+      },
+      animOverridesSubtab: "animations",
+      expandedOverrideRowIds: new Set(["state:thinking"]),
+      assetPicker: {
+        state: null,
+        pollTimer: null,
+      },
+    };
+    const modalRoot = new FakeElement("div");
+    let commandCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => {
+          commandCount++;
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const inputs = parent.querySelectorAll("input");
+    const range = inputs.find((input) => input.type === "range");
+    const number = inputs.find((input) => input.type === "number");
+    assert.ok(range, "expanded animation override row should render a fade-in range input");
+    assert.ok(number, "expanded animation override row should render a fade-in number input");
+    assert.ok(number.parentNode.classList.contains("anim-override-number-field"));
+    const unit = number.parentNode.querySelector(".anim-override-slider-unit");
+    assert.ok(unit, "timing number input should render an inline unit label");
+    assert.strictEqual(unit.textContent, "ms");
+    number.value = "260";
+    for (const listener of number.eventListeners.input || []) listener();
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "26%");
+    for (const listener of number.eventListeners.change || []) listener();
+    for (const listener of number.eventListeners.blur || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(commandCount, 1);
+  });
+
+  it("does not keep reset-slot null timing values as pending slider edits", async () => {
+    const card = createAnimOverrideCard({
+      supportsAutoReturn: true,
+      autoReturnMs: 2600,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const payloads = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (_name, payload) => {
+          payloads.push(payload);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          states: {
+            thinking: {
+              transition: { in: 120, out: 180 },
+            },
+          },
+          timings: {
+            autoReturn: {
+              thinking: 2600,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    for (const listener of resetButton.eventListeners.click || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(payloads.length, 1);
+    assert.strictEqual(payloads[0].autoReturnMs, null);
+    assert.ok(
+      !core.runtime.pendingAnimationOverrideEdits || core.runtime.pendingAnimationOverrideEdits.size === 0,
+      "reset-slot null timing values should not leak into the pending timing edit map"
+    );
+  });
+
+  it("only patches Animation Overrides broadcasts that exactly acknowledge pending timing edits", () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => new Promise(() => {}),
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const fadeInRange = parent.querySelectorAll("input").find((input) => input.type === "range");
+    fadeInRange.value = "260";
+    for (const listener of fadeInRange.eventListeners.input || []) listener();
+    for (const listener of fadeInRange.eventListeners.change || []) listener();
+
+    const previousSnapshot = { themeOverrides: {} };
+    const acknowledgedSnapshot = {
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 260, out: 180 },
+            },
+          },
+        },
+      },
+    };
+    assert.strictEqual(
+      core.tabs.animOverrides.patchInPlace(
+        { themeOverrides: acknowledgedSnapshot.themeOverrides },
+        { previousSnapshot, snapshot: acknowledgedSnapshot }
+      ),
+      true,
+      "the in-flight timing edit broadcast should be safe to reconcile in place"
+    );
+
+    const unrelatedSnapshot = {
+      themeOverrides: {
+        cloudling: {
+          states: {
+            working: {
+              file: "other.svg",
+            },
+          },
+        },
+      },
+    };
+    assert.strictEqual(
+      core.tabs.animOverrides.patchInPlace(
+        { themeOverrides: unrelatedSnapshot.themeOverrides },
+        { previousSnapshot, snapshot: unrelatedSnapshot }
+      ),
+      false,
+      "unrelated themeOverrides broadcasts should fall through to a full content refresh"
+    );
+    assert.strictEqual(fetchCount, 1);
+  });
+
+  it("routes matching Animation Overrides timing broadcasts through applyChanges in place", () => {
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [],
+        cards: [{
+          id: "state:thinking",
+          slotType: "state",
+          stateKey: "thinking",
+          transition: { in: 260, out: 180 },
+        }],
+        sounds: [],
+      }),
+    });
+    core.state.activeTab = "animOverrides";
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeOverrides: {},
+    };
+    core.runtime.animationOverridesData = {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [],
+      cards: [{
+        id: "state:thinking",
+        slotType: "state",
+        stateKey: "thinking",
+        transition: { in: 120, out: 180 },
+      }],
+      sounds: [],
+    };
+    core.runtime.animOverridesSubtab = "animations";
+    core.runtime.assetPicker.state = null;
+    core.runtime.pendingAnimationOverrideEdits.set("state:thinking", {
+      seq: 1,
+      slotType: "state",
+      stateKey: "thinking",
+      transition: { in: 260, out: 180 },
+    });
+
+    let contentRenderCount = 0;
+    let modalRenderCount = 0;
+    core.ops.installRenderHooks({
+      sidebar: () => {},
+      content: () => {
+        contentRenderCount++;
+      },
+      modal: () => {
+        modalRenderCount++;
+      },
+    });
+
+    const nextSnapshot = {
+      theme: "cloudling",
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 260, out: 180 },
+            },
+          },
+        },
+      },
+    };
+    core.ops.applyChanges({
+      changes: { themeOverrides: nextSnapshot.themeOverrides },
+      snapshot: nextSnapshot,
+    });
+
+    assert.strictEqual(contentRenderCount, 0, "matching timing ack should avoid rebuilding content");
+    assert.strictEqual(modalRenderCount, 0, "modal render happens after the async fetch settles");
+  });
+
+  it("does not patch mixed-key Animation Overrides broadcasts in place", () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => new Promise(() => {}),
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const fadeInRange = parent.querySelectorAll("input").find((input) => input.type === "range");
+    fadeInRange.value = "260";
+    for (const listener of fadeInRange.eventListeners.input || []) listener();
+    for (const listener of fadeInRange.eventListeners.change || []) listener();
+
+    const previousSnapshot = { lang: "en", themeOverrides: {} };
+    const snapshot = {
+      lang: "ja",
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 260, out: 180 },
+            },
+          },
+        },
+      },
+    };
+
+    assert.strictEqual(
+      core.tabs.animOverrides.patchInPlace(
+        { lang: "ja", themeOverrides: snapshot.themeOverrides },
+        { previousSnapshot, snapshot }
+      ),
+      false,
+      "mixed-key broadcasts should fall through so non-timing UI side effects can render"
+    );
+    assert.strictEqual(fetchCount, 0);
+  });
+
+  it("clears pending Animation Overrides timing edits on theme changes", () => {
+    const core = loadSettingsCoreForTest({});
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeVariant: "default",
+      themeOverrides: {},
+    };
+    core.runtime.pendingAnimationOverrideEdits.set("state:thinking", {
+      slotType: "state",
+      stateKey: "thinking",
+      transition: { in: 260, out: 180 },
+      seq: 1,
+    });
+    core.state.mountedControls.animOverrideTimingSliders.set("state:thinking:transition.in", { row: {} });
+
+    core.ops.applyChanges({
+      changes: { theme: "calico" },
+      snapshot: {
+        theme: "calico",
+        themeVariant: "default",
+        themeOverrides: {},
+      },
+    });
+
+    assert.strictEqual(core.runtime.pendingAnimationOverrideEdits.size, 0);
+    assert.strictEqual(core.state.mountedControls.animOverrideTimingSliders.size, 0);
+  });
+
+  it("does not patch Animation Overrides broadcasts without a pending timing edit", () => {
+    const card = {
+      id: "state:thinking",
+      slotType: "state",
+      stateKey: "thinking",
+      triggerKind: "thinking",
+      currentFile: "cloudling-thinking.svg",
+      currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      bindingLabel: "states.thinking[0]",
+      transition: { in: 120, out: 180 },
+      supportsAutoReturn: false,
+      supportsDuration: false,
+      assetCycleMs: 1000,
+      assetCycleStatus: "ok",
+      suggestedDurationMs: null,
+      suggestedDurationStatus: "unavailable",
+      previewDurationMs: 1000,
+      displayHintWarning: false,
+      displayHintTarget: null,
+      fallbackTargetState: null,
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: false,
+      aspectRatioWarning: null,
+    };
+    const runtime = {
+      animationOverridesData: {
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [{ id: "work", cards: [card] }],
+        cards: [card],
+        sounds: [],
+      },
+      animOverridesSubtab: "animations",
+      expandedOverrideRowIds: new Set(["state:thinking"]),
+      assetPicker: {
+        state: null,
+        pollTimer: null,
+      },
+    };
+    const modalRoot = new FakeElement("div");
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    assert.strictEqual(core.tabs.animOverrides.patchInPlace({ themeOverrides: { cloudling: { states: {} } } }), false);
+    assert.strictEqual(fetchCount, 0);
   });
 });
 
