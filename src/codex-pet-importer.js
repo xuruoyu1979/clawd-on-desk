@@ -453,11 +453,22 @@ function extractZipEntry(buffer, entry, maxBytes) {
   const compressed = buffer.slice(dataStart, dataEnd);
   let output;
   if (entry.method === 0) output = compressed;
-  else if (entry.method === 8) output = zlib.inflateRawSync(compressed);
+  else if (entry.method === 8) output = inflateRawZipEntry(compressed, maxBytes, entry.name);
   else throw new Error(`unsupported zip compression method ${entry.method} for ${entry.name}`);
   if (output.length !== entry.uncompressedSize) throw new Error(`zip entry size mismatch: ${entry.name}`);
   if (output.length > maxBytes) throw new Error(`zip entry exceeds ${maxBytes} bytes: ${entry.name}`);
   return output;
+}
+
+function inflateRawZipEntry(compressed, maxBytes, entryName) {
+  try {
+    return zlib.inflateRawSync(compressed, { maxOutputLength: maxBytes });
+  } catch (error) {
+    if (error && error.code === "ERR_BUFFER_TOO_LARGE") {
+      throw new Error(`zip entry exceeds ${maxBytes} bytes: ${entryName}`);
+    }
+    throw error;
+  }
 }
 
 function normalizeZipEntryName(name) {

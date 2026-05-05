@@ -40,6 +40,7 @@ function makeZip(entries) {
     const method = entry.method == null ? 0 : entry.method;
     const flags = entry.flags == null ? 0x0800 : entry.flags;
     const compressed = method === 8 ? zlib.deflateRawSync(raw) : raw;
+    const declaredUncompressedSize = entry.uncompressedSize == null ? raw.length : entry.uncompressedSize;
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -49,7 +50,7 @@ function makeZip(entries) {
     local.writeUInt32LE(0, 10);
     local.writeUInt32LE(0, 14);
     local.writeUInt32LE(compressed.length, 18);
-    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt32LE(declaredUncompressedSize, 22);
     local.writeUInt16LE(name.length, 26);
     local.writeUInt16LE(0, 28);
     localParts.push(local, name, compressed);
@@ -63,7 +64,7 @@ function makeZip(entries) {
     central.writeUInt32LE(0, 12);
     central.writeUInt32LE(0, 16);
     central.writeUInt32LE(compressed.length, 20);
-    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt32LE(declaredUncompressedSize, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt16LE(0, 30);
     central.writeUInt16LE(0, 32);
@@ -332,6 +333,19 @@ test("rejects unsafe zip paths and missing package files", () => {
       { name: "spritesheet.png", data: fixtureSpritesheet() },
     ])),
     /encrypted/
+  );
+
+  assert.throws(
+    () => importer.extractCodexPetZip(makeZip([
+      {
+        name: "pet.json",
+        data: Buffer.alloc(importer.MAX_PET_JSON_BYTES + 1, 0x20),
+        method: 8,
+        uncompressedSize: 2,
+      },
+      { name: "spritesheet.png", data: fixtureSpritesheet() },
+    ])),
+    /zip entry exceeds .*pet\.json/
   );
 });
 

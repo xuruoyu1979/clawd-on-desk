@@ -9,6 +9,7 @@ const zlib = require("zlib");
 const ADAPTER_VERSION = 1;
 const MARKER_FILENAME = ".clawd-codex-pet.json";
 const THEME_ID_PREFIX = "codex-pet-";
+const PNG_ALPHA_VALIDATION_SCHEMA_VERSION = 1;
 const MAX_DISPLAY_NAME_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 500;
 
@@ -56,7 +57,7 @@ function getDefaultCodexPetsDir(homeDir = os.homedir()) {
   return path.join(homeDir, ".codex", "pets");
 }
 
-function scanCodexPetPackages(rootDir) {
+function scanCodexPetPackages(rootDir, options = {}) {
   if (!rootDir || !fs.existsSync(rootDir)) return [];
   let entries;
   try {
@@ -67,11 +68,16 @@ function scanCodexPetPackages(rootDir) {
 
   return entries
     .filter((entry) => entry.isDirectory())
-    .map((entry) => validateCodexPetPackage(path.join(rootDir, entry.name)))
+    .map((entry) => {
+      const packageDir = path.join(rootDir, entry.name);
+      return validateCodexPetPackage(packageDir, {
+        managedMarker: findManagedMarkerForPackage(options.managedMarkersByPackagePath, packageDir),
+      });
+    })
     .sort((a, b) => a.packageDir.localeCompare(b.packageDir, "en"));
 }
 
-function validateCodexPetPackage(packageDir) {
+function validateCodexPetPackage(packageDir, options = {}) {
   const errors = [];
   const warnings = [];
   const resolvedPackageDir = path.resolve(packageDir);
@@ -125,7 +131,13 @@ function validateCodexPetPackage(packageDir) {
       if (!spritesheetStat || !spritesheetStat.isFile()) {
         errors.push(`spritesheet not found: ${normalizedSpritesheetPath}`);
       } else if (ext === ".png" || ext === ".webp") {
-        const inspected = inspectSpritesheet(spritesheetAbsPath, ext);
+        const inspected = inspectSpritesheet(spritesheetAbsPath, ext, {
+          pngAlphaValidationCache: getPngAlphaValidationCache(options.managedMarker, {
+            packageDir: resolvedPackageDir,
+            spritesheetPath: normalizedSpritesheetPath,
+            spritesheetStat,
+          }),
+        });
         imageInfo = inspected.info;
         errors.push(...inspected.errors);
         warnings.push(...inspected.warnings);
@@ -227,7 +239,9 @@ function syncCodexPetThemes(options = {}) {
   const userThemesDir = options.userThemesDir || (options.userDataDir ? path.join(options.userDataDir, "themes") : null);
   if (!userThemesDir) throw new Error("syncCodexPetThemes requires userThemesDir or userDataDir");
   const codexPetsDir = options.codexPetsDir || getDefaultCodexPetsDir(options.homeDir || os.homedir());
-  const scanned = scanCodexPetPackages(codexPetsDir);
+  const scanned = scanCodexPetPackages(codexPetsDir, {
+    managedMarkersByPackagePath: collectManagedMarkersByPackagePath(userThemesDir),
+  });
   const summary = {
     codexPetsDir,
     userThemesDir,
@@ -273,6 +287,7 @@ function isMaterializedThemeUnchanged(marker, packageInfo, themeId, themeDir) {
   if (marker.sourceSpritesheetPath !== packageInfo.spritesheetPath) return false;
   if (marker.sourceSpritesheetMtimeMs !== packageInfo.spritesheetMtimeMs) return false;
   if (marker.sourceSpritesheetSize !== packageInfo.spritesheetSize) return false;
+  if (requiresPngAlphaValidationCache(packageInfo) && !isPngAlphaValidationCacheFresh(marker, packageInfo)) return false;
   if (!isRegularFile(path.join(themeDir, "theme.json"))) return false;
 
   const assetsDir = path.join(themeDir, "assets");
@@ -372,6 +387,8 @@ function buildMarker(packageInfo, themeId, options = {}) {
     sourceSpritesheetMtimeMs: packageInfo.spritesheetMtimeMs,
     sourceSpritesheetSize: packageInfo.spritesheetSize,
   };
+  const pngAlphaValidation = buildPngAlphaValidationCache(packageInfo);
+  if (pngAlphaValidation) marker.sourcePngAlphaValidation = pngAlphaValidation;
   if (options.inProgress === true) marker.inProgress = true;
   return marker;
 }
@@ -452,9 +469,9 @@ function buildKeyframes(row, animationName) {
   return lines.join("\n");
 }
 
-function inspectSpritesheet(filePath, ext) {
+function inspectSpritesheet(filePath, ext, options = {}) {
   try {
-    if (ext === ".png") return inspectPngSpritesheet(filePath);
+    if (ext === ".png") return inspectPngSpritesheet(filePath, options);
     if (ext === ".webp") return inspectWebpSpritesheet(filePath);
   } catch (error) {
     return { info: null, errors: [`failed to inspect spritesheet: ${error.message}`], warnings: [] };
@@ -462,7 +479,7 @@ function inspectSpritesheet(filePath, ext) {
   return { info: null, errors: ["unsupported spritesheet extension"], warnings: [] };
 }
 
-function inspectPngSpritesheet(filePath) {
+function inspectPngSpritesheet(filePath, options = {}) {
   const buffer = fs.readFileSync(filePath);
   const header = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (buffer.length < 33 || !buffer.subarray(0, 8).equals(header)) {
@@ -503,6 +520,9 @@ function inspectPngSpritesheet(filePath) {
   if (info.width === ATLAS.width && info.height === ATLAS.height) {
     if (info.bitDepth !== 8 || info.colorType !== 6 || info.interlace !== 0) {
       warnings.push("PNG transparency validation only supports non-interlaced 8-bit RGBA atlases");
+    } else if (isUsablePngAlphaValidationCache(options.pngAlphaValidationCache)) {
+      info.checkedUnusedTransparency = true;
+      info.checkedUnusedTransparencyCached = true;
     } else {
       const alphaErrors = validatePngAtlasAlpha(idatChunks, info);
       errors.push(...alphaErrors);
@@ -550,6 +570,82 @@ function validatePngAtlasAlpha(idatChunks, info) {
   const emptyRow = usedVisible.findIndex((visible) => !visible);
   if (emptyRow >= 0) return [`atlas row ${emptyRow} has no visible pixels in active cells`];
   return [];
+}
+
+function collectManagedMarkersByPackagePath(userThemesDir) {
+  const markers = new Map();
+  if (!userThemesDir || !fs.existsSync(userThemesDir)) return markers;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(userThemesDir, { withFileTypes: true });
+  } catch {
+    return markers;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const marker = readManagedMarker(path.join(userThemesDir, entry.name));
+    if (!marker || marker.adapterVersion !== ADAPTER_VERSION || typeof marker.sourcePackagePath !== "string") continue;
+    markers.set(pathKey(marker.sourcePackagePath), marker);
+  }
+  return markers;
+}
+
+function findManagedMarkerForPackage(markersByPackagePath, packageDir) {
+  if (!markersByPackagePath || typeof markersByPackagePath.get !== "function") return null;
+  return markersByPackagePath.get(pathKey(packageDir)) || null;
+}
+
+function getPngAlphaValidationCache(marker, { packageDir, spritesheetPath, spritesheetStat }) {
+  if (!marker || !spritesheetStat) return null;
+  if (!samePath(marker.sourcePackagePath, packageDir)) return null;
+  if (marker.sourceSpritesheetPath !== spritesheetPath) return null;
+  if (marker.sourceSpritesheetMtimeMs !== spritesheetStat.mtimeMs) return null;
+  if (marker.sourceSpritesheetSize !== spritesheetStat.size) return null;
+  if (!isUsablePngAlphaValidationCache(marker.sourcePngAlphaValidation)) return null;
+  if (marker.sourcePngAlphaValidation.spritesheetMtimeMs !== spritesheetStat.mtimeMs) return null;
+  if (marker.sourcePngAlphaValidation.spritesheetSize !== spritesheetStat.size) return null;
+  return marker.sourcePngAlphaValidation;
+}
+
+function buildPngAlphaValidationCache(packageInfo) {
+  if (!requiresPngAlphaValidationCache(packageInfo)) return null;
+  return {
+    schemaVersion: PNG_ALPHA_VALIDATION_SCHEMA_VERSION,
+    spritesheetMtimeMs: packageInfo.spritesheetMtimeMs,
+    spritesheetSize: packageInfo.spritesheetSize,
+    checkedUnusedTransparency: true,
+  };
+}
+
+function requiresPngAlphaValidationCache(packageInfo) {
+  return !!(
+    packageInfo
+    && packageInfo.image
+    && packageInfo.image.format === "png"
+    && packageInfo.image.checkedUnusedTransparency === true
+  );
+}
+
+function isPngAlphaValidationCacheFresh(marker, packageInfo) {
+  if (!marker || !packageInfo) return false;
+  const cache = marker.sourcePngAlphaValidation;
+  return !!(
+    isUsablePngAlphaValidationCache(cache)
+    && cache.spritesheetMtimeMs === packageInfo.spritesheetMtimeMs
+    && cache.spritesheetSize === packageInfo.spritesheetSize
+  );
+}
+
+function isUsablePngAlphaValidationCache(cache) {
+  return !!(
+    cache
+    && cache.schemaVersion === PNG_ALPHA_VALIDATION_SCHEMA_VERSION
+    && cache.checkedUnusedTransparency === true
+    && Number.isFinite(cache.spritesheetMtimeMs)
+    && Number.isFinite(cache.spritesheetSize)
+  );
 }
 
 function unfilterPngScanline(filter, scanline, previous, out, bytesPerPixel) {
@@ -823,6 +919,11 @@ function samePath(a, b) {
   const left = path.resolve(a);
   const right = path.resolve(b);
   return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function pathKey(value) {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function readUint24LE(buffer, offset) {

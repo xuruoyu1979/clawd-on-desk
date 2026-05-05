@@ -498,6 +498,48 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
     assert.strictEqual(fs.existsSync(wrapperPath), true);
   });
 
+  it("caches PNG unused-cell validation for unchanged startup syncs", () => {
+    const root = makeTempDir();
+    const petsDir = path.join(root, "pets");
+    const packageDir = copyFixturePackage(petsDir, "tiny-atlas-png");
+    const userDataDir = path.join(root, "userData");
+    const originalInflateSync = zlib.inflateSync;
+    let inflateCalls = 0;
+
+    zlib.inflateSync = (...args) => {
+      inflateCalls += 1;
+      return originalInflateSync(...args);
+    };
+
+    try {
+      const first = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+      const themeDir = path.join(userDataDir, "themes", first.themes[0].themeId);
+      const marker = readJson(path.join(themeDir, adapter.MARKER_FILENAME));
+      assert.strictEqual(first.imported, 1);
+      assert.ok(inflateCalls > 0);
+      assert.deepStrictEqual(marker.sourcePngAlphaValidation, {
+        schemaVersion: 1,
+        spritesheetMtimeMs: fs.statSync(path.join(packageDir, "spritesheet.png")).mtimeMs,
+        spritesheetSize: fs.statSync(path.join(packageDir, "spritesheet.png")).size,
+        checkedUnusedTransparency: true,
+      });
+
+      inflateCalls = 0;
+      const second = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+      assert.strictEqual(second.unchanged, 1);
+      assert.strictEqual(inflateCalls, 0);
+
+      const spritesheetPath = path.join(packageDir, "spritesheet.png");
+      const future = new Date(Date.now() + 10000);
+      fs.utimesSync(spritesheetPath, future, future);
+      const third = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+      assert.strictEqual(third.updated, 1);
+      assert.ok(inflateCalls > 0);
+    } finally {
+      zlib.inflateSync = originalInflateSync;
+    }
+  });
+
   it("removes orphan managed themes when the source package disappears", () => {
     const root = makeTempDir();
     const petsDir = path.join(root, "pets");
