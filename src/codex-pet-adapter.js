@@ -9,6 +9,8 @@ const zlib = require("zlib");
 const ADAPTER_VERSION = 1;
 const MARKER_FILENAME = ".clawd-codex-pet.json";
 const THEME_ID_PREFIX = "codex-pet-";
+const MAX_DISPLAY_NAME_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 500;
 
 const ATLAS = {
   width: 1536,
@@ -88,10 +90,16 @@ function validateCodexPetPackage(packageDir) {
   }
 
   const id = typeof manifest?.id === "string" ? manifest.id.trim() : "";
-  const displayName = typeof manifest?.displayName === "string" && manifest.displayName.trim()
-    ? manifest.displayName.trim()
-    : id;
-  const description = typeof manifest?.description === "string" ? manifest.description.trim() : "";
+  const displayName = clampText(
+    typeof manifest?.displayName === "string" && manifest.displayName.trim()
+      ? manifest.displayName
+      : id,
+    MAX_DISPLAY_NAME_LENGTH
+  );
+  const description = clampText(
+    typeof manifest?.description === "string" ? manifest.description : "",
+    MAX_DESCRIPTION_LENGTH
+  );
   const spritesheetPath = typeof manifest?.spritesheetPath === "string" ? manifest.spritesheetPath.trim() : "";
 
   if (manifest && !id) errors.push("pet.json id must be a non-empty string");
@@ -172,13 +180,23 @@ function materializeCodexPetTheme(packageInfo, userThemesDir, options = {}) {
   }
 
   const existingMarker = readManagedMarker(themeDir);
-  if (fs.existsSync(themeDir) && (!existingMarker || !samePath(existingMarker.sourcePackagePath, packageInfo.packageDir))) {
+  const recoverablePartial = !existingMarker && isRecoverablePartialThemeDir(themeDir, packageInfo);
+  if (
+    fs.existsSync(themeDir)
+    && !recoverablePartial
+    && (!existingMarker || !samePath(existingMarker.sourcePackagePath, packageInfo.packageDir))
+  ) {
     throw new Error(`refusing to overwrite unmanaged or unrelated theme: ${themeId}`);
   }
 
-  const existed = fs.existsSync(themeDir);
+  const operation = existingMarker && existingMarker.inProgress !== true ? "updated" : "created";
   const assetsDir = path.join(themeDir, "assets");
   fs.mkdirSync(themeDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(themeDir, MARKER_FILENAME),
+    `${JSON.stringify(buildMarker(packageInfo, themeId, { inProgress: true }), null, 2)}\n`,
+    "utf8"
+  );
   fs.rmSync(assetsDir, { recursive: true, force: true });
   fs.mkdirSync(assetsDir, { recursive: true });
 
@@ -198,7 +216,7 @@ function materializeCodexPetTheme(packageInfo, userThemesDir, options = {}) {
   const marker = buildMarker(packageInfo, themeId);
   fs.writeFileSync(path.join(themeDir, MARKER_FILENAME), `${JSON.stringify(marker, null, 2)}\n`, "utf8");
 
-  return { themeId, themeDir, marker, themeJson, operation: existed ? "updated" : "created" };
+  return { themeId, themeDir, marker, themeJson, operation };
 }
 
 function syncCodexPetThemes(options = {}) {
@@ -228,6 +246,10 @@ function syncCodexPetThemes(options = {}) {
     else summary.updated += 1;
     summary.themes.push({ packageDir: result.packageInfo.packageDir, themeId: materialized.themeId });
   }
+
+  const gc = removeOrphanManagedThemes(userThemesDir, { activeThemeId: options.activeThemeId });
+  summary.removed += gc.removed;
+  summary.diagnostics.push(...gc.diagnostics);
 
   return summary;
 }
@@ -290,8 +312,8 @@ function buildThemeJson(packageInfo, themeId) {
   };
 }
 
-function buildMarker(packageInfo, themeId) {
-  return {
+function buildMarker(packageInfo, themeId, options = {}) {
+  const marker = {
     managedBy: "clawd",
     kind: "codex-pet-theme",
     schemaVersion: 1,
@@ -305,6 +327,8 @@ function buildMarker(packageInfo, themeId) {
     sourceSpritesheetMtimeMs: packageInfo.spritesheetMtimeMs,
     sourceSpritesheetSize: packageInfo.spritesheetSize,
   };
+  if (options.inProgress === true) marker.inProgress = true;
+  return marker;
 }
 
 function generateWrapperSvg({ rowKey, mode, spritesheetHref }) {
@@ -593,6 +617,49 @@ function normalizePackageRelativePath(value, packageDir) {
   return { ok: true, relativePath, absolutePath };
 }
 
+function removeOrphanManagedThemes(userThemesDir, options = {}) {
+  const summary = { removed: 0, diagnostics: [] };
+  if (!userThemesDir || !fs.existsSync(userThemesDir)) return summary;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(userThemesDir, { withFileTypes: true });
+  } catch (error) {
+    summary.diagnostics.push({ themeDir: userThemesDir, errors: [`failed to read user themes: ${error.message}`] });
+    return summary;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const themeDir = path.join(userThemesDir, entry.name);
+    const marker = readManagedMarker(themeDir);
+    if (!marker) continue;
+    if (fs.existsSync(marker.sourcePackagePath)) continue;
+
+    if (options.activeThemeId && options.activeThemeId === entry.name) {
+      summary.diagnostics.push({
+        themeId: entry.name,
+        themeDir,
+        errors: ["managed Codex Pet source package is missing but theme is active"],
+      });
+      continue;
+    }
+
+    try {
+      fs.rmSync(themeDir, { recursive: true, force: true });
+      summary.removed += 1;
+    } catch (error) {
+      summary.diagnostics.push({
+        themeId: entry.name,
+        themeDir,
+        errors: [`failed to remove orphan managed Codex Pet theme: ${error.message}`],
+      });
+    }
+  }
+
+  return summary;
+}
+
 function derivePetSlug({ packageDir, id, displayName }) {
   const folder = path.basename(packageDir || "");
   if (isSafeSlug(folder)) return folder;
@@ -612,8 +679,33 @@ function resolveManagedThemeId(packageInfo, userThemesDir) {
     if (!fs.existsSync(themeDir)) return themeId;
     const marker = readManagedMarker(themeDir);
     if (marker && samePath(marker.sourcePackagePath, packageInfo.packageDir)) return themeId;
+    if (!marker && isRecoverablePartialThemeDir(themeDir, packageInfo)) return themeId;
   }
   throw new Error(`could not allocate generated Codex Pet theme id for ${packageInfo.packageDir}`);
+}
+
+function isRecoverablePartialThemeDir(themeDir, packageInfo) {
+  if (!fs.existsSync(themeDir)) return false;
+  const themeId = path.basename(themeDir);
+  const baseId = `${THEME_ID_PREFIX}${packageInfo.slug}`;
+  if (themeId !== baseId && !themeId.startsWith(`${baseId}-`)) return false;
+
+  const themeJsonPath = path.join(themeDir, "theme.json");
+  if (!fs.existsSync(themeJsonPath)) return true;
+
+  let raw = null;
+  try {
+    raw = JSON.parse(fs.readFileSync(themeJsonPath, "utf8"));
+  } catch {
+    return false;
+  }
+
+  return !!(
+    raw.source
+    && raw.source.type === "codex-pet"
+    && typeof raw.source.packagePath === "string"
+    && samePath(raw.source.packagePath, packageInfo.packageDir)
+  );
 }
 
 function readManagedMarker(themeDir) {
@@ -665,6 +757,11 @@ function slugifyAscii(value) {
     .replace(/-{2,}/g, "-");
 }
 
+function clampText(value, maxLength) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
 function isPathInsideDir(baseDir, candidatePath) {
   if (!baseDir || !candidatePath) return false;
   const base = path.resolve(baseDir);
@@ -710,6 +807,8 @@ function escapeXmlAttr(value) {
 
 module.exports = {
   ADAPTER_VERSION,
+  MAX_DISPLAY_NAME_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
   ATLAS,
   ATLAS_ROWS,
   WRAPPER_SPECS,

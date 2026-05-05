@@ -91,6 +91,68 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function writeWebpPackage(parentDir, folderName, webpBuffer, manifestOverrides = {}) {
+  const packageDir = path.join(parentDir, folderName);
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(path.join(packageDir, "spritesheet.webp"), webpBuffer);
+  writeJson(path.join(packageDir, "pet.json"), {
+    id: folderName,
+    displayName: folderName,
+    spritesheetPath: "spritesheet.webp",
+    ...manifestOverrides,
+  });
+  return packageDir;
+}
+
+function buildWebpBuffer(chunks) {
+  const bodyParts = [Buffer.from("WEBP", "ascii")];
+  for (const { type, data } of chunks) {
+    const payload = Buffer.from(data);
+    const header = Buffer.alloc(8);
+    header.write(type, 0, 4, "ascii");
+    header.writeUInt32LE(payload.length, 4);
+    bodyParts.push(header, payload);
+    if (payload.length % 2 === 1) bodyParts.push(Buffer.from([0]));
+  }
+  const body = Buffer.concat(bodyParts);
+  const riff = Buffer.alloc(8);
+  riff.write("RIFF", 0, 4, "ascii");
+  riff.writeUInt32LE(body.length, 4);
+  return Buffer.concat([riff, body]);
+}
+
+function writeUint24LE(buffer, offset, value) {
+  buffer[offset] = value & 0xff;
+  buffer[offset + 1] = (value >> 8) & 0xff;
+  buffer[offset + 2] = (value >> 16) & 0xff;
+}
+
+function makeVp8xWebp({ width = ATLAS_WIDTH, height = ATLAS_HEIGHT, alpha = true } = {}) {
+  const data = Buffer.alloc(10);
+  data[0] = alpha ? 0x10 : 0;
+  writeUint24LE(data, 4, width - 1);
+  writeUint24LE(data, 7, height - 1);
+  return buildWebpBuffer([{ type: "VP8X", data }]);
+}
+
+function makeVp8lWebp({ width = ATLAS_WIDTH, height = ATLAS_HEIGHT } = {}) {
+  const data = Buffer.alloc(5);
+  data[0] = 0x2f;
+  const bits = (width - 1) | ((height - 1) << 14);
+  data.writeUInt32LE(bits >>> 0, 1);
+  return buildWebpBuffer([{ type: "VP8L", data }]);
+}
+
+function makeVp8Webp({ width = ATLAS_WIDTH, height = ATLAS_HEIGHT } = {}) {
+  const data = Buffer.alloc(10);
+  data[3] = 0x9d;
+  data[4] = 0x01;
+  data[5] = 0x2a;
+  data.writeUInt16LE(width, 6);
+  data.writeUInt16LE(height, 8);
+  return buildWebpBuffer([{ type: "VP8 ", data }]);
+}
+
 function makeThemeLoaderFixture(userData) {
   const appRoot = path.join(makeTempDir(), "app");
   const appDir = path.join(appRoot, "src");
@@ -155,6 +217,27 @@ describe("codex-pet-adapter package validation", () => {
     assert.strictEqual(result.packageInfo.slug, "yoimiya");
   });
 
+  it("length-caps display metadata before writing generated theme JSON", () => {
+    const root = makeTempDir();
+    const packageDir = copyFixturePackage(root, "long-meta");
+    writeJson(path.join(packageDir, "pet.json"), {
+      id: "long-meta",
+      displayName: ` ${"N".repeat(adapter.MAX_DISPLAY_NAME_LENGTH + 20)} `,
+      description: ` ${"D".repeat(adapter.MAX_DESCRIPTION_LENGTH + 20)} `,
+      spritesheetPath: "spritesheet.png",
+    });
+
+    const result = adapter.validateCodexPetPackage(packageDir);
+    assert.strictEqual(result.ok, true, result.errors.join("; "));
+    assert.strictEqual(result.packageInfo.displayName.length, adapter.MAX_DISPLAY_NAME_LENGTH);
+    assert.strictEqual(result.packageInfo.description.length, adapter.MAX_DESCRIPTION_LENGTH);
+
+    const materialized = adapter.materializeCodexPetTheme(result.packageInfo, path.join(root, "userData", "themes"));
+    const themeJson = readJson(path.join(materialized.themeDir, "theme.json"));
+    assert.strictEqual(themeJson.name.length, adapter.MAX_DISPLAY_NAME_LENGTH);
+    assert.strictEqual(themeJson.description.length, adapter.MAX_DESCRIPTION_LENGTH);
+  });
+
   it("reports missing or malformed manifests", () => {
     const root = makeTempDir();
     const missingDir = path.join(root, "missing");
@@ -206,6 +289,41 @@ describe("codex-pet-adapter package validation", () => {
     const result = adapter.validateCodexPetPackage(packageDir);
     assert.strictEqual(result.ok, false);
     assert.match(result.errors.join("; "), /must be 1536x1872, got 1535x1872/);
+  });
+
+  it("accepts valid VP8X and VP8L WebP atlas headers", () => {
+    const root = makeTempDir();
+    const vp8xDir = writeWebpPackage(root, "vp8x", makeVp8xWebp());
+    const vp8lDir = writeWebpPackage(root, "vp8l", makeVp8lWebp());
+
+    const vp8x = adapter.validateCodexPetPackage(vp8xDir);
+    assert.strictEqual(vp8x.ok, true, vp8x.errors.join("; "));
+    assert.strictEqual(vp8x.packageInfo.image.format, "webp");
+    assert.strictEqual(vp8x.packageInfo.image.encoding, "VP8X");
+    assert.strictEqual(vp8x.packageInfo.image.width, ATLAS_WIDTH);
+    assert.strictEqual(vp8x.packageInfo.image.height, ATLAS_HEIGHT);
+    assert.strictEqual(vp8x.packageInfo.image.hasAlpha, true);
+
+    const vp8l = adapter.validateCodexPetPackage(vp8lDir);
+    assert.strictEqual(vp8l.ok, true, vp8l.errors.join("; "));
+    assert.strictEqual(vp8l.packageInfo.image.encoding, "VP8L");
+  });
+
+  it("rejects malformed WebP headers and non-alpha WebP variants", () => {
+    const root = makeTempDir();
+    const badRiffDir = writeWebpPackage(root, "bad-riff", Buffer.from("not-webp"));
+    assert.match(adapter.validateCodexPetPackage(badRiffDir).errors.join("; "), /invalid RIFF\/WEBP header/);
+
+    const missingChunkDir = writeWebpPackage(root, "missing-chunk", buildWebpBuffer([
+      { type: "EXIF", data: Buffer.from([1, 2, 3, 4]) },
+    ]));
+    assert.match(adapter.validateCodexPetPackage(missingChunkDir).errors.join("; "), /missing a VP8\/VP8L\/VP8X/);
+
+    const vp8xNoAlphaDir = writeWebpPackage(root, "vp8x-no-alpha", makeVp8xWebp({ alpha: false }));
+    assert.match(adapter.validateCodexPetPackage(vp8xNoAlphaDir).errors.join("; "), /must include an alpha channel/);
+
+    const vp8Dir = writeWebpPackage(root, "vp8", makeVp8Webp());
+    assert.match(adapter.validateCodexPetPackage(vp8Dir).errors.join("; "), /must include an alpha channel/);
   });
 });
 
@@ -288,6 +406,44 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
     assert.strictEqual(fs.readFileSync(path.join(unmanagedDir, "theme.json"), "utf8"), "{\"name\":\"User Theme\"}\n");
   });
 
+  it("recovers a partial first-time materialization without changing the theme id", () => {
+    const root = makeTempDir();
+    const packageDir = copyFixturePackage(path.join(root, "pets"));
+    const validation = adapter.validateCodexPetPackage(packageDir);
+    const userThemesDir = path.join(root, "userData", "themes");
+    const partialDir = path.join(userThemesDir, "codex-pet-tiny-atlas-png");
+    fs.mkdirSync(path.join(partialDir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(partialDir, "assets", "half-written.svg"), "<svg/>", "utf8");
+
+    const materialized = adapter.materializeCodexPetTheme(validation.packageInfo, userThemesDir);
+    const marker = readJson(path.join(materialized.themeDir, adapter.MARKER_FILENAME));
+
+    assert.strictEqual(materialized.themeId, "codex-pet-tiny-atlas-png");
+    assert.strictEqual(materialized.operation, "created");
+    assert.strictEqual(marker.inProgress, undefined);
+    assert.strictEqual(fs.existsSync(path.join(partialDir, "assets", "half-written.svg")), false);
+    assert.strictEqual(fs.existsSync(path.join(partialDir, "assets", "codex-pet-idle-loop.svg")), true);
+  });
+
+  it("keeps unmanaged theme IDs with real theme.json protected", () => {
+    const root = makeTempDir();
+    const packageDir = copyFixturePackage(path.join(root, "pets"));
+    const validation = adapter.validateCodexPetPackage(packageDir);
+    const userThemesDir = path.join(root, "userData", "themes");
+    const unmanagedDir = path.join(userThemesDir, "codex-pet-tiny-atlas-png");
+    writeJson(path.join(unmanagedDir, "theme.json"), {
+      schemaVersion: 1,
+      name: "User Theme",
+      version: "1.0.0",
+      viewBox: { x: 0, y: 0, width: 100, height: 100 },
+      states: {},
+    });
+
+    const materialized = adapter.materializeCodexPetTheme(validation.packageInfo, userThemesDir);
+    assert.strictEqual(materialized.themeId, "codex-pet-tiny-atlas-png-2");
+    assert.strictEqual(readJson(path.join(unmanagedDir, "theme.json")).name, "User Theme");
+  });
+
   it("syncs valid packages and reports invalid packages without throwing", () => {
     const root = makeTempDir();
     const petsDir = path.join(root, "pets");
@@ -304,5 +460,38 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
     assert.strictEqual(summary.invalid, 1);
     assert.deepStrictEqual(summary.themes.map((theme) => theme.themeId), ["codex-pet-tiny-atlas-png"]);
     assert.match(summary.diagnostics[0].errors.join("; "), /missing pet\.json/);
+  });
+
+  it("removes orphan managed themes when the source package disappears", () => {
+    const root = makeTempDir();
+    const petsDir = path.join(root, "pets");
+    const packageDir = copyFixturePackage(petsDir, "tiny-atlas-png");
+    const userDataDir = path.join(root, "userData");
+    const first = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+    const themeDir = path.join(userDataDir, "themes", first.themes[0].themeId);
+    assert.strictEqual(fs.existsSync(themeDir), true);
+
+    fs.rmSync(packageDir, { recursive: true, force: true });
+    const second = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+
+    assert.strictEqual(second.removed, 1);
+    assert.strictEqual(fs.existsSync(themeDir), false);
+  });
+
+  it("does not remove an active orphan managed theme before main handles fallback", () => {
+    const root = makeTempDir();
+    const petsDir = path.join(root, "pets");
+    const packageDir = copyFixturePackage(petsDir, "tiny-atlas-png");
+    const userDataDir = path.join(root, "userData");
+    const first = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+    const themeId = first.themes[0].themeId;
+    const themeDir = path.join(userDataDir, "themes", themeId);
+
+    fs.rmSync(packageDir, { recursive: true, force: true });
+    const second = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir, activeThemeId: themeId });
+
+    assert.strictEqual(second.removed, 0);
+    assert.strictEqual(fs.existsSync(themeDir), true);
+    assert.match(second.diagnostics[0].errors.join("; "), /source package is missing but theme is active/);
   });
 });
