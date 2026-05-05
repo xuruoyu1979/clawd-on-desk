@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const zlib = require("zlib");
 
-const ADAPTER_VERSION = 1;
+const ADAPTER_VERSION = 2;
 const MARKER_FILENAME = ".clawd-codex-pet.json";
 const THEME_ID_PREFIX = "codex-pet-";
 const PNG_ALPHA_VALIDATION_SCHEMA_VERSION = 1;
@@ -361,7 +361,13 @@ function buildThemeJson(packageInfo, themeId) {
     jugglingTiers: [
       { minSessions: 1, file: "codex-pet-running-loop.svg" },
     ],
+    hitBoxes: {
+      default: { x: 0, y: 0, w: ATLAS.frameWidth, h: ATLAS.frameHeight },
+      sleeping: { x: 0, y: 0, w: ATLAS.frameWidth, h: ATLAS.frameHeight },
+      wide: { x: 0, y: 0, w: ATLAS.frameWidth, h: ATLAS.frameHeight },
+    },
     reactions: {
+      drag: { file: "codex-pet-running-loop.svg" },
       clickLeft: { file: "codex-pet-jumping-once.svg", duration: 840 },
       clickRight: { file: "codex-pet-jumping-once.svg", duration: 840 },
       double: { files: ["codex-pet-waving-once.svg"], duration: 700 },

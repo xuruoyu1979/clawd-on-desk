@@ -375,6 +375,8 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
     assert.strictEqual(themeJson.states.working[0], "codex-pet-running-loop.svg");
     assert.strictEqual(themeJson.states.notification[0], "codex-pet-waiting-loop.svg");
     assert.strictEqual(themeJson.states.error[0], "codex-pet-failed-loop.svg");
+    assert.deepStrictEqual(themeJson.hitBoxes.default, { x: 0, y: 0, w: 192, h: 208 });
+    assert.strictEqual(themeJson.reactions.drag.file, "codex-pet-running-loop.svg");
     assert.strictEqual(Object.prototype.hasOwnProperty.call(themeJson, "objectScale"), false);
 
     const marker = readJson(path.join(materialized.themeDir, adapter.MARKER_FILENAME));

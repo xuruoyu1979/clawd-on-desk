@@ -37,6 +37,8 @@ test("settings exposes Codex Pet refresh and managed theme metadata", () => {
   assert.ok(mainSource.includes("fs.promises.rm(target.packageDir"));
   assert.ok(mainSource.includes("_decorateCodexPetThemeMetadata({"));
   assert.ok(mainSource.includes("managedCodexPet: true"));
+  assert.ok(mainSource.includes("function _getCodexPetPreviewAtlasUrl"));
+  assert.ok(mainSource.includes("previewAtlasUrl: _getCodexPetPreviewAtlasUrl(theme.id, marker)"));
   assert.ok(mainSource.includes("unchanged: (a.unchanged || 0) + (b.unchanged || 0)"));
   assert.ok(preloadSource.includes('refreshCodexPets: () => ipcRenderer.invoke("settings:refresh-codex-pets")'));
   assert.ok(preloadSource.includes('openCodexPetsDir: () => ipcRenderer.invoke("settings:open-codex-pets-dir")'));

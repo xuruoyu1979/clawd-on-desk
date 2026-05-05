@@ -946,6 +946,14 @@ describe("settings renderer browser environment", () => {
     assert.ok(html.includes("img-src 'self' data: file:"));
     assert.ok(!html.includes("frame-src"));
     assert.ok(html.includes("settings-anim-overrides-merge.js"));
+    const themeTabSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8");
+    assert.ok(!html.includes("object-src"));
+    assert.ok(html.includes(".theme-thumb-atlas-frame"));
+    assert.ok(html.includes("width: 800%;"));
+    assert.ok(themeTabSource.includes("getCodexPetPreviewAtlasUrl"));
+    assert.ok(themeTabSource.includes("theme-thumb-atlas-frame"));
+    assert.ok(themeTabSource.includes("theme.codexPet.previewAtlasUrl"));
+    assert.ok(!themeTabSource.includes('document.createElement("object")'));
     assert.ok(previewHtml.includes("default-src 'self' file:"));
     assert.ok(previewHtml.includes("object-src 'self' file:"));
     assert.ok(previewHtml.includes("script-src 'unsafe-inline'"));
@@ -957,6 +965,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(overridesSource.includes("getCardPreviewUrl(card)"));
     assert.ok(overridesSource.includes("getAssetPreviewUrl(selected)"));
     assert.ok(mainSource.includes("function _needsScriptedAnimationPreviewPoster"));
+    assert.ok(mainSource.includes("function _isObjectChannelSvgAnimationFile"));
+    assert.ok(mainSource.includes('theme.rendering.svgChannel === "object"'));
     assert.ok(mainSource.includes("function _captureAnimationPreviewPosterDataUrl"));
     assert.ok(mainSource.includes("function _scheduleAnimationPreviewPosters"));
     assert.ok(mainSource.includes("capturePage"));

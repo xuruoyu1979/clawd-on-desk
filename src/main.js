@@ -513,7 +513,7 @@ function _isFsPathInsideDir(rootDir, candidatePath) {
   }
   return candidate !== root && candidate.startsWith(root + path.sep);
 }
-function _readCodexPetManagedThemeMarker(themeId) {
+function _getCodexPetManagedThemeDir(themeId) {
   if (typeof themeId !== "string" || !themeId) return null;
   let userThemesDir;
   try {
@@ -525,7 +525,26 @@ function _readCodexPetManagedThemeMarker(themeId) {
   const root = path.resolve(userThemesDir);
   const themeDir = path.resolve(path.join(userThemesDir, themeId));
   if (!_isFsPathInsideDir(root, themeDir)) return null;
+  return themeDir;
+}
+function _readCodexPetManagedThemeMarker(themeId) {
+  const themeDir = _getCodexPetManagedThemeDir(themeId);
+  if (!themeDir) return null;
   return codexPetAdapter.readManagedMarker(themeDir);
+}
+function _getCodexPetPreviewAtlasUrl(themeId, marker) {
+  const themeDir = _getCodexPetManagedThemeDir(themeId);
+  if (!themeDir || !marker || typeof marker.sourceSpritesheetPath !== "string") return null;
+  const filename = path.basename(marker.sourceSpritesheetPath);
+  if (!filename) return null;
+  const assetsDir = path.resolve(path.join(themeDir, "assets"));
+  const atlasPath = path.resolve(path.join(assetsDir, filename));
+  if (!_isFsPathInsideDir(assetsDir, atlasPath) || !fs.existsSync(atlasPath)) return null;
+  try {
+    return pathToFileURL(atlasPath).href;
+  } catch {
+    return null;
+  }
 }
 function _decorateCodexPetThemeMetadata(theme) {
   const marker = theme && _readCodexPetManagedThemeMarker(theme.id);
@@ -536,6 +555,7 @@ function _decorateCodexPetThemeMetadata(theme) {
     codexPet: {
       sourcePetId: marker.sourcePetId || "",
       sourcePackagePath: marker.sourcePackagePath || "",
+      previewAtlasUrl: _getCodexPetPreviewAtlasUrl(theme.id, marker),
       adapterVersion: marker.adapterVersion || 0,
     },
   };
@@ -2272,8 +2292,19 @@ function _isTrustedScriptedAnimationFile(filename, theme = activeTheme) {
   return scriptedFiles.includes(base);
 }
 
+function _isObjectChannelSvgAnimationFile(filename, theme = activeTheme) {
+  return !!(
+    filename
+    && theme
+    && theme.rendering
+    && theme.rendering.svgChannel === "object"
+    && path.extname(filename).toLowerCase() === ".svg"
+  );
+}
+
 function _needsScriptedAnimationPreviewPoster(filename, theme = activeTheme) {
-  return _isTrustedScriptedAnimationFile(filename, theme);
+  return _isTrustedScriptedAnimationFile(filename, theme)
+    || _isObjectChannelSvgAnimationFile(filename, theme);
 }
 
 function _getTrustedScriptedAnimationCycleMs(filename, theme = activeTheme) {

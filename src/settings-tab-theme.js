@@ -95,21 +95,55 @@
     return "";
   }
 
-  function applyThemePreviewScale(img, contentRatio) {
+  function applyThemePreviewScale(el, contentRatio) {
     if (!Number.isFinite(contentRatio) || contentRatio <= 0) return;
     if (contentRatio <= PREVIEW_TARGET_CONTENT_RATIO) return;
     const scale = PREVIEW_TARGET_CONTENT_RATIO / contentRatio;
     const pct = `${(scale * 100).toFixed(2)}%`;
-    img.style.maxWidth = pct;
-    img.style.maxHeight = pct;
+    el.style.maxWidth = pct;
+    el.style.maxHeight = pct;
   }
 
-  function applyThemePreviewOffset(img, offsetPct) {
+  function applyThemePreviewOffset(el, offsetPct) {
     if (!offsetPct) return;
     const { x, y } = offsetPct;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) return;
-    img.style.transform = `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%)`;
+    el.style.transform = `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%)`;
+  }
+
+  function getCodexPetPreviewAtlasUrl(theme) {
+    return theme
+      && theme.codexPet
+      && typeof theme.codexPet.previewAtlasUrl === "string"
+      && theme.codexPet.previewAtlasUrl;
+  }
+
+  function buildCodexPetAtlasPreview(theme) {
+    const frame = document.createElement("span");
+    frame.className = "theme-thumb-atlas-frame";
+    applyThemePreviewScale(frame, theme.previewContentRatio);
+    applyThemePreviewOffset(frame, theme.previewContentOffsetPct);
+
+    const img = document.createElement("img");
+    img.src = getCodexPetPreviewAtlasUrl(theme);
+    img.alt = "";
+    img.draggable = false;
+    frame.appendChild(img);
+    return frame;
+  }
+
+  function buildThemePreviewMedia(theme) {
+    if (theme.managedCodexPet && getCodexPetPreviewAtlasUrl(theme)) {
+      return buildCodexPetAtlasPreview(theme);
+    }
+    const img = document.createElement("img");
+    img.src = theme.previewFileUrl;
+    img.alt = "";
+    img.draggable = false;
+    applyThemePreviewScale(img, theme.previewContentRatio);
+    applyThemePreviewOffset(img, theme.previewContentOffsetPct);
+    return img;
   }
 
   function getThemeCapabilityBadgeLabels(theme) {
@@ -173,14 +207,8 @@
 
     const thumb = document.createElement("div");
     thumb.className = "theme-thumb";
-    if (theme.previewFileUrl) {
-      const img = document.createElement("img");
-      img.src = theme.previewFileUrl;
-      img.alt = "";
-      img.draggable = false;
-      applyThemePreviewScale(img, theme.previewContentRatio);
-      applyThemePreviewOffset(img, theme.previewContentOffsetPct);
-      thumb.appendChild(img);
+    if (theme.previewFileUrl || getCodexPetPreviewAtlasUrl(theme)) {
+      thumb.appendChild(buildThemePreviewMedia(theme));
     } else {
       const glyph = document.createElement("span");
       glyph.className = "theme-thumb-empty";

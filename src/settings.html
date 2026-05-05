@@ -835,6 +835,25 @@ html, body {
   object-fit: contain;
   pointer-events: none;
 }
+.theme-thumb-atlas-frame {
+  position: relative;
+  display: block;
+  height: 100%;
+  aspect-ratio: 192 / 208;
+  overflow: hidden;
+  pointer-events: none;
+}
+.theme-thumb-atlas-frame img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 800%;
+  height: 900%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  pointer-events: none;
+}
 .theme-thumb-empty {
   font-size: 28px;
   color: var(--text-tertiary);
