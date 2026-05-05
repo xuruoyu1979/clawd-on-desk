@@ -34,7 +34,8 @@ describe("renderer object-channel selection", () => {
     const source = readNormalized(RENDERER);
 
     assert.ok(source.includes("_trustedScriptedSvgFiles = new Set"));
-    assert.ok(source.includes("return needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);"));
+    assert.ok(source.includes("_forceSvgObjectChannel"));
+    assert.ok(source.includes("return _forceSvgObjectChannel || needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);"));
   });
 
   it("keeps eye-tracking attachment state-based only", () => {
@@ -42,6 +43,24 @@ describe("renderer object-channel selection", () => {
 
     assert.ok(source.includes("function needsEyeTracking(state)"));
     assert.match(source, /if \(state && needsEyeTracking\(state\)\) {\r?\n\s+attachEyeTracking\(next\);/);
+  });
+
+  it("does not hard-code click or drag reactions to the img channel", () => {
+    const source = readNormalized(RENDERER);
+
+    assert.ok(source.includes("swapToFile(svgFile, null);"));
+    assert.ok(source.includes("swapToFile(_dragSvg, null);"));
+    assert.ok(!source.includes("swapToFile(svgFile, null, false);"));
+    assert.ok(!source.includes("swapToFile(_dragSvg, null, false);"));
+  });
+
+  it("uses a monotonic cache-bust counter for remaining img-channel SVG swaps", () => {
+    const source = readNormalized(RENDERER);
+
+    assert.ok(source.includes("let _imgCacheBustSeq = 0;"));
+    assert.ok(source.includes("++_imgCacheBustSeq"));
+    assert.ok(source.includes("const cacheBust = `${Date.now()}-${++_imgCacheBustSeq}`;"));
+    assert.ok(!source.includes("_t=${Date.now()}"));
   });
 });
 

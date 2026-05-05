@@ -29,6 +29,8 @@ function initWithConfig(cfg) {
   _shadowShift = (tc.eyeTracking && tc.eyeTracking.shadowShift) || 0.3;
   _eyeTrackingStates = (tc.eyeTrackingStates) || ["idle", "dozing", "mini-idle"];
   _trustedScriptedSvgFiles = new Set(Array.isArray(tc.trustedScriptedSvgFiles) ? tc.trustedScriptedSvgFiles : []);
+  _forceSvgObjectChannel = !!(tc.rendering && tc.rendering.svgChannel === "object");
+  _imgCacheBustSeq = 0;
   _miniViewBox = tc.miniModeViewBox || null;
   _fileViewBoxes = tc.fileViewBoxes || {};
   _dragSvg = tc.dragSvg || null;
@@ -310,6 +312,8 @@ let _shadowStretch;
 let _shadowShift;
 let _eyeTrackingStates;
 let _trustedScriptedSvgFiles = new Set();
+let _forceSvgObjectChannel = false;
+let _imgCacheBustSeq = 0;
 let _miniViewBox = null;
 let _fileViewBoxes = {};
 let _dragSvg;
@@ -472,7 +476,7 @@ function needsEyeTracking(state) {
  */
 function needsObjectChannel(state, file) {
   if (!isSvgFile(file)) return false;
-  return needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);
+  return _forceSvgObjectChannel || needsEyeTracking(state) || _trustedScriptedSvgFiles.has(file);
 }
 
 function shouldUseCloudlingPointerBridge(state, file) {
@@ -551,8 +555,9 @@ function playReaction(svgFile, durationMs) {
   resumeCurrentSvgForLowPower();
   window.electronAPI.pauseCursorPolling();
 
-  // Reactions always use <img> channel (no eye tracking needed)
-  swapToFile(svgFile, null, false);
+  // Reactions do not attach eye tracking, but some themes force SVGs through
+  // <object> so their SVG documents can load local sub-resources.
+  swapToFile(svgFile, null);
 
   reactTimer = setTimeout(() => endReaction(), durationMs);
 }
@@ -589,7 +594,7 @@ function startDragReaction() {
   detachEyeTracking();
   resumeCurrentSvgForLowPower();
   window.electronAPI.pauseCursorPolling();
-  swapToFile(_dragSvg, null, false);
+  swapToFile(_dragSvg, null);
 }
 
 function endDragReaction() {
@@ -724,11 +729,13 @@ function swapToFile(file, state, useObjectChannel) {
     // one-shot animations (`animation: foo 3.2s 1 forwards`) that already ran
     // once would reappear stuck on their last frame on subsequent loads —
     // the user sees a static pet instead of the entry animation. Appending
-    // a timestamp forces a fresh SVG document & fresh animation start each
-    // swap. Infinite animations are unaffected (they look identical either
-    // way). Load time stays ~0ms since the file itself is still in the HTTP
-    // cache; only the in-memory SVG document is rebuilt.
-    next.src = `${url}${url.includes("?") ? "&" : "?"}_t=${Date.now()}`;
+    // a timestamp plus monotonic sequence forces a fresh SVG document & fresh
+    // animation start each swap, even when several swaps happen in the same
+    // millisecond. Infinite animations are unaffected (they look identical
+    // either way). Load time stays ~0ms since the file itself is still in the
+    // HTTP cache; only the in-memory SVG document is rebuilt.
+    const cacheBust = `${Date.now()}-${++_imgCacheBustSeq}`;
+    next.src = `${url}${url.includes("?") ? "&" : "?"}_t=${cacheBust}`;
     container.appendChild(next);
     pendingNext = next;
     // Timeout fallback for images that fail to load

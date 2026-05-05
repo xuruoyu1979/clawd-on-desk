@@ -38,6 +38,7 @@ function hasRootViewBoxFileOverride(theme, file) {
 
 function usesObjectChannel(theme, state, file) {
   if (!theme || !isSvgFile(file)) return false;
+  if (theme.rendering && theme.rendering.svgChannel === "object") return true;
   const eyeStates = theme.eyeTracking && theme.eyeTracking.enabled
     ? (theme.eyeTracking.states || [])
     : [];

@@ -226,6 +226,52 @@ describe("hit geometry", () => {
     approx(rect.h, 163.64);
   });
 
+  it("keeps ordinary external SVG themes on the legacy non-object path by default", () => {
+    const theme = {
+      _builtin: false,
+      viewBox: { x: 0, y: 0, width: 192, height: 208 },
+      fileViewBoxes: {},
+      objectScale: { widthRatio: 1, heightRatio: 1, offsetX: 0, offsetY: 0, objBottom: 0 },
+      eyeTracking: { enabled: false, states: [] },
+      trustedRuntime: { scriptedSvgFiles: [] },
+      rendering: { svgChannel: "auto" },
+    };
+
+    assert.strictEqual(
+      hitGeometry.usesObjectChannel(theme, "idle", "ordinary-idle.svg"),
+      false
+    );
+  });
+
+  it("uses object-channel geometry when a theme forces SVG object rendering", () => {
+    const theme = {
+      _builtin: false,
+      viewBox: { x: 0, y: 0, width: 192, height: 208 },
+      fileViewBoxes: {},
+      objectScale: { widthRatio: 1, heightRatio: 1, offsetX: 0, offsetY: 0, objBottom: 0 },
+      eyeTracking: { enabled: false, states: [] },
+      trustedRuntime: { scriptedSvgFiles: [] },
+      rendering: { svgChannel: "object" },
+    };
+
+    assert.strictEqual(
+      hitGeometry.usesObjectChannel(theme, "idle", "codex-pet-idle-loop.svg"),
+      true
+    );
+
+    const rect = hitGeometry.getAssetRectScreen(
+      theme,
+      bounds,
+      "idle",
+      "codex-pet-idle-loop.svg"
+    );
+
+    approx(rect.x, 7.69);
+    approx(rect.y, 0);
+    approx(rect.w, 184.62);
+    approx(rect.h, 200);
+  });
+
   it("maps screen cursor points into the active asset viewBox for pointer bridge payloads", () => {
     const theme = {
       _builtin: true,

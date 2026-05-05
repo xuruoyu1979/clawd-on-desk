@@ -40,7 +40,9 @@ function makeFixture(themes) {
       const assetsDir = path.join(base, "assets");
       fs.mkdirSync(assetsDir, { recursive: true });
       for (const [filename, content] of Object.entries(assets)) {
-        fs.writeFileSync(path.join(assetsDir, filename), content, "utf8");
+        const assetPath = path.join(assetsDir, filename);
+        fs.mkdirSync(path.dirname(assetPath), { recursive: true });
+        fs.writeFileSync(assetPath, content, "utf8");
       }
     }
   }
@@ -123,6 +125,14 @@ describe("theme-loader strict mode", () => {
           updateBubbleAnchorBox: { x: 10, y: "bad", width: 30, height: 40 },
         }),
       },
+      {
+        id: "badrendering",
+        builtin: true,
+        json: validThemeJson({
+          name: "Bad Rendering",
+          rendering: { svgChannel: "img" },
+        }),
+      },
       // Missing required fields (no schemaVersion, no viewBox) → validateTheme fails.
       { id: "broken", builtin: false, json: { name: "Bad", version: "1", states: {} } },
     ]);
@@ -181,6 +191,13 @@ describe("theme-loader strict mode", () => {
       /updateBubbleAnchorBox/
     );
   });
+
+  it("strict load rejects malformed rendering config", () => {
+    assert.throws(
+      () => themeLoader.loadTheme("badrendering", { strict: true }),
+      /rendering\.svgChannel/
+    );
+  });
 });
 
 describe("theme-loader trusted runtime and schema v1 defaults", () => {
@@ -235,15 +252,32 @@ describe("theme-loader trusted runtime and schema v1 defaults", () => {
         }),
         assets: {},
       },
+      {
+        id: "forced-object",
+        builtin: false,
+        json: validThemeJson({
+          name: "Forced Object",
+          rendering: { svgChannel: "object" },
+          eyeTracking: { enabled: false, states: [] },
+          reactions: { clickLeft: { file: "react-once.svg", duration: 840 } },
+        }),
+        assets: {
+          "idle.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+          "react-once.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        },
+      },
     ]);
   });
   after(() => fixture && fixture.cleanup());
 
   it("keeps schemaVersion 1 themes valid while adding safe defaults", () => {
     const theme = themeLoader.loadTheme("old-schema", { strict: true });
+    const rendererConfig = themeLoader.getRendererConfig();
 
     assert.strictEqual(theme.schemaVersion, 1);
     assert.deepStrictEqual(theme.trustedRuntime, { scriptedSvgFiles: [] });
+    assert.deepStrictEqual(theme.rendering, { svgChannel: "auto" });
+    assert.deepStrictEqual(rendererConfig.rendering, { svgChannel: "auto" });
     assert.deepStrictEqual(theme.fileViewBoxes, {});
     assert.strictEqual(theme.miniMode.viewBox, null);
   });
@@ -290,6 +324,18 @@ describe("theme-loader trusted runtime and schema v1 defaults", () => {
       "mini-special.svg": { x: -10, y: -10, width: 40, height: 40 },
     });
     assert.deepStrictEqual(theme.miniMode.viewBox, { x: -10, y: -10, width: 40, height: 40 });
+  });
+
+  it("passes forced SVG object-channel rendering through for external themes", () => {
+    const theme = themeLoader.loadTheme("forced-object", { strict: true });
+    const rendererConfig = themeLoader.getRendererConfig();
+
+    assert.strictEqual(theme._builtin, false);
+    assert.deepStrictEqual(theme.rendering, { svgChannel: "object" });
+    assert.deepStrictEqual(rendererConfig.rendering, { svgChannel: "object" });
+    assert.deepStrictEqual(rendererConfig.eyeTrackingStates, []);
+    assert.deepStrictEqual(rendererConfig.trustedScriptedSvgFiles, []);
+    assert.strictEqual(theme.reactions.clickLeft.file, "react-once.svg");
   });
 
   it("rejects path traversal before marking a theme as built-in", () => {
@@ -567,6 +613,74 @@ describe("theme-loader external SVG sanitization", () => {
           ].join(""),
         },
       },
+      {
+        id: "safe-raster-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Safe Raster Ref" }),
+        assets: {
+          "spritesheet.webp": "fake-webp",
+          "nested/sheet.png": "fake-png",
+          "idle.svg": [
+            "<svg xmlns=\"http://www.w3.org/2000/svg\">",
+            "  <style>.bg { fill: url(#local); background: url('./nested/sheet.png'); }</style>",
+            "  <defs><clipPath id=\"frame\"><rect width=\"10\" height=\"10\"/></clipPath></defs>",
+            "  <g clip-path=\"url(#frame)\">",
+            "    <image href=\"spritesheet.webp\"/>",
+            "  </g>",
+            "</svg>",
+          ].join(""),
+        },
+      },
+      {
+        id: "missing-raster-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Missing Raster Ref" }),
+        assets: {
+          "idle.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"missing.webp\"/></svg>",
+        },
+      },
+      {
+        id: "repair-raster-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Repair Raster Ref" }),
+        assets: {
+          "spritesheet.webp": "repair-webp",
+          "idle.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"spritesheet.webp\"/></svg>",
+        },
+      },
+      {
+        id: "invalidation-raster-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Invalidation Raster Ref" }),
+        assets: {
+          "spritesheet.webp": "old-webp",
+          "idle.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"spritesheet.webp\"/></svg>",
+        },
+      },
+      {
+        id: "orphan-raster-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Orphan Raster Ref" }),
+        assets: {
+          "a.webp": "raster-a",
+          "b.webp": "raster-b",
+          "idle.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"a.webp\"/></svg>",
+        },
+      },
+      {
+        id: "legacy-cache-ref",
+        builtin: false,
+        json: validThemeJson({ name: "Legacy Cache Ref" }),
+        assets: {
+          "spritesheet.webp": "legacy-webp",
+          "idle.svg": [
+            "<svg xmlns=\"http://www.w3.org/2000/svg\">",
+            "  <script>alert(1)</script>",
+            "  <image href=\"spritesheet.webp\"/>",
+            "</svg>",
+          ].join(""),
+        },
+      },
     ]);
   });
   after(() => fixture && fixture.cleanup());
@@ -584,6 +698,109 @@ describe("theme-loader external SVG sanitization", () => {
     assert.ok(!sanitized.includes("//bad.example"), "protocol-relative presentation attr should be removed");
     assert.ok(!sanitized.includes("//attacker.com"), "protocol-relative href should be removed");
     assert.ok(!sanitized.includes("..%2F..%2Fetc%2Fpasswd"), "encoded traversal href should be removed");
+  });
+
+  it("copies safe relative raster dependencies beside cached SVGs", () => {
+    themeLoader.loadTheme("safe-raster-ref", { strict: true });
+    const sanitizedPath = themeLoader.getAssetPath("idle.svg");
+    const sanitized = fs.readFileSync(sanitizedPath, "utf8");
+    const cachedAssetsDir = path.dirname(sanitizedPath);
+    const cachedWebp = path.join(cachedAssetsDir, "spritesheet.webp");
+    const cachedPng = path.join(cachedAssetsDir, "nested", "sheet.png");
+    const cacheMetaPath = path.join(path.dirname(cachedAssetsDir), ".cache-meta.json");
+    const cacheMeta = JSON.parse(fs.readFileSync(cacheMetaPath, "utf8"));
+
+    assert.ok(sanitized.includes("<image"), "safe local image element should survive sanitization");
+    assert.strictEqual(fs.readFileSync(cachedWebp, "utf8"), "fake-webp");
+    assert.strictEqual(fs.readFileSync(cachedPng, "utf8"), "fake-png");
+    assert.strictEqual(cacheMeta.version, 2);
+    assert.ok(cacheMeta.svgs["idle.svg"]);
+    assert.ok(cacheMeta.rasters["spritesheet.webp"]);
+    assert.ok(cacheMeta.rasters["nested/sheet.png"]);
+    assert.ok(!cacheMeta.rasters["#frame"]);
+  });
+
+  it("rejects missing SVG raster dependencies in strict mode", () => {
+    const warn = mock.method(console, "warn", () => {});
+
+    assert.throws(
+      () => themeLoader.loadTheme("missing-raster-ref", { strict: true }),
+      /missing raster dependencies: missing\.webp/
+    );
+    assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes("Missing raster dependency")));
+  });
+
+  it("repairs a missing cached raster when metadata still exists", () => {
+    themeLoader.loadTheme("repair-raster-ref", { strict: true });
+    const cachedAssetsDir = path.dirname(themeLoader.getAssetPath("idle.svg"));
+    const cachedWebp = path.join(cachedAssetsDir, "spritesheet.webp");
+
+    assert.strictEqual(fs.readFileSync(cachedWebp, "utf8"), "repair-webp");
+    fs.rmSync(cachedWebp, { force: true });
+
+    themeLoader.loadTheme("repair-raster-ref", { strict: true });
+    assert.strictEqual(fs.readFileSync(cachedWebp, "utf8"), "repair-webp");
+  });
+
+  it("invalidates cached rasters when source mtime or size changes", () => {
+    themeLoader.loadTheme("invalidation-raster-ref", { strict: true });
+    const cachedAssetsDir = path.dirname(themeLoader.getAssetPath("idle.svg"));
+    const cachedWebp = path.join(cachedAssetsDir, "spritesheet.webp");
+    const sourceWebp = path.join(fixture.tmp, "userData", "themes", "invalidation-raster-ref", "assets", "spritesheet.webp");
+
+    assert.strictEqual(fs.readFileSync(cachedWebp, "utf8"), "old-webp");
+    fs.writeFileSync(sourceWebp, "new-webp-content", "utf8");
+
+    themeLoader.loadTheme("invalidation-raster-ref", { strict: true });
+    assert.strictEqual(fs.readFileSync(cachedWebp, "utf8"), "new-webp-content");
+  });
+
+  it("removes orphaned cached rasters after SVG references change", () => {
+    themeLoader.loadTheme("orphan-raster-ref", { strict: true });
+    const cachedAssetsDir = path.dirname(themeLoader.getAssetPath("idle.svg"));
+    const cachedA = path.join(cachedAssetsDir, "a.webp");
+    const cachedB = path.join(cachedAssetsDir, "b.webp");
+    const sourceSvg = path.join(fixture.tmp, "userData", "themes", "orphan-raster-ref", "assets", "idle.svg");
+
+    assert.strictEqual(fs.readFileSync(cachedA, "utf8"), "raster-a");
+    fs.writeFileSync(
+      sourceSvg,
+      "<svg xmlns=\"http://www.w3.org/2000/svg\"><g><image href=\"b.webp\"/></g></svg>",
+      "utf8"
+    );
+
+    themeLoader.loadTheme("orphan-raster-ref", { strict: true });
+    const cacheMeta = JSON.parse(fs.readFileSync(path.join(path.dirname(cachedAssetsDir), ".cache-meta.json"), "utf8"));
+    assert.strictEqual(fs.existsSync(cachedA), false);
+    assert.strictEqual(fs.readFileSync(cachedB, "utf8"), "raster-b");
+    assert.ok(!cacheMeta.rasters["a.webp"]);
+    assert.ok(cacheMeta.rasters["b.webp"]);
+  });
+
+  it("migrates legacy flat cache metadata and refreshes cached SVGs", () => {
+    const themeId = "legacy-cache-ref";
+    const sourceSvg = path.join(fixture.tmp, "userData", "themes", themeId, "assets", "idle.svg");
+    const cacheRoot = path.join(fixture.tmp, "userData", "theme-cache", themeId);
+    const cacheAssetsDir = path.join(cacheRoot, "assets");
+    fs.mkdirSync(cacheAssetsDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheAssetsDir, "idle.svg"), "<svg><script>stale()</script></svg>", "utf8");
+    const sourceStat = fs.statSync(sourceSvg);
+    fs.writeFileSync(
+      path.join(cacheRoot, ".cache-meta.json"),
+      JSON.stringify({ "idle.svg": { mtime: sourceStat.mtimeMs, size: sourceStat.size } }),
+      "utf8"
+    );
+
+    themeLoader.loadTheme(themeId, { strict: true });
+    const sanitized = fs.readFileSync(themeLoader.getAssetPath("idle.svg"), "utf8");
+    const cacheMeta = JSON.parse(fs.readFileSync(path.join(cacheRoot, ".cache-meta.json"), "utf8"));
+
+    assert.strictEqual(cacheMeta.version, 2);
+    assert.ok(cacheMeta.svgs["idle.svg"]);
+    assert.ok(cacheMeta.rasters["spritesheet.webp"]);
+    assert.ok(sanitized.includes("<image"));
+    assert.ok(!sanitized.includes("<script"));
+    assert.ok(!sanitized.includes("stale()"));
   });
 });
 
