@@ -774,7 +774,7 @@ Downloader/importer:
 
 Settings:
 
-- rename or visually supplement Theme tab with `Pets`
+- keep the Theme tab label for MVP, but visually supplement the page with pet-oriented grouping and actions
 - group cards:
   - Built-in
   - Imported Codex Pets
@@ -797,8 +797,9 @@ Website:
 
 Runtime:
 
-- watch `~/.codex/pets` for changes
-- refresh managed themes when package mtime changes
+- keep manual `Refresh Imported Pets` as the MVP sync trigger
+- defer watching `~/.codex/pets` for changes to post-MVP runtime automation; cross-platform file watching should be designed separately instead of blocking Phase 4
+- when a manual refresh sees package mtime changes, refresh managed themes
 - preserve currently selected pet if its package updates
 
 ### Phase 5: Native Spritesheet Channel

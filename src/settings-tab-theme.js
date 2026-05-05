@@ -223,7 +223,8 @@
     }
 
     const canDelete = !theme.builtin && !theme.active && !theme.managedCodexPet;
-    if (theme.active || canDelete) {
+    const canRemoveCodexPet = !!theme.managedCodexPet;
+    if (theme.active || canDelete || canRemoveCodexPet) {
       const footer = document.createElement("div");
       footer.className = "theme-card-footer";
       const indicator = document.createElement("span");
@@ -240,6 +241,20 @@
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           handleDeleteTheme(theme);
+        });
+        footer.appendChild(btn);
+      }
+      if (canRemoveCodexPet) {
+        const btn = document.createElement("button");
+        btn.className = "theme-uninstall-btn";
+        btn.type = "button";
+        btn.textContent = t("themeUninstallPetLabel");
+        btn.title = t("themeUninstallPetLabel");
+        btn.setAttribute("aria-label", t("themeUninstallPetLabel"));
+        btn.disabled = runtime.codexPetRemovalPendingThemeId === theme.id;
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          handleRemoveCodexPet(theme);
         });
         footer.appendChild(btn);
       }
@@ -346,6 +361,45 @@
       })
       .finally(() => {
         runtime.codexPetZipImportPending = false;
+        if (state.activeTab === "theme") ops.requestRender({ content: true });
+      });
+  }
+
+  function formatCodexPetRemoveOk(result) {
+    const removed = result && result.removed;
+    const name = removed && (removed.displayName || removed.id);
+    const formatter = t("toastCodexPetRemoveOk");
+    if (typeof formatter === "function") return formatter(name || "Codex Pet", !!(result && result.switchedToFallback));
+    return String(formatter);
+  }
+
+  function formatCodexPetRemoveFailed(message) {
+    const formatter = t("toastCodexPetRemoveFailed");
+    if (typeof formatter === "function") return formatter(message || "unknown error");
+    return String(formatter) + (message || "unknown error");
+  }
+
+  function handleRemoveCodexPet(theme) {
+    if (!window.settingsAPI || typeof window.settingsAPI.removeCodexPet !== "function") return;
+    runtime.codexPetRemovalPendingThemeId = theme.id;
+    if (state.activeTab === "theme") ops.requestRender({ content: true });
+    window.settingsAPI.removeCodexPet(theme.id)
+      .then((result) => {
+        if (!result || result.status === "cancel") return null;
+        if (result.status !== "ok") {
+          ops.showToast(formatCodexPetRemoveFailed(result && result.message), { error: true });
+          return null;
+        }
+        ops.showToast(formatCodexPetRemoveOk(result));
+        return ops.fetchThemes().then(() => {
+          if (state.activeTab === "theme") ops.requestRender({ content: true });
+        });
+      })
+      .catch((err) => {
+        ops.showToast(formatCodexPetRemoveFailed(err && err.message), { error: true });
+      })
+      .finally(() => {
+        runtime.codexPetRemovalPendingThemeId = null;
         if (state.activeTab === "theme") ops.requestRender({ content: true });
       });
   }

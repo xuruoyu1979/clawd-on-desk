@@ -791,7 +791,7 @@ html, body {
   line-height: 1.2;
   color: var(--text-secondary);
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0;
 }
 .theme-card {
@@ -907,6 +907,31 @@ html, body {
   background: rgba(185, 28, 28, 0.1);
 }
 .theme-delete-btn:focus-visible {
+  outline: 2px solid var(--toast-error);
+  outline-offset: 2px;
+}
+.theme-uninstall-btn {
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  background: transparent;
+  color: var(--toast-error);
+  border-radius: 6px;
+  min-height: 26px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.theme-uninstall-btn:hover:not(:disabled) {
+  background: rgba(185, 28, 28, 0.1);
+  border-color: rgba(185, 28, 28, 0.3);
+}
+.theme-uninstall-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.theme-uninstall-btn:focus-visible {
   outline: 2px solid var(--toast-error);
   outline-offset: 2px;
 }

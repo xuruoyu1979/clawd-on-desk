@@ -503,6 +503,16 @@ function _sameFsPath(a, b) {
   const right = path.resolve(b);
   return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
+function _isFsPathInsideDir(rootDir, candidatePath) {
+  if (typeof rootDir !== "string" || typeof candidatePath !== "string") return false;
+  let root = path.resolve(rootDir);
+  let candidate = path.resolve(candidatePath);
+  if (process.platform === "win32") {
+    root = root.toLowerCase();
+    candidate = candidate.toLowerCase();
+  }
+  return candidate !== root && candidate.startsWith(root + path.sep);
+}
 function _readCodexPetManagedThemeMarker(themeId) {
   if (typeof themeId !== "string" || !themeId) return null;
   let userThemesDir;
@@ -514,7 +524,7 @@ function _readCodexPetManagedThemeMarker(themeId) {
   if (!userThemesDir) return null;
   const root = path.resolve(userThemesDir);
   const themeDir = path.resolve(path.join(userThemesDir, themeId));
-  if (!themeDir.startsWith(root + path.sep)) return null;
+  if (!_isFsPathInsideDir(root, themeDir)) return null;
   return codexPetAdapter.readManagedMarker(themeDir);
 }
 function _decorateCodexPetThemeMetadata(theme) {
@@ -561,6 +571,23 @@ async function _refreshCodexPetThemesFromSettings() {
     console.warn("Clawd: rebuildAllMenus after Codex Pet refresh failed:", err && err.message);
   }
   return { status: "ok", summary, switchedToFallback };
+}
+function _resolveCodexPetRemovalTarget(themeId) {
+  const marker = _readCodexPetManagedThemeMarker(themeId);
+  if (!marker) {
+    return { status: "error", message: "theme is not a managed Codex Pet" };
+  }
+  const petsRoot = path.resolve(codexPetImporter.getDefaultCodexPetsDir());
+  const packageDir = path.resolve(marker.sourcePackagePath || "");
+  if (!_isFsPathInsideDir(petsRoot, packageDir) || !_sameFsPath(path.dirname(packageDir), petsRoot)) {
+    return { status: "error", message: "managed Codex Pet source path is outside the pets folder" };
+  }
+  return {
+    status: "ok",
+    marker,
+    packageDir,
+    exists: fs.existsSync(packageDir),
+  };
 }
 function _extractClawdProtocolUrls(argv) {
   if (!Array.isArray(argv)) return [];
@@ -699,6 +726,55 @@ async function _confirmReplaceExistingCodexPetPackage(payload) {
     return response === 0;
   } catch (err) {
     console.warn("Clawd: Codex Pet replace confirmation failed:", err && err.message);
+    return false;
+  }
+}
+
+function _getCodexPetRemovalDialogStrings() {
+  const all = {
+    en: {
+      uninstall: "Uninstall",
+      cancel: "Cancel",
+      message: (name) => `Uninstall imported pet "${name}"?`,
+      detail: "Clawd will remove the source package from your Codex pets folder and clean up the generated theme. This cannot be undone.",
+    },
+    zh: {
+      uninstall: "卸载",
+      cancel: "取消",
+      message: (name) => `卸载导入宠物 "${name}"？`,
+      detail: "Clawd 会从 Codex pets 文件夹删除源包，并清理生成的主题。此操作不可撤销。",
+    },
+    ko: {
+      uninstall: "제거",
+      cancel: "취소",
+      message: (name) => `가져온 펫 "${name}"을(를) 제거할까요?`,
+      detail: "Clawd가 Codex pets 폴더의 원본 패키지를 제거하고 생성된 테마를 정리합니다. 이 작업은 되돌릴 수 없습니다.",
+    },
+    ja: {
+      uninstall: "アンインストール",
+      cancel: "キャンセル",
+      message: (name) => `インポート済みペット "${name}" をアンインストールしますか？`,
+      detail: "Clawd は Codex pets フォルダから元パッケージを削除し、生成されたテーマをクリーンアップします。この操作は元に戻せません。",
+    },
+  };
+  return all[lang] || all.en;
+}
+
+async function _confirmRemoveImportedCodexPetPackage(displayName) {
+  const s = _getCodexPetRemovalDialogStrings();
+  try {
+    const { response } = await dialog.showMessageBox(_getCodexPetImportDialogParent(), {
+      type: "warning",
+      buttons: [s.uninstall, s.cancel],
+      defaultId: 1,
+      cancelId: 1,
+      message: s.message(displayName || "Codex Pet"),
+      detail: s.detail,
+      noLink: true,
+    });
+    return response === 0;
+  } catch (err) {
+    console.warn("Clawd: Codex Pet removal confirmation failed:", err && err.message);
     return false;
   }
 }
@@ -3503,11 +3579,11 @@ ipcMain.handle("settings:import-codex-pet-zip", async (event) => {
 
   try {
     const zipPath = picked.filePaths[0];
-    const stat = fs.statSync(zipPath);
+    const stat = await fs.promises.stat(zipPath);
     if (stat.size > codexPetImporter.MAX_ZIP_BYTES) {
       throw new Error(`zip package exceeds ${codexPetImporter.MAX_ZIP_BYTES} bytes`);
     }
-    const imported = await codexPetImporter.importCodexPetFromZipBuffer(fs.readFileSync(zipPath), {
+    const imported = await codexPetImporter.importCodexPetFromZipBuffer(await fs.promises.readFile(zipPath), {
       confirmReplaceExistingPackage: _confirmReplaceExistingCodexPetPackage,
     });
     const activated = await _materializeAndActivateImportedCodexPet(imported);
@@ -3518,12 +3594,62 @@ ipcMain.handle("settings:import-codex-pet-zip", async (event) => {
       imported: {
         id: imported.packageInfo.id,
         displayName: imported.packageInfo.displayName,
-        packageDir: imported.packageDir,
       },
     };
   } catch (err) {
     if (err && err.code === codexPetImporter.ERR_REPLACE_DECLINED) return { status: "cancel" };
     console.warn("Clawd: Codex Pet zip import failed:", err && err.message);
+    return { status: "error", message: (err && err.message) || String(err) };
+  }
+});
+
+ipcMain.handle("settings:remove-codex-pet", async (_event, themeId) => {
+  if (typeof themeId !== "string" || !themeId) return { status: "error", message: "themeId is required" };
+  const target = _resolveCodexPetRemovalTarget(themeId);
+  if (!target || target.status !== "ok") {
+    return { status: "error", message: (target && target.message) || "could not resolve imported pet" };
+  }
+
+  const meta = themeLoader.getThemeMetadata(themeId) || {};
+  const displayName = typeof meta.name === "string" && meta.name
+    ? meta.name
+    : (target.marker.sourcePetId || themeId);
+
+  try {
+    if (target.exists) {
+      const stat = await fs.promises.lstat(target.packageDir);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error("managed Codex Pet source is not a plain directory");
+      }
+      try {
+        await fs.promises.access(path.join(target.packageDir, "pet.json"), fs.constants.F_OK);
+      } catch {
+        throw new Error("managed Codex Pet source no longer contains pet.json; refresh imported pets instead");
+      }
+      const confirmed = await _confirmRemoveImportedCodexPetPackage(displayName);
+      if (!confirmed) return { status: "cancel" };
+      await fs.promises.rm(target.packageDir, { recursive: true, force: true });
+    }
+
+    const refresh = await _refreshCodexPetThemesFromSettings();
+    if (!refresh || refresh.status !== "ok") {
+      return {
+        status: "error",
+        message: (refresh && refresh.message) || "removed package but failed to refresh imported pets",
+        summary: refresh && refresh.summary,
+      };
+    }
+    return {
+      status: "ok",
+      removed: {
+        id: target.marker.sourcePetId || "",
+        displayName,
+      },
+      summary: refresh.summary,
+      switchedToFallback: !!refresh.switchedToFallback,
+    };
+  } catch (err) {
+    console.warn("Clawd: Codex Pet removal failed:", err && err.message);
     return { status: "error", message: (err && err.message) || String(err) };
   }
 });

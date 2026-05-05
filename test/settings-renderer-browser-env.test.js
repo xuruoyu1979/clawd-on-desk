@@ -751,14 +751,21 @@ describe("settings renderer browser environment", () => {
     assert.ok(tabSource.includes("themeGroupUserThemes"));
     assert.ok(tabSource.includes("handleImportCodexPetZip"));
     assert.ok(tabSource.includes("handleOpenCodexPetsFolder"));
+    assert.ok(tabSource.includes("handleRemoveCodexPet"));
+    assert.ok(tabSource.includes("themeUninstallPetLabel"));
     assert.ok(coreSource.includes("codexPetZipImportPending"));
+    assert.ok(coreSource.includes("codexPetRemovalPendingThemeId"));
     assert.ok(preloadSource.includes("openCodexPetsDir"));
     assert.ok(preloadSource.includes("importCodexPetZip"));
+    assert.ok(preloadSource.includes("removeCodexPet"));
     assert.ok(mainSource.includes('ipcMain.handle("settings:open-codex-pets-dir"'));
     assert.ok(mainSource.includes('ipcMain.handle("settings:import-codex-pet-zip"'));
+    assert.ok(mainSource.includes('ipcMain.handle("settings:remove-codex-pet"'));
     assert.ok(html.includes(".theme-section-title"));
+    assert.ok(html.includes(".theme-uninstall-btn"));
     assert.ok(i18nSource.includes("themeImportPetZip"));
     assert.ok(i18nSource.includes("toastCodexPetZipImportOk"));
+    assert.ok(i18nSource.includes("toastCodexPetRemoveOk"));
   });
 
   it("animates collapsible Settings groups with measured height instead of instant hidden jumps", () => {
