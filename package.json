@@ -23,7 +23,8 @@
     "install:codex-hooks": "node hooks/codex-install.js",
     "uninstall:codex-hooks": "node hooks/codex-install.js --uninstall",
     "install:codex-debug-hooks": "node hooks/codex-debug-install.js",
-    "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall"
+    "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall",
+    "register-protocol:dev": "node launch.js --register-protocol"
   },
   "keywords": [
     "clawd",
@@ -37,6 +38,14 @@
   "build": {
     "appId": "com.clawd.on-desk",
     "productName": "Clawd on Desk",
+    "protocols": [
+      {
+        "name": "Clawd Import Protocol",
+        "schemes": [
+          "clawd"
+        ]
+      }
+    ],
     "mac": {
       "icon": "assets/icon.png",
       "target": [

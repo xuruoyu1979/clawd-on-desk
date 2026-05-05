@@ -20,9 +20,10 @@ if (disableSandbox) {
   env.CHROME_DEVEL_SANDBOX = "";
 }
 
+const forwardedArgs = process.argv.slice(2);
 const args = disableSandbox
-  ? [".", "--no-sandbox", "--disable-setuid-sandbox"]
-  : ["."];
+  ? [".", "--no-sandbox", "--disable-setuid-sandbox", ...forwardedArgs]
+  : [".", ...forwardedArgs];
 const child = spawn(electron, args, {
   stdio: "inherit",
   env,

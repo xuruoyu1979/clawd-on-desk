@@ -418,10 +418,16 @@ function safeConsoleError(...args) {
 // ── Theme loader ──
 const themeLoader = require("./theme-loader");
 const codexPetAdapter = require("./codex-pet-adapter");
+const codexPetImporter = require("./codex-pet-importer");
 const { isPlainObject: _isPlainObject } = themeLoader;
 themeLoader.init(__dirname, app.getPath("userData"));
 
 let _lastCodexPetSyncSummary = null;
+const REGISTER_PROTOCOL_DEV_ARG = "--register-protocol";
+const CLAWD_PROTOCOL_SCHEME = "clawd";
+const _pendingCodexPetImportUrls = [];
+let _codexPetImportFlushRunning = false;
+
 function _emptyCodexPetSyncSummary(overrides = {}) {
   return {
     codexPetsDir: "",
@@ -491,6 +497,12 @@ function _summaryHasActiveCodexPetOrphan(summary, themeId) {
     && summary.activeOrphanThemeIds.includes(themeId)
   );
 }
+function _sameFsPath(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
 function _readCodexPetManagedThemeMarker(themeId) {
   if (typeof themeId !== "string" || !themeId) return null;
   let userThemesDir;
@@ -549,6 +561,167 @@ async function _refreshCodexPetThemesFromSettings() {
     console.warn("Clawd: rebuildAllMenus after Codex Pet refresh failed:", err && err.message);
   }
   return { status: "ok", summary, switchedToFallback };
+}
+function _extractClawdProtocolUrls(argv) {
+  if (!Array.isArray(argv)) return [];
+  return argv.filter((arg) => typeof arg === "string" && arg.toLowerCase().startsWith(`${CLAWD_PROTOCOL_SCHEME}:`));
+}
+function _enqueueCodexPetImportUrl(rawUrl) {
+  if (typeof rawUrl !== "string" || !rawUrl) return;
+  _pendingCodexPetImportUrls.push(rawUrl);
+  if (app.isReady()) {
+    setImmediate(() => {
+      _flushPendingCodexPetImportUrls().catch((err) => {
+        console.warn("Clawd: Codex Pet import queue failed:", err && err.message);
+      });
+    });
+  }
+}
+function _enqueueCodexPetImportUrlsFromArgv(argv) {
+  for (const rawUrl of _extractClawdProtocolUrls(argv)) {
+    _enqueueCodexPetImportUrl(rawUrl);
+  }
+}
+function _registerClawdProtocolClient() {
+  try {
+    if (app.isPackaged) {
+      return app.setAsDefaultProtocolClient(CLAWD_PROTOCOL_SCHEME);
+    }
+    if (process.argv.includes(REGISTER_PROTOCOL_DEV_ARG) || process.env.CLAWD_REGISTER_PROTOCOL_DEV === "1") {
+      const appRoot = path.resolve(__dirname, "..");
+      return app.setAsDefaultProtocolClient(CLAWD_PROTOCOL_SCHEME, process.execPath, [appRoot]);
+    }
+  } catch (err) {
+    console.warn("Clawd: failed to register clawd:// protocol:", err && err.message);
+  }
+  return false;
+}
+async function _flushPendingCodexPetImportUrls() {
+  if (_codexPetImportFlushRunning) return;
+  _codexPetImportFlushRunning = true;
+  try {
+    while (_pendingCodexPetImportUrls.length > 0) {
+      const rawUrl = _pendingCodexPetImportUrls.shift();
+      await _handleCodexPetImportProtocolUrl(rawUrl);
+    }
+  } finally {
+    _codexPetImportFlushRunning = false;
+  }
+}
+function _getCodexPetImportDialogParent() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) return settingsWindow;
+  if (win && !win.isDestroyed()) return win;
+  return null;
+}
+function _getCodexPetImportDialogStrings() {
+  const all = {
+    en: {
+      import: "Import",
+      cancel: "Cancel",
+      ok: "OK",
+      confirmMessage: (host) => `Import Codex Pet from ${host}?`,
+      confirmDetail: (url) => `Clawd will download, validate, and install this pet package before switching to it.\n\n${url}`,
+      successMessage: (name) => `Imported "${name}"`,
+      successDetail: "The imported Codex Pet is now active.",
+      failedMessage: "Couldn't import Codex Pet",
+    },
+    zh: {
+      import: "导入",
+      cancel: "取消",
+      ok: "确定",
+      confirmMessage: (host) => `从 ${host} 导入 Codex Pet？`,
+      confirmDetail: (url) => `Clawd 会先下载、校验并安装这个宠物包，然后切换到它。\n\n${url}`,
+      successMessage: (name) => `已导入 "${name}"`,
+      successDetail: "导入的 Codex Pet 已设为当前主题。",
+      failedMessage: "导入 Codex Pet 失败",
+    },
+    ko: {
+      import: "가져오기",
+      cancel: "취소",
+      ok: "확인",
+      confirmMessage: (host) => `${host}에서 Codex Pet을 가져올까요?`,
+      confirmDetail: (url) => `Clawd가 이 펫 패키지를 다운로드, 검증, 설치한 뒤 전환합니다.\n\n${url}`,
+      successMessage: (name) => `"${name}"을(를) 가져왔습니다`,
+      successDetail: "가져온 Codex Pet이 활성 테마로 설정되었습니다.",
+      failedMessage: "Codex Pet을 가져오지 못했습니다",
+    },
+    ja: {
+      import: "インポート",
+      cancel: "キャンセル",
+      ok: "OK",
+      confirmMessage: (host) => `${host} から Codex Pet をインポートしますか？`,
+      confirmDetail: (url) => `Clawd はこのペットパッケージをダウンロード、検証、インストールしてから切り替えます。\n\n${url}`,
+      successMessage: (name) => `"${name}" をインポートしました`,
+      successDetail: "インポートした Codex Pet を現在のテーマにしました。",
+      failedMessage: "Codex Pet をインポートできませんでした",
+    },
+  };
+  return all[lang] || all.en;
+}
+async function _showCodexPetImportError(message) {
+  const s = _getCodexPetImportDialogStrings();
+  try {
+    await dialog.showMessageBox(_getCodexPetImportDialogParent(), {
+      type: "error",
+      buttons: [s.ok],
+      message: s.failedMessage,
+      detail: message || "unknown error",
+      noLink: true,
+    });
+  } catch {}
+}
+async function _handleCodexPetImportProtocolUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = codexPetImporter.parseClawdImportUrl(rawUrl);
+  } catch (err) {
+    await _showCodexPetImportError(err && err.message);
+    return;
+  }
+
+  const s = _getCodexPetImportDialogStrings();
+  const parent = _getCodexPetImportDialogParent();
+  try {
+    const { response } = await dialog.showMessageBox(parent, {
+      type: "question",
+      buttons: [s.import, s.cancel],
+      defaultId: 1,
+      cancelId: 1,
+      message: s.confirmMessage(parsed.asciiHostname),
+      detail: s.confirmDetail(parsed.url),
+      noLink: true,
+    });
+    if (response !== 0) return;
+  } catch (err) {
+    console.warn("Clawd: Codex Pet import confirmation failed:", err && err.message);
+    return;
+  }
+
+  try {
+    const imported = await codexPetImporter.importCodexPetFromUrl(parsed.url);
+    const activeId = activeTheme ? activeTheme._id : (_settingsController.get("theme") || "clawd");
+    const summary = _syncCodexPetThemesForMain(activeId);
+    if (summary.error) throw new Error(summary.error);
+    const generated = (summary.themes || []).find((theme) => _sameFsPath(theme.packageDir, imported.packageDir));
+    if (!generated || !generated.themeId) {
+      throw new Error("imported package did not materialize into a Clawd theme");
+    }
+    const result = await _settingsController.applyCommand("setThemeSelection", { themeId: generated.themeId });
+    if (!result || result.status !== "ok") {
+      throw new Error((result && result.message) || "failed to switch to imported theme");
+    }
+    try { rebuildAllMenus(); } catch {}
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      buttons: [s.ok],
+      message: s.successMessage(imported.packageInfo.displayName || imported.packageInfo.id),
+      detail: s.successDetail,
+      noLink: true,
+    });
+  } catch (err) {
+    console.warn("Clawd: Codex Pet import failed:", err && err.message);
+    await _showCodexPetImportError(err && err.message);
+  }
 }
 
 // Lenient load so a missing/corrupt user-selected theme can't brick boot.
@@ -4353,8 +4526,17 @@ function installTerminalFocusExtension() {
 }
 
 // ── Single instance lock ──
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  _enqueueCodexPetImportUrl(url);
+});
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  if (process.argv.includes(REGISTER_PROTOCOL_DEV_ARG)) {
+    const protocolRegistered = _registerClawdProtocolClient();
+    console.log(`Clawd: clawd:// dev protocol registration ${protocolRegistered ? "succeeded" : "failed"}`);
+  }
   // Another instance is already running — quit silently
   app.quit();
 } else {
@@ -4370,6 +4552,7 @@ if (!gotTheLock) {
     if (shouldOpenSettingsWindowFromArgv(commandLine)) {
       openSettingsWindowWhenReady();
     }
+    _enqueueCodexPetImportUrlsFromArgv(commandLine);
     reapplyMacVisibility();
   });
 
@@ -4381,6 +4564,13 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(() => {
+    const protocolRegistered = _registerClawdProtocolClient();
+    if (process.argv.includes(REGISTER_PROTOCOL_DEV_ARG)) {
+      console.log(`Clawd: clawd:// dev protocol registration ${protocolRegistered ? "succeeded" : "failed"}`);
+      app.quit();
+      return;
+    }
+
     // Import system-backed settings (openAtLogin) into prefs on first run.
     // Must run before createWindow() so the first menu draw sees the
     // hydrated value rather than the schema default.
@@ -4393,6 +4583,10 @@ if (!gotTheLock) {
     if (shouldOpenSettingsWindowFromArgv(process.argv)) {
       openSettingsWindow();
     }
+    _enqueueCodexPetImportUrlsFromArgv(process.argv);
+    _flushPendingCodexPetImportUrls().catch((err) => {
+      console.warn("Clawd: Codex Pet import queue failed:", err && err.message);
+    });
 
     // Register persistent global shortcuts from the validated prefs snapshot.
     registerPersistentShortcutsFromSettings();
