@@ -428,6 +428,7 @@ function _emptyCodexPetSyncSummary(overrides = {}) {
     userThemesDir: "",
     imported: 0,
     updated: 0,
+    unchanged: 0,
     invalid: 0,
     removed: 0,
     activeOrphanThemeIds: [],
@@ -444,6 +445,7 @@ function _mergeCodexPetSyncSummaries(base, extra) {
     userThemesDir: b.userThemesDir || a.userThemesDir || "",
     imported: (a.imported || 0) + (b.imported || 0),
     updated: (a.updated || 0) + (b.updated || 0),
+    unchanged: (a.unchanged || 0) + (b.unchanged || 0),
     invalid: (a.invalid || 0) + (b.invalid || 0),
     removed: (a.removed || 0) + (b.removed || 0),
     activeOrphanThemeIds: [

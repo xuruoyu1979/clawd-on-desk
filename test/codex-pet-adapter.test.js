@@ -457,9 +457,45 @@ describe("codex-pet-adapter wrapper generation and materialization", () => {
 
     assert.strictEqual(summary.imported, 1);
     assert.strictEqual(summary.updated, 0);
+    assert.strictEqual(summary.unchanged, 0);
     assert.strictEqual(summary.invalid, 1);
     assert.deepStrictEqual(summary.themes.map((theme) => theme.themeId), ["codex-pet-tiny-atlas-png"]);
     assert.match(summary.diagnostics[0].errors.join("; "), /missing pet\.json/);
+  });
+
+  it("skips unchanged managed themes and rebuilds incomplete generated output", () => {
+    const root = makeTempDir();
+    const petsDir = path.join(root, "pets");
+    copyFixturePackage(petsDir, "tiny-atlas-png");
+    const userDataDir = path.join(root, "userData");
+
+    const first = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+    const themeDir = path.join(userDataDir, "themes", first.themes[0].themeId);
+    const spritesheetPath = path.join(themeDir, "assets", "spritesheet.png");
+    const wrapperPath = path.join(themeDir, "assets", "codex-pet-idle-loop.svg");
+    const markerPath = path.join(themeDir, adapter.MARKER_FILENAME);
+    const before = {
+      spritesheetMtimeMs: fs.statSync(spritesheetPath).mtimeMs,
+      wrapperMtimeMs: fs.statSync(wrapperPath).mtimeMs,
+      markerMtimeMs: fs.statSync(markerPath).mtimeMs,
+    };
+
+    const second = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+
+    assert.strictEqual(second.imported, 0);
+    assert.strictEqual(second.updated, 0);
+    assert.strictEqual(second.unchanged, 1);
+    assert.strictEqual(fs.statSync(spritesheetPath).mtimeMs, before.spritesheetMtimeMs);
+    assert.strictEqual(fs.statSync(wrapperPath).mtimeMs, before.wrapperMtimeMs);
+    assert.strictEqual(fs.statSync(markerPath).mtimeMs, before.markerMtimeMs);
+
+    fs.rmSync(wrapperPath, { force: true });
+    const third = adapter.syncCodexPetThemes({ codexPetsDir: petsDir, userDataDir });
+
+    assert.strictEqual(third.imported, 0);
+    assert.strictEqual(third.updated, 1);
+    assert.strictEqual(third.unchanged, 0);
+    assert.strictEqual(fs.existsSync(wrapperPath), true);
   });
 
   it("removes orphan managed themes when the source package disappears", () => {

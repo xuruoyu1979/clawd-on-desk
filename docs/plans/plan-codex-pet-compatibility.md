@@ -689,6 +689,7 @@ Manual refresh:
 - add a small Settings action: `Refresh Imported Pets`
 - later, watch `~/.codex/pets` and refresh automatically
 - refresh returns a summary: imported/updated/unchanged/invalid/removed counts
+- refresh may also return `activeOrphanThemeIds` as a control field so main can switch away from missing active managed themes before GC removes them
 - invalid packages appear in Settings diagnostics and debug log, not only console output
 
 Package removal / GC policy:

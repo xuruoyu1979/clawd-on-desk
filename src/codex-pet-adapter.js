@@ -189,6 +189,10 @@ function materializeCodexPetTheme(packageInfo, userThemesDir, options = {}) {
     throw new Error(`refusing to overwrite unmanaged or unrelated theme: ${themeId}`);
   }
 
+  if (isMaterializedThemeUnchanged(existingMarker, packageInfo, themeId, themeDir)) {
+    return { themeId, themeDir, marker: existingMarker, themeJson: null, operation: "unchanged" };
+  }
+
   const operation = existingMarker && existingMarker.inProgress !== true ? "updated" : "created";
   const assetsDir = path.join(themeDir, "assets");
   fs.mkdirSync(themeDir, { recursive: true });
@@ -229,6 +233,7 @@ function syncCodexPetThemes(options = {}) {
     userThemesDir,
     imported: 0,
     updated: 0,
+    unchanged: 0,
     invalid: 0,
     removed: 0,
     activeOrphanThemeIds: [],
@@ -244,7 +249,8 @@ function syncCodexPetThemes(options = {}) {
     }
     const materialized = materializeCodexPetTheme(result.packageInfo, userThemesDir);
     if (materialized.operation === "created") summary.imported += 1;
-    else summary.updated += 1;
+    else if (materialized.operation === "updated") summary.updated += 1;
+    else if (materialized.operation === "unchanged") summary.unchanged += 1;
     summary.themes.push({ packageDir: result.packageInfo.packageDir, themeId: materialized.themeId });
   }
 
@@ -254,6 +260,43 @@ function syncCodexPetThemes(options = {}) {
   summary.diagnostics.push(...gc.diagnostics);
 
   return summary;
+}
+
+function isMaterializedThemeUnchanged(marker, packageInfo, themeId, themeDir) {
+  if (!marker || marker.inProgress === true) return false;
+  if (marker.adapterVersion !== ADAPTER_VERSION) return false;
+  if (marker.generatedThemeId !== themeId) return false;
+  if (!samePath(marker.sourcePackagePath, packageInfo.packageDir)) return false;
+  if (marker.sourcePetId !== packageInfo.id) return false;
+  if (marker.sourcePetJsonMtimeMs !== packageInfo.petJsonMtimeMs) return false;
+  if (marker.sourcePetJsonSize !== packageInfo.petJsonSize) return false;
+  if (marker.sourceSpritesheetPath !== packageInfo.spritesheetPath) return false;
+  if (marker.sourceSpritesheetMtimeMs !== packageInfo.spritesheetMtimeMs) return false;
+  if (marker.sourceSpritesheetSize !== packageInfo.spritesheetSize) return false;
+  if (!isRegularFile(path.join(themeDir, "theme.json"))) return false;
+
+  const assetsDir = path.join(themeDir, "assets");
+  const cachedSpritesheet = path.join(assetsDir, packageInfo.spritesheetAssetName);
+  let cachedSpritesheetStat = null;
+  try {
+    cachedSpritesheetStat = fs.statSync(cachedSpritesheet);
+  } catch {
+    return false;
+  }
+  if (!cachedSpritesheetStat.isFile() || cachedSpritesheetStat.size !== packageInfo.spritesheetSize) return false;
+
+  for (const spec of WRAPPER_SPECS) {
+    if (!isRegularFile(path.join(assetsDir, spec.filename))) return false;
+  }
+  return true;
+}
+
+function isRegularFile(filePath) {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function buildThemeJson(packageInfo, themeId) {

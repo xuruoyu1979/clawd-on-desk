@@ -30,6 +30,7 @@ test("settings exposes Codex Pet refresh and managed theme metadata", () => {
   assert.ok(mainSource.includes('ipcMain.handle("settings:refresh-codex-pets"'));
   assert.ok(mainSource.includes("_decorateCodexPetThemeMetadata({"));
   assert.ok(mainSource.includes("managedCodexPet: true"));
+  assert.ok(mainSource.includes("unchanged: (a.unchanged || 0) + (b.unchanged || 0)"));
   assert.ok(preloadSource.includes('refreshCodexPets: () => ipcRenderer.invoke("settings:refresh-codex-pets")'));
   assert.ok(tabSource.includes("theme.managedCodexPet"));
   assert.ok(tabSource.includes("themeRefreshImportedPets"));

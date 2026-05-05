@@ -193,8 +193,8 @@
       themeVariantStripLabel: "Variants",
       toastThemeDeleted: "Theme deleted.",
       toastThemeDeleteFailed: "Couldn't delete theme: ",
-      toastCodexPetsRefreshOk: (imported, updated, removed, invalid, switched) =>
-        `Imported pets refreshed: ${imported} new, ${updated} updated, ${removed} removed${invalid ? `, ${invalid} invalid` : ""}${switched ? "; active theme reset to Clawd" : ""}.`,
+      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+        `Imported pets refreshed: ${imported} new, ${updated} updated, ${unchanged} unchanged, ${removed} removed${invalid ? `, ${invalid} invalid` : ""}${switched ? "; active theme reset to Clawd" : ""}.`,
       toastCodexPetsRefreshFailed: (message) => `Couldn't refresh imported pets: ${message}`,
       animMapTitle: "Animation Map",
       animMapSubtitle: "Silence individual interrupt animations. Events still fire — Clawd just skips the visual and sound for the selected states.",
@@ -496,8 +496,8 @@
       themeVariantStripLabel: "变体",
       toastThemeDeleted: "主题已删除。",
       toastThemeDeleteFailed: "删除主题失败：",
-      toastCodexPetsRefreshOk: (imported, updated, removed, invalid, switched) =>
-        `导入宠物已刷新：新增 ${imported}，更新 ${updated}，移除 ${removed}${invalid ? `，无效 ${invalid}` : ""}${switched ? "；当前主题已回退到 Clawd" : ""}。`,
+      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+        `导入宠物已刷新：新增 ${imported}，更新 ${updated}，未变 ${unchanged}，移除 ${removed}${invalid ? `，无效 ${invalid}` : ""}${switched ? "；当前主题已回退到 Clawd" : ""}。`,
       toastCodexPetsRefreshFailed: (message) => `刷新导入宠物失败：${message}`,
       animMapTitle: "动画映射",
       animMapSubtitle: "关掉不想看的打扰动画。事件照样会触发——Clawd 只是不再播放对应的动画和音效。",
@@ -797,8 +797,8 @@
       themeVariantStripLabel: "변형",
       toastThemeDeleted: "테마를 삭제했습니다.",
       toastThemeDeleteFailed: "테마 삭제 실패: ",
-      toastCodexPetsRefreshOk: (imported, updated, removed, invalid, switched) =>
-        `가져온 펫을 새로고침했습니다: 신규 ${imported}, 업데이트 ${updated}, 제거 ${removed}${invalid ? `, 무효 ${invalid}` : ""}${switched ? "; 활성 테마를 Clawd로 되돌림" : ""}.`,
+      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+        `가져온 펫을 새로고침했습니다: 신규 ${imported}, 업데이트 ${updated}, 변경 없음 ${unchanged}, 제거 ${removed}${invalid ? `, 무효 ${invalid}` : ""}${switched ? "; 활성 테마를 Clawd로 되돌림" : ""}.`,
       toastCodexPetsRefreshFailed: (message) => `가져온 펫 새로고침 실패: ${message}`,
       animMapTitle: "애니메이션 맵",
       animMapSubtitle: "개별 인터럽트 애니메이션을 끕니다. 이벤트는 계속 발생하지만 Clawd는 선택한 상태의 화면과 소리만 건너뜁니다.",
@@ -1098,8 +1098,8 @@
       themeVariantStripLabel: "バリアント",
       toastThemeDeleted: "テーマを削除しました。",
       toastThemeDeleteFailed: "テーマの削除に失敗: ",
-      toastCodexPetsRefreshOk: (imported, updated, removed, invalid, switched) =>
-        `インポート済みペットを更新しました: 新規 ${imported}、更新 ${updated}、削除 ${removed}${invalid ? `、無効 ${invalid}` : ""}${switched ? "、使用中テーマを Clawd に戻しました" : ""}。`,
+      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+        `インポート済みペットを更新しました: 新規 ${imported}、更新 ${updated}、変更なし ${unchanged}、削除 ${removed}${invalid ? `、無効 ${invalid}` : ""}${switched ? "、使用中テーマを Clawd に戻しました" : ""}。`,
       toastCodexPetsRefreshFailed: (message) => `インポート済みペットの更新に失敗: ${message}`,
       animMapTitle: "アニメーションマップ",
       animMapSubtitle: "個別の割り込みアニメーションをオフにできます。イベント自体は発火しますが、Clawd は選択した状態の表示と効果音をスキップします。",

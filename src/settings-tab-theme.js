@@ -208,6 +208,7 @@
       return formatter(
         summary.imported || 0,
         summary.updated || 0,
+        summary.unchanged || 0,
         summary.removed || 0,
         summary.invalid || 0,
         !!(result && result.switchedToFallback)
