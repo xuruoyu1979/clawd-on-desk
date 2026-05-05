@@ -519,8 +519,6 @@ Example:
 }
 ```
 
-See `themes/static-test/theme.json` in this repo for a fuller built-in JPG sample that also exercises `transitions`, `objectScale`, file offsets, and sleep hitboxes.
-
 ### Canvas Size
 
 All assets should share the same logical canvas defined by `viewBox`. For raster formats (GIF/APNG/WebP):

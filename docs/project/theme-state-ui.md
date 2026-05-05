@@ -28,7 +28,7 @@ This document holds the state machine, theme system, UI runtime, and platform ca
 
 Clawd 是主题化桌宠：动画资源、计时、hitbox、眼球追踪参数都来自主题配置。
 
-- 内置主题目录：`themes/clawd/`、`themes/calico/`、`themes/cloudling/`；`themes/template/` 是脚手架模板，`themes/static-test/` / `themes/pr4-*` 是验证用主题
+- 内置主题目录：`themes/clawd/`、`themes/calico/`、`themes/cloudling/`；`themes/template/` 是脚手架模板
 - 用户主题目录：`<userData>/themes/<id>/theme.json`
 - `theme.json` 必需状态：`idle`、`working`、`thinking`
 - 若启用 `eyeTracking.enabled`，idle 资源必须是 SVG 且包含 `#eyes-js`
