@@ -462,12 +462,6 @@ The adapter should generate a conservative Clawd theme:
   },
   "miniMode": {
     "supported": false
-  },
-  "objectScale": {
-    "widthRatio": 1.9,
-    "heightRatio": 1.3,
-    "offsetX": -0.45,
-    "offsetY": -0.25
   }
 }
 ```
@@ -599,10 +593,10 @@ Status on 2026-05-05:
 Tasks:
 
 - render generated fixture themes for at least `pinky`, `klee`, `paimon`, and `yoimiya宵宫`
-- measure the proposed default `objectScale` against each package
-- decide whether one shared default is acceptable or whether generated themes need per-package `layout` / `objectScale` overrides
-- record the reason for the chosen default instead of leaving `1.9 / 1.3 / -0.45 / -0.25` as magic numbers
-- if the Spike 0 fixture passes, promote it into a deterministic test fixture. Do not make CI depend on `D:\tmp`; either commit a tiny valid atlas fixture or generate one during tests.
+- verify full-frame `layout.contentBox` positioning and hit-geometry mapping against each package
+- keep `objectScale` absent from generated output unless Phase 1 finds a concrete fallback renderer path that still needs it
+- record any future fallback scale values with package-specific evidence instead of leaving `1.9 / 1.3 / -0.45 / -0.25` as magic numbers
+- the deterministic Phase 1 fixture now lives at `test/fixtures/codex-pets/tiny-atlas-png/`. It uses a generated `1536x1872` PNG atlas with transparent unused cells and a minimal `pet.json`; CI must use this or generated temp copies rather than `D:\tmp`.
 
 ### Phase 1: Format And Adapter Skeleton
 
@@ -937,6 +931,9 @@ Manual scenarios:
 - trigger `thinking`, `working`, `notification`, `attention`, and `error`
 - click pet and verify reaction
 - DND sleep does not crash, leave blank visual, or look like an active working animation
+- measure perceived object-channel state switch latency, including P99 over repeated swaps
+- record renderer RSS before and after at least 100 object-channel state swaps
+- leave DND/sleep fallback mounted during a long-running soak and verify memory stays bounded
 - permission bubble and session HUD still anchor acceptably
 - uninstall/delete package and verify Clawd degrades gracefully
 - protocol import with Clawd already running
