@@ -879,7 +879,7 @@
     const changes = payload && payload.changes;
     if (changes && Object.prototype.hasOwnProperty.call(changes, "lang")) {
       const nextLang = getLang();
-      runtime.languageTransition = previousLang !== nextLang
+      runtime.languageTransition = state.activeTab === "general" && previousLang !== nextLang
         ? { from: previousLang, to: nextLang }
         : null;
     }

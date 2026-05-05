@@ -88,19 +88,17 @@
   }
 
   function buildAgentDetailRows(agent) {
-    const masterOn = readers.readAgentFlagValue(agent.id, "enabled");
     const rows = [];
     const caps = agent.capabilities || {};
     if (agent.id === "codex") {
-      rows.push(buildCodexPermissionModeRow(agent, !masterOn));
+      rows.push(buildCodexPermissionModeRow(agent, computeAgentSubSwitchDisabled(agent.id, "permissionMode")));
     }
     if (caps.permissionApproval || caps.interactiveBubble) {
-      const codexNativeMode = agent.id === "codex" && readers.readAgentPermissionMode(agent.id) !== "intercept";
       rows.push(buildAgentSwitchRow({
         agent,
         flag: "permissionsEnabled",
         extraClass: "row-sub",
-        disabled: !masterOn || codexNativeMode,
+        disabled: computeAgentSubSwitchDisabled(agent.id, "permissionsEnabled"),
         buildText: (text) => {
           const label = document.createElement("span");
           label.className = "row-label";
@@ -118,7 +116,7 @@
         agent,
         flag: "notificationHookEnabled",
         extraClass: "row-sub",
-        disabled: !masterOn,
+        disabled: computeAgentSubSwitchDisabled(agent.id, "notificationHookEnabled"),
         buildText: (text) => {
           const label = document.createElement("span");
           label.className = "row-label";
@@ -132,6 +130,16 @@
       }));
     }
     return rows;
+  }
+
+  function computeAgentSubSwitchDisabled(agentId, flag) {
+    if (flag === "enabled") return false;
+    const masterOn = readers.readAgentFlagValue(agentId, "enabled");
+    if (!masterOn) return true;
+    if (agentId === "codex" && flag === "permissionsEnabled") {
+      return readers.readAgentPermissionMode(agentId) !== "intercept";
+    }
+    return false;
   }
 
   function buildCodexPermissionModeRow(agent, disabled) {
@@ -281,7 +289,7 @@
     for (const [id, meta] of state.mountedControls.agentSwitches) {
       state.transientUiState.agentSwitches.delete(id);
       if (meta.flag !== "enabled") {
-        meta.syncDisabledState(!readers.readAgentFlagValue(meta.agentId, "enabled"));
+        meta.syncDisabledState(computeAgentSubSwitchDisabled(meta.agentId, meta.flag));
       }
       helpers.setSwitchVisual(meta.element, readers.readAgentFlagValue(meta.agentId, meta.flag), { pending: false });
     }

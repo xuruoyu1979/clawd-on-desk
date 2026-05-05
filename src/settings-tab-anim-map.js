@@ -123,6 +123,7 @@
 
   function patchInPlace(changes) {
     if (!changes || !Object.prototype.hasOwnProperty.call(changes, "themeOverrides")) return false;
+    if (Object.prototype.hasOwnProperty.call(changes, "theme")) return false;
     if (state.mountedControls.animMapSwitches.size === 0) return false;
     for (const [, meta] of state.mountedControls.animMapSwitches) {
       if (!meta || !document.body.contains(meta.element)) return false;

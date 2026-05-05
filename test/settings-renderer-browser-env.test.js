@@ -347,6 +347,82 @@ function loadAgentsTabForTest({
   };
 }
 
+function loadAnimMapTabForTest({
+  snapshot,
+} = {}) {
+  const body = new FakeElement("body");
+  const content = new FakeElement("main");
+  body.appendChild(content);
+
+  const document = {
+    body,
+    createElement: (tagName) => new FakeElement(tagName),
+    getElementById(id) {
+      if (id === "content") return content;
+      return null;
+    },
+  };
+
+  const context = {
+    console,
+    navigator: { platform: "Win32" },
+    localStorage: {
+      getItem: () => null,
+      setItem: () => {},
+    },
+    document,
+    requestAnimationFrame: (cb) => {
+      cb();
+      return 1;
+    },
+    window: null,
+    globalThis: null,
+    settingsAPI: {
+      command: () => Promise.resolve({ status: "ok" }),
+    },
+    ClawdSettingsSizeSlider: {
+      SIZE_UI_MIN: 1,
+      SIZE_UI_MAX: 100,
+      SIZE_TICK_VALUES: [25, 50, 75, 100],
+      SIZE_SLIDER_THUMB_DIAMETER: 18,
+      prefsSizeToUi: (value) => value,
+      clampSizeUi: (value) => value,
+      sizeUiToPct: (value) => value,
+      getSizeSliderAnchorPx: () => 0,
+      createSizeSliderController: () => ({}),
+    },
+    ClawdSettingsI18n: {
+      STRINGS: { en: {} },
+      CONTRIBUTORS: [],
+      MAINTAINERS: [],
+    },
+  };
+  context.window = context;
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
+  vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8"), context);
+
+  const core = context.ClawdSettingsCore;
+  core.state.snapshot = snapshot || { theme: "clawd", themeOverrides: {} };
+  core.state.activeTab = "animMap";
+  context.ClawdSettingsTabAnimMap.init(core);
+
+  let contentRenderCount = 0;
+  core.ops.installRenderHooks({
+    content: () => {
+      contentRenderCount++;
+    },
+  });
+
+  return {
+    core,
+    content,
+    getContentRenderCount: () => contentRenderCount,
+  };
+}
+
 function loadAnimOverridesTabForTest({ runtime, modalRoot }) {
   const document = {
     body: new FakeElement("body"),
@@ -612,11 +688,29 @@ describe("settings renderer browser environment", () => {
     assert.ok(coreSource.includes("languageTransition: null"));
     assert.ok(coreSource.includes("const previousLang = getLang();"));
     assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "lang")'));
-    assert.ok(coreSource.includes("runtime.languageTransition = previousLang !== nextLang"));
+    assert.ok(coreSource.includes('runtime.languageTransition = state.activeTab === "general" && previousLang !== nextLang'));
     assert.ok(/\.language-segmented\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/.test(html));
+    assert.ok(html.includes("language-segmented intentionally overrides .segmented display"));
     assert.ok(/\.language-segmented::before\s*\{[\s\S]*transform:\s*translateX\(calc\(var\(--language-active-index\)\s*\*\s*100%\)\);[\s\S]*transition:\s*transform 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/.test(html));
     assert.ok(/\.language-segmented button\.active\s*\{[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/.test(html));
     assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.language-segmented::before\s*\{[\s\S]*transition:\s*none;/.test(html));
+  });
+
+  it("does not keep a stale language slide transition when language changes off the General tab", () => {
+    const core = loadSettingsCoreForTest({});
+    core.state.activeTab = "agents";
+    core.state.snapshot = { lang: "en" };
+
+    core.ops.applyChanges({
+      changes: { lang: "zh" },
+      snapshot: { lang: "zh" },
+    });
+
+    assert.strictEqual(
+      core.runtime.languageTransition,
+      null,
+      "language changes outside General should not animate later when returning to General"
+    );
   });
 
   it("exposes aggregate and split bubble controls in the General tab", () => {
@@ -908,6 +1002,64 @@ describe("settings renderer browser environment", () => {
     );
   });
 
+  it("disables the Codex Permissions switch in place when Permission mode changes to Native", () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "intercept",
+          },
+        },
+      },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
+        },
+      }],
+      collapsedGroups: {
+        "agents:codex": false,
+      },
+    });
+
+    harness.core.ops.requestRender({ content: true });
+    harness.raf.flush();
+    const before = harness.getContentRenderCount();
+
+    harness.core.ops.applyChanges({
+      changes: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "native",
+          },
+        },
+      },
+      snapshot: {
+        agents: {
+          codex: {
+            enabled: true,
+            permissionsEnabled: true,
+            permissionMode: "native",
+          },
+        },
+      },
+    });
+
+    const permissionsSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.agentId === "codex" && meta.flag === "permissionsEnabled");
+    assert.ok(permissionsSwitch, "Codex Permissions switch should stay mounted");
+    assert.strictEqual(harness.getContentRenderCount(), before);
+    assert.strictEqual(permissionsSwitch.element.classList.contains("disabled"), true);
+    assert.strictEqual(permissionsSwitch.element.attributes["aria-disabled"], "true");
+    assert.strictEqual(permissionsSwitch.element.attributes.tabindex, "-1");
+  });
+
   it("patches agent-only broadcasts in place without requiring Codex-specific rows", () => {
     const harness = loadAgentsTabForTest({
       snapshot: {
@@ -1008,6 +1160,103 @@ describe("settings renderer browser environment", () => {
     assert.ok(animMapSource.includes("patchInPlace,"));
     assert.ok(coreSource.includes('if (state.activeTab !== "animMap") {'));
     assert.ok(coreSource.includes("activeTab.patchInPlace(changes)"));
+  });
+
+  it("keeps Animation Map theme override broadcasts in place and syncs the mounted switch", () => {
+    const harness = loadAnimMapTabForTest({
+      snapshot: {
+        theme: "clawd",
+        themeOverrides: {
+          clawd: {
+            states: {
+              error: { disabled: false },
+            },
+          },
+        },
+      },
+    });
+    const sw = new FakeElement("div");
+    sw.className = "switch on";
+    harness.content.appendChild(sw);
+    harness.core.state.mountedControls.animMapSwitches.set("clawd:error", {
+      element: sw,
+      themeId: "clawd",
+      stateKey: "error",
+    });
+    const before = harness.getContentRenderCount();
+
+    harness.core.ops.applyChanges({
+      changes: {
+        themeOverrides: {
+          clawd: {
+            states: {
+              error: { disabled: true },
+            },
+          },
+        },
+      },
+      snapshot: {
+        theme: "clawd",
+        themeOverrides: {
+          clawd: {
+            states: {
+              error: { disabled: true },
+            },
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(harness.getContentRenderCount(), before);
+    assert.strictEqual(sw.classList.contains("on"), false);
+    assert.strictEqual(sw.attributes["aria-checked"], "false");
+  });
+
+  it("rebuilds Animation Map instead of patching with stale theme ids when the theme changes", () => {
+    const harness = loadAnimMapTabForTest({
+      snapshot: {
+        theme: "clawd",
+        themeOverrides: {},
+      },
+    });
+    const sw = new FakeElement("div");
+    sw.className = "switch on";
+    harness.content.appendChild(sw);
+    harness.core.state.mountedControls.animMapSwitches.set("clawd:error", {
+      element: sw,
+      themeId: "clawd",
+      stateKey: "error",
+    });
+    const before = harness.getContentRenderCount();
+
+    harness.core.ops.applyChanges({
+      changes: {
+        theme: "calico",
+        themeOverrides: {
+          calico: {
+            states: {
+              error: { disabled: true },
+            },
+          },
+        },
+      },
+      snapshot: {
+        theme: "calico",
+        themeOverrides: {
+          calico: {
+            states: {
+              error: { disabled: true },
+            },
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(
+      harness.getContentRenderCount(),
+      before + 1,
+      "theme changes should force a rebuild so Animation Map switches use the new theme id"
+    );
   });
 
   it("keeps stale sound override prefs resettable from the settings UI", () => {
