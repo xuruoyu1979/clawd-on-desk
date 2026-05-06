@@ -31,4 +31,3 @@ describe("session focus helpers", () => {
     assert.deepStrictEqual(getFocusableLocalHudSessionIds(null), []);
   });
 });
-
