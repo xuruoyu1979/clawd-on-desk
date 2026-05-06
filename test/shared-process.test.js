@@ -2,7 +2,12 @@
 const { describe, it, beforeEach, mock } = require("node:test");
 const assert = require("node:assert");
 
-const { getPlatformConfig, createPidResolver, readStdinJson } = require("../hooks/shared-process");
+const {
+  getPlatformConfig,
+  createPidResolver,
+  readStdinJson,
+  buildElectronLaunchConfig,
+} = require("../hooks/shared-process");
 
 // ═════════════════════════════════════════════════════════════════════════════
 // getPlatformConfig()
@@ -109,6 +114,48 @@ describe("createPidResolver()", () => {
     const resolve = createPidResolver({ platformConfig: cfg, startPid: process.pid, maxDepth: 1 });
     const { pidChain } = resolve();
     assert.ok(pidChain.length <= 1);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// buildElectronLaunchConfig()
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("buildElectronLaunchConfig()", () => {
+  it("strips ELECTRON_RUN_AS_NODE and preserves forwarded args", () => {
+    const sourceEnv = {
+      ELECTRON_RUN_AS_NODE: "1",
+      CLAWD_DISABLE_SANDBOX: "0",
+      KEEP_ME: "yes",
+    };
+
+    const cfg = buildElectronLaunchConfig("D:\\app", {
+      platform: "win32",
+      env: sourceEnv,
+      forwardedArgs: ["--register-protocol"],
+    });
+
+    assert.deepStrictEqual(cfg.args, [".", "--register-protocol"]);
+    assert.strictEqual(cfg.cwd, "D:\\app");
+    assert.strictEqual(cfg.env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.strictEqual(cfg.env.KEEP_ME, "yes");
+    assert.strictEqual(sourceEnv.ELECTRON_RUN_AS_NODE, "1");
+  });
+
+  it("keeps the Linux sandbox fallback when requested", () => {
+    const cfg = buildElectronLaunchConfig("/app", {
+      platform: "linux",
+      env: {
+        CLAWD_DISABLE_SANDBOX: "1",
+        ELECTRON_RUN_AS_NODE: "1",
+      },
+      forwardedArgs: ["--foo"],
+    });
+
+    assert.deepStrictEqual(cfg.args, [".", "--no-sandbox", "--disable-setuid-sandbox", "--foo"]);
+    assert.strictEqual(cfg.env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.strictEqual(cfg.env.ELECTRON_DISABLE_SANDBOX, "1");
+    assert.strictEqual(cfg.env.CHROME_DEVEL_SANDBOX, "");
   });
 });
 

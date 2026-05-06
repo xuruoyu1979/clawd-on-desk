@@ -7,6 +7,7 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const { discoverClawdPort } = require("./server-config");
+const { buildElectronLaunchConfig } = require("./shared-process");
 
 const TIMEOUT_MS = 300;
 
@@ -56,24 +57,18 @@ function launchApp() {
         }
       }
     } else {
-      // Source / development mode
+      // Source / development mode: start Electron directly so Windows does not
+      // flash a console through the cmd/npm/launch.js process chain.
       const projectDir = path.resolve(__dirname, "..");
-      if (isWin) {
-        // On Windows, .cmd files cannot be spawned directly with detached:true
-        // (EINVAL). Wrap with cmd.exe /c instead.
-        spawn("cmd.exe", ["/c", "npm.cmd", "start"], {
-          cwd: projectDir,
-          detached: true,
-          stdio: "ignore",
-          windowsHide: true,
-        }).unref();
-      } else {
-        spawn("npm", ["start"], {
-          cwd: projectDir,
-          detached: true,
-          stdio: "ignore",
-        }).unref();
-      }
+      const electron = require("electron");
+      const launchConfig = buildElectronLaunchConfig(projectDir);
+      spawn(electron, launchConfig.args, {
+        cwd: launchConfig.cwd,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: launchConfig.env,
+      }).unref();
     }
   } catch (err) {
     process.stderr.write(`clawd auto-start: ${err.message}\n`);

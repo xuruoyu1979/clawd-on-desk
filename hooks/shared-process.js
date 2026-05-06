@@ -196,4 +196,29 @@ function readStdinJson() {
   });
 }
 
-module.exports = { getPlatformConfig, createPidResolver, readStdinJson };
+function buildElectronLaunchConfig(projectDir, options = {}) {
+  const platform = options.platform || process.platform;
+  const env = { ...(options.env || process.env) };
+  delete env.ELECTRON_RUN_AS_NODE;
+
+  const disableSandbox = platform === "linux" && env.CLAWD_DISABLE_SANDBOX === "1";
+  if (disableSandbox) {
+    env.ELECTRON_DISABLE_SANDBOX = "1";
+    env.CHROME_DEVEL_SANDBOX = "";
+  }
+
+  const entry = typeof options.entry === "string" ? options.entry : ".";
+  const forwardedArgs = Array.isArray(options.forwardedArgs) ? options.forwardedArgs : [];
+  const args = disableSandbox
+    ? [entry, "--no-sandbox", "--disable-setuid-sandbox", ...forwardedArgs]
+    : [entry, ...forwardedArgs];
+
+  return { args, env, cwd: projectDir };
+}
+
+module.exports = {
+  getPlatformConfig,
+  createPidResolver,
+  readStdinJson,
+  buildElectronLaunchConfig,
+};
