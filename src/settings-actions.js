@@ -75,6 +75,16 @@ const {
   isDangerousAccelerator,
   validateShortcutMapShape,
 } = require("./shortcut-actions");
+const {
+  requireBoolean,
+  requireFiniteNumber,
+  requireNonNegativeFiniteNumber,
+  requireNumberInRange,
+  requireIntegerInRange,
+  requireEnum,
+  requireString,
+  requirePlainObject,
+} = require("./settings-validators");
 
 const ANIMATION_OVERRIDES_EXPORT_VERSION = 1;
 const { isPlainObject } = require("./theme-loader");
@@ -90,83 +100,6 @@ const AUTO_REPAIRABLE_AGENT_IDS = new Set([
   "opencode",
 ]);
 const CLAUDE_HOOKS_LOCK_KEY = "claude-hooks";
-
-// ── Validator helpers ──
-
-function requireBoolean(key) {
-  return function (value) {
-    if (typeof value !== "boolean") {
-      return { status: "error", message: `${key} must be a boolean` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireFiniteNumber(key) {
-  return function (value) {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return { status: "error", message: `${key} must be a finite number` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireNonNegativeFiniteNumber(key) {
-  return function (value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-      return { status: "error", message: `${key} must be a non-negative finite number` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireNumberInRange(key, min, max) {
-  return function (value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
-      return { status: "error", message: `${key} must be a finite number between ${min} and ${max}` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireIntegerInRange(key, min, max) {
-  return function (value) {
-    if (!Number.isInteger(value) || value < min || value > max) {
-      return { status: "error", message: `${key} must be an integer between ${min} and ${max}` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireEnum(key, allowed) {
-  return function (value) {
-    if (!allowed.includes(value)) {
-      return {
-        status: "error",
-        message: `${key} must be one of: ${allowed.join(", ")}`,
-      };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requireString(key, { allowEmpty = false } = {}) {
-  return function (value) {
-    if (typeof value !== "string" || (!allowEmpty && value.length === 0)) {
-      return { status: "error", message: `${key} must be a non-empty string` };
-    }
-    return { status: "ok" };
-  };
-}
-
-function requirePlainObject(key) {
-  return function (value) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return { status: "error", message: `${key} must be a plain object` };
-    }
-    return { status: "ok" };
-  };
-}
 
 const THEME_OVERRIDE_RESERVED_KEYS = new Set(["states", "tiers", "timings", "idleAnimations", "reactions", "hitbox", "sounds"]);
 const TIER_OVERRIDE_GROUPS = new Set(["workingTiers", "jugglingTiers"]);
