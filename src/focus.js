@@ -12,6 +12,8 @@ const isLinux = process.platform === "linux";
 
 module.exports = function initFocus(ctx) {
 
+const FOCUS_RESULT_PREFIX = "__CLAWD_FOCUS_RESULT__ ";
+
 const PS_FOCUS_ADDTYPE = `
 Add-Type @"
 using System;
@@ -52,6 +54,8 @@ public class WinFocus {
             foreach (string sub in subs) {
                 if (!String.IsNullOrEmpty(sub) &&
                     title.IndexOf(sub, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    // Count each top-level window only once even if several
+                    // cwd fragments match the same title.
                     found.Add(hWnd);
                     break;
                 }
@@ -62,29 +66,17 @@ public class WinFocus {
     }
 }
 "@
-`;
 
-function makeFocusResultLogBlock(logPath) {
-  const encodedPath = typeof logPath === "string" && logPath
-    ? Buffer.from(logPath, "utf8").toString("base64")
-    : "";
-  return `
 function Write-ClawdFocusResult([string]$reason) {
-    $logPathB64 = '${encodedPath}'
-    if (-not $logPathB64) { return }
-    try {
-        $logPath = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($logPathB64))
-        if (-not $logPath) { return }
-        $line = '[' + [DateTime]::UtcNow.ToString('o') + '] focus result branch=windows-helper reason=' + $reason
-        Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
-    } catch {}
-}`;
+    if (-not $reason) { $reason = 'unknown' }
+    Write-Output ('${FOCUS_RESULT_PREFIX}' + $reason)
 }
+`;
 
 function makeFocusCmd(sourcePid, cwdCandidates) {
   // Walk up the process tree (same proven logic as before).
-  // When cwd candidates exist, only focus a unique title match. This avoids
-  // jumping to the wrong terminal just because an ancestor has MainWindowHandle.
+  // Windows Terminal needs title matching because one WT process can represent
+  // multiple tabs/windows. Other parent windows keep direct PID focus.
   // Base64-encode cwd candidates so CJK/Unicode chars survive the Node→PowerShell
   // stdin pipe (PowerShell 5.1 reads stdin as system codepage, not UTF-8).
   const psNames = cwdCandidates.length
@@ -95,15 +87,21 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
     : "";
   const titleNames = psNames ? `@(${psNames})` : "@()";
   const parentWindowBlock = psNames ? `
-        $matches = @([WinFocus]::FindByPidTitles([uint32]$curPid, [string[]]$titleNames))
-        if ($matches.Count -eq 1) {
-            [WinFocus]::Focus($matches[0])
-            $focused = $true
-            $reason = 'parent-title-match'
-        } elseif ($matches.Count -gt 1) {
-            $reason = 'parent-title-ambiguous'
+        if (@('WindowsTerminal', 'WindowsTerminalPreview') -contains $proc.ProcessName) {
+            $matches = @([WinFocus]::FindByPidTitles([uint32]$curPid, [string[]]$titleNames))
+            if ($matches.Count -eq 1) {
+                [WinFocus]::Focus($matches[0])
+                $focused = $true
+                $reason = 'wt-parent-title-match'
+            } elseif ($matches.Count -gt 1) {
+                $reason = 'wt-parent-title-ambiguous'
+            } else {
+                $reason = 'wt-parent-title-mismatch'
+            }
         } else {
-            $reason = 'parent-title-mismatch'
+            [WinFocus]::Focus($proc.MainWindowHandle)
+            $focused = $true
+            $reason = 'parent-direct'
         }
         break` : `
         if (@('WindowsTerminal', 'WindowsTerminalPreview') -notcontains $proc.ProcessName) {
@@ -139,7 +137,7 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
     }` : `
     $reason = 'no-parent-window-no-title'`;
 
-  return `${makeFocusResultLogBlock(getFocusLogPath())}
+  return `
 $titleNames = ${titleNames}
 $curPid = ${sourcePid}
 $focused = $false
@@ -169,6 +167,7 @@ let macFocusLastRunAt = 0;
 let macFocusLastRequestKey = null;
 let macQueuedFocusRequest = null;
 let macFocusCooldownTimer = null;
+let psStdoutBuffer = "";
 
 function normalizePid(value) {
   const n = Number(value);
@@ -230,16 +229,6 @@ function focusLog(msg) {
   try { ctx.focusLog(msg); } catch {}
 }
 
-function getFocusLogPath() {
-  if (!ctx || typeof ctx.getFocusLogPath !== "function") return "";
-  try {
-    const filePath = ctx.getFocusLogPath();
-    return typeof filePath === "string" ? filePath : "";
-  } catch {
-    return "";
-  }
-}
-
 function logFocusRequest(request) {
   const cwd = summarizeCwd(request.cwd);
   focusLog([
@@ -258,19 +247,45 @@ function logFocusResult(reason) {
   focusLog(`focus result ${reason}`);
 }
 
+function handleFocusHelperLine(line) {
+  const text = String(line || "").trim();
+  if (!text.startsWith(FOCUS_RESULT_PREFIX)) return;
+  const reason = safeLogValue(text.slice(FOCUS_RESULT_PREFIX.length));
+  logFocusResult(`branch=windows-helper reason=${reason}`);
+}
+
+function handleFocusHelperOutput(chunk) {
+  psStdoutBuffer += String(chunk || "");
+  const lines = psStdoutBuffer.split(/\r?\n/);
+  psStdoutBuffer = lines.pop() || "";
+  for (const line of lines) handleFocusHelperLine(line);
+  if (psStdoutBuffer.length > 8192) psStdoutBuffer = psStdoutBuffer.slice(-4096);
+}
+
+function handleFocusHelperCompleteOutput(output) {
+  const lines = String(output || "").split(/\r?\n/);
+  for (const line of lines) handleFocusHelperLine(line);
+}
+
 function initFocusHelper() {
   if (!isWin || psProc) return;
   psProc = spawn("powershell.exe", ["-NoProfile", "-NoLogo", "-NonInteractive", "-Command", "-"], {
     windowsHide: true,
-    stdio: ["pipe", "ignore", "ignore"],
+    stdio: ["pipe", "pipe", "ignore"],
   });
   // Set UTF-8 input encoding so Chinese/CJK window titles match correctly,
   // then pre-compile the C# type (once, ~500ms, non-blocking)
   psProc.on("error", () => { psProc = null; }); // Spawn failure (powershell.exe not found, etc.)
   psProc.stdin.on("error", () => {}); // Suppress EPIPE if process exits unexpectedly
+  if (psProc.stdout && typeof psProc.stdout.on === "function") {
+    if (typeof psProc.stdout.setEncoding === "function") psProc.stdout.setEncoding("utf8");
+    psProc.stdout.on("data", handleFocusHelperOutput);
+    psProc.stdout.on("error", () => {});
+    if (typeof psProc.stdout.unref === "function") psProc.stdout.unref();
+  }
   psProc.stdin.write("[Console]::InputEncoding = [System.Text.Encoding]::UTF8\n");
   psProc.stdin.write(PS_FOCUS_ADDTYPE + "\n");
-  psProc.on("exit", () => { psProc = null; });
+  psProc.on("exit", () => { psProc = null; psStdoutBuffer = ""; });
   psProc.unref(); // Don't keep the app alive for this
 }
 
@@ -448,7 +463,7 @@ function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
 
   // Legacy focus for reliable window activation (ALT key trick + SetForegroundWindow)
   focusTerminalWindowLegacy(request);
-  logFocusResult("branch=windows-command-submitted");
+  logFocusResult("branch=windows-dispatched");
 
   // VS Code / Cursor: request precise terminal tab switch via extension's HTTP server.
   // Delayed so legacy PowerShell focus completes first (it's fire-and-forget via stdin).
@@ -545,8 +560,11 @@ function focusTerminalWindowLegacy(request, onDone) {
     psProc = null;
     execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
       PS_FOCUS_ADDTYPE + cmd],
-      { windowsHide: true, timeout: 5000 },
-      (err) => { if (err) console.warn("focusTerminal failed:", err.message); }
+      { windowsHide: true, timeout: 5000, encoding: "utf8" },
+      (err, stdout) => {
+        if (err) console.warn("focusTerminal failed:", err.message);
+        handleFocusHelperCompleteOutput(stdout);
+      }
     );
     // Re-init persistent process for next call
     initFocusHelper();
@@ -571,6 +589,8 @@ return {
     makeFocusCmd,
     normalizeFocusRequest,
     summarizeCwd,
+    handleFocusHelperCompleteOutput,
+    PS_FOCUS_ADDTYPE,
   },
 };
 

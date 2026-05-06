@@ -1697,7 +1697,7 @@ requestFastTick = (maxDelay) => _tick.scheduleSoon(maxDelay);
 const { startMainTick, resetIdleTimer } = _tick;
 
 // ── Terminal focus — delegated to src/focus.js ──
-const _focus = require("./focus")({ _allowSetForeground, focusLog, getFocusLogPath: () => focusDebugLog });
+const _focus = require("./focus")({ _allowSetForeground, focusLog });
 const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer } = _focus;
 
 function getFocusableLocalHudSessionIds() {

@@ -72,28 +72,30 @@ describe("Windows terminal focus", () => {
     }
   });
 
-  it("requires a unique cwd title match before focusing a parent window", () => {
+  it("keeps direct parent-window focus for non-WindowsTerminal processes with cwd", () => {
     const { initFocus, cleanup } = loadFocusWithMock();
     try {
       const focus = initFocus({});
       const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
 
       assert.match(cmd, /FindByPidTitles/);
-      assert.match(cmd, /\$matches\.Count -eq 1/);
-      assert.match(cmd, /parent-title-mismatch/);
-      assert.match(cmd, /parent-title-ambiguous/);
-      assert.doesNotMatch(cmd, /\[WinFocus\]::Focus\(\$proc\.MainWindowHandle\)/);
+      assert.match(cmd, /\[WinFocus\]::Focus\(\$proc\.MainWindowHandle\)/);
+      assert.match(cmd, /parent-direct/);
+      assert.match(cmd, /WindowsTerminal/);
     } finally {
       cleanup();
     }
   });
 
-  it("only focuses a unique Windows Terminal title match", () => {
+  it("requires unique title matches for Windows Terminal parent and fallback windows", () => {
     const { initFocus, cleanup } = loadFocusWithMock();
     try {
       const focus = initFocus({});
       const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
 
+      assert.match(cmd, /wt-parent-title-match/);
+      assert.match(cmd, /wt-parent-title-ambiguous/);
+      assert.match(cmd, /wt-parent-title-mismatch/);
       assert.match(cmd, /\$wtMatches = @\(\)/);
       assert.match(cmd, /\$wtMatches\.Count -eq 1/);
       assert.match(cmd, /wt-title-match/);
@@ -104,18 +106,32 @@ describe("Windows terminal focus", () => {
     }
   });
 
-  it("keeps the Windows helper log path out of generated scripts", () => {
+  it("reports Windows helper results through stdout instead of writing logs directly", () => {
     const { initFocus, cleanup } = loadFocusWithMock();
     try {
-      const focus = initFocus({
-        getFocusLogPath: () => "C:\\Users\\SecretUser\\AppData\\Roaming\\Clawd\\focus-debug.log",
-      });
+      const focus = initFocus({});
       const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
+      const helperScript = focus.__test.PS_FOCUS_ADDTYPE;
 
       assert.match(cmd, /Write-ClawdFocusResult/);
-      assert.match(cmd, /FromBase64String/);
-      assert.doesNotMatch(cmd, /C:\\Users\\SecretUser/);
-      assert.doesNotMatch(cmd, /SecretUser/);
+      assert.match(helperScript, /__CLAWD_FOCUS_RESULT__/);
+      assert.doesNotMatch(cmd, /Add-Content/);
+      assert.doesNotMatch(helperScript, /Add-Content/);
+      assert.doesNotMatch(cmd, /focus-debug\.log/);
+      assert.doesNotMatch(helperScript, /focus-debug\.log/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("logs Windows helper stdout through Node focus logging", () => {
+    const logs = [];
+    const { initFocus, cleanup } = loadFocusWithMock();
+    try {
+      const focus = initFocus({ focusLog: (msg) => logs.push(msg) });
+      focus.__test.handleFocusHelperCompleteOutput("noise\n__CLAWD_FOCUS_RESULT__ parent-direct\n");
+
+      assert.match(logs.join("\n"), /focus result branch=windows-helper reason=parent-direct/);
     } finally {
       cleanup();
     }
@@ -129,7 +145,7 @@ describe("Windows terminal focus", () => {
       execFile: (cmd, args, opts, cb) => {
         if (typeof opts === "function") cb = opts;
         execCalls.push({ cmd, args: [...args] });
-        if (cb) cb(null, "", "");
+        if (cb) cb(null, "__CLAWD_FOCUS_RESULT__ parent-direct\n", "");
       },
       spawn: () => ({
         pid: 9999,
@@ -167,7 +183,8 @@ describe("Windows terminal focus", () => {
       assert.match(joined, /cwdTail=\.\.\.\\project-a/);
       assert.match(joined, /cwdHash=[0-9a-f]{8}/);
       assert.match(joined, /chain=\[1234>5678\]/);
-      assert.match(joined, /focus result branch=windows-command-submitted/);
+      assert.match(joined, /focus result branch=windows-dispatched/);
+      assert.match(joined, /focus result branch=windows-helper reason=parent-direct/);
       assert.ok(!joined.includes("C:\\Users\\SecretUser"), "full cwd must not be logged");
       assert.ok(!joined.includes("SecretUser"), "username must not be logged through cwd tail");
     } finally {
