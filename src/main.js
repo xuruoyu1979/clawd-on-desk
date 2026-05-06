@@ -431,6 +431,9 @@ const createCodexPetMain = require("./codex-pet-main");
 const { isPlainObject: _isPlainObject } = themeLoader;
 themeLoader.init(__dirname, app.getPath("userData"));
 
+// The injected window/menu closures below are intentionally lazy. During
+// startup before activeTheme / win / settingsWindow / rebuildAllMenus exist,
+// only the sync/summary/merge methods are safe to call.
 const codexPetMain = createCodexPetMain({
   app,
   BrowserWindow,

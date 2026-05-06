@@ -3,6 +3,51 @@ const assert = require("node:assert");
 
 const createCodexPetMain = require("../src/codex-pet-main");
 
+function createQueueRuntime(overrides = {}) {
+  const parseCalls = [];
+  const showMessageBoxCalls = [];
+  const runtime = createCodexPetMain({
+    app: {
+      getPath: () => "user-data",
+      isReady: () => false,
+      ...(overrides.app || {}),
+    },
+    dialog: {
+      async showMessageBox(parent, options) {
+        showMessageBoxCalls.push({ parent, options });
+        return { response: 1 };
+      },
+      ...(overrides.dialog || {}),
+    },
+    shell: {},
+    settingsController: {
+      get: () => "clawd",
+      async applyCommand() {
+        return { status: "ok" };
+      },
+      ...(overrides.settingsController || {}),
+    },
+    themeLoader: overrides.themeLoader || {},
+    codexPetAdapter: {
+      syncCodexPetThemes: () => ({ themes: [] }),
+      readManagedMarker: () => null,
+      ...(overrides.codexPetAdapter || {}),
+    },
+    codexPetImporter: {
+      parseClawdImportUrl(rawUrl) {
+        parseCalls.push(rawUrl);
+        return {
+          asciiHostname: "example.test",
+          url: `https://example.test/${encodeURIComponent(rawUrl)}`,
+        };
+      },
+      ...(overrides.codexPetImporter || {}),
+    },
+    ...(overrides.runtimeOptions || {}),
+  });
+  return { runtime, parseCalls, showMessageBoxCalls };
+}
+
 test("Codex Pet main helpers merge sync summaries without dropping diagnostics", () => {
   const { mergeCodexPetSyncSummaries } = createCodexPetMain.__test;
   const summary = mergeCodexPetSyncSummaries(
@@ -106,4 +151,85 @@ test("Codex Pet main runtime records sync summaries and normalizes adapter failu
   assert.strictEqual(failed.error, "boom");
   assert.match(failed.diagnostics[0].errors[0], /failed to sync Codex Pet themes: boom/);
   assert.strictEqual(failingRuntime.getLastSyncSummary(), failed);
+});
+
+test("Codex Pet import URLs queued before app ready do not flush until explicitly drained", async () => {
+  const originalSetImmediate = global.setImmediate;
+  let immediateCalls = 0;
+  global.setImmediate = (...args) => {
+    immediateCalls += 1;
+    return originalSetImmediate(...args);
+  };
+  try {
+    const { runtime, parseCalls, showMessageBoxCalls } = createQueueRuntime();
+    runtime.enqueueImportUrl("clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fpet.json");
+
+    assert.strictEqual(immediateCalls, 0);
+    assert.deepStrictEqual(parseCalls, []);
+    assert.deepStrictEqual(showMessageBoxCalls, []);
+
+    await runtime.flushPendingImportUrls();
+    assert.deepStrictEqual(parseCalls, ["clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fpet.json"]);
+    assert.strictEqual(showMessageBoxCalls.length, 1);
+    assert.strictEqual(showMessageBoxCalls[0].options.type, "question");
+  } finally {
+    global.setImmediate = originalSetImmediate;
+  }
+});
+
+test("Codex Pet import queue ignores overlapping flush calls while the first drain is active", async () => {
+  let releaseFirstImport;
+  let firstImportStarted;
+  const firstImportStartedPromise = new Promise((resolve) => {
+    firstImportStarted = resolve;
+  });
+  const importCalls = [];
+  const { runtime, parseCalls } = createQueueRuntime({
+    dialog: {
+      async showMessageBox() {
+        return { response: 0 };
+      },
+    },
+    codexPetAdapter: {
+      syncCodexPetThemes: () => ({
+        themes: [
+          { themeId: "codex-pet-one", packageDir: "pkg-1" },
+          { themeId: "codex-pet-two", packageDir: "pkg-2" },
+        ],
+      }),
+    },
+    codexPetImporter: {
+      async importCodexPetFromUrl(url) {
+        importCalls.push(url);
+        if (importCalls.length === 1) {
+          firstImportStarted();
+          await new Promise((resolve) => {
+            releaseFirstImport = resolve;
+          });
+          return { packageDir: "pkg-1", packageInfo: { id: "one", displayName: "One" } };
+        }
+        return { packageDir: "pkg-2", packageInfo: { id: "two", displayName: "Two" } };
+      },
+    },
+  });
+
+  runtime.enqueueImportUrl("clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fone.json");
+  runtime.enqueueImportUrl("clawd://import-pet?url=https%3A%2F%2Fexample.test%2Ftwo.json");
+
+  const firstFlush = runtime.flushPendingImportUrls();
+  await firstImportStartedPromise;
+  const secondFlush = runtime.flushPendingImportUrls();
+  await secondFlush;
+
+  assert.deepStrictEqual(parseCalls, ["clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fone.json"]);
+  assert.strictEqual(importCalls.length, 1);
+
+  releaseFirstImport();
+  await firstFlush;
+
+  assert.deepStrictEqual(parseCalls, [
+    "clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fone.json",
+    "clawd://import-pet?url=https%3A%2F%2Fexample.test%2Ftwo.json",
+  ]);
+  assert.strictEqual(importCalls.length, 2);
 });
