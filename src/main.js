@@ -12,6 +12,7 @@ const {
   createSettingsSizePreviewSession,
 } = require("./settings-size-preview-session");
 const { registerSettingsIpc } = require("./settings-ipc");
+const { registerSessionIpc } = require("./session-ipc");
 const createShortcutRuntime = require("./shortcut-runtime");
 const hitGeometry = require("./hit-geometry");
 const animationCycle = require("./animation-cycle");
@@ -2813,24 +2814,9 @@ function _runAnimationOverridePreview(stateKey, file, durationMs) {
   return { status: "ok" };
 }
 
-// ── IPC: settings panel write entry points ──
-// Renderer-side callers (the future settings panel) use these. Menu/main code
-// in this process calls _settingsController directly — no IPC round-trip.
-ipcMain.handle("dashboard:get-snapshot", () => _state.buildSessionSnapshot());
-ipcMain.handle("dashboard:get-i18n", () => getDashboardI18nPayload());
-ipcMain.on("dashboard:focus-session", (_event, sessionId) =>
-  focusDashboardSession(sessionId, { requestSource: "dashboard" })
-);
-ipcMain.handle("dashboard:hide-session", (_event, sessionId) => hideDashboardSession(sessionId));
-ipcMain.handle("dashboard:set-session-alias", async (_event, payload) => {
-  return _settingsController.applyCommand("setSessionAlias", payload);
-});
-ipcMain.handle("session-hud:get-i18n", () => getDashboardI18nPayload());
-ipcMain.on("session-hud:focus-session", (_event, sessionId) =>
-  focusDashboardSession(sessionId, { requestSource: "hud" })
-);
-ipcMain.on("session-hud:open-dashboard", () => showDashboard());
-
+// ── IPC: animation override settings handlers ──
+// Kept in main until Phase 1.5 because these handlers touch trusted runtime
+// preview state, hidden poster generation, and filesystem import/export.
 ipcMain.handle("settings:get-animation-overrides-data", () => _buildAnimationOverrideData());
 ipcMain.handle("settings:open-theme-assets-dir", async () => {
   const dir = _resolveOpenableFsPath(_resolveAnimationAssetsDir(activeTheme));
@@ -3107,7 +3093,6 @@ registerSettingsIpc({
   getLang: () => lang,
   settingsSizePreviewSession,
   isValidSizePreviewKey,
-  showDashboard: () => showDashboard(),
   sendToRenderer,
   getDoNotDisturb: () => doNotDisturb,
   getSoundMuted: () => soundMuted,
@@ -3115,6 +3100,16 @@ registerSettingsIpc({
   getAllAgents,
   checkForUpdates,
   aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
+});
+
+registerSessionIpc({
+  ipcMain,
+  getSessionSnapshot: () => _state.buildSessionSnapshot(),
+  getI18n: () => getDashboardI18nPayload(),
+  focusSession: focusDashboardSession,
+  hideSession: hideDashboardSession,
+  setSessionAlias: (payload) => _settingsController.applyCommand("setSessionAlias", payload),
+  showDashboard: () => showDashboard(),
 });
 
 function createWindow() {
@@ -3425,10 +3420,6 @@ function createWindow() {
       return;
     }
     focusLog("focus result branch=none reason=no-focusable-session source=pet-body");
-  });
-
-  ipcMain.on("show-dashboard", () => {
-    showDashboard();
   });
 
   ipcMain.on("bubble-height", (event, height) => _perm.handleBubbleHeight(event, height));

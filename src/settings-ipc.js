@@ -109,7 +109,6 @@ function registerSettingsIpc(options = {}) {
     options.isValidSizePreviewKey,
     "isValidSizePreviewKey"
   );
-  const showDashboard = options.showDashboard || (() => {});
   const sendToRenderer = options.sendToRenderer || (() => {});
   const getDoNotDisturb = options.getDoNotDisturb || (() => false);
   const getSoundMuted = options.getSoundMuted || (() => false);
@@ -124,11 +123,6 @@ function registerSettingsIpc(options = {}) {
   function handle(channel, listener) {
     ipcMain.handle(channel, listener);
     disposers.push(() => ipcMain.removeHandler(channel));
-  }
-
-  function on(channel, listener) {
-    ipcMain.on(channel, listener);
-    disposers.push(() => ipcMain.removeListener(channel, listener));
   }
 
   function getDialogParent(event) {
@@ -155,7 +149,6 @@ function registerSettingsIpc(options = {}) {
     }
     return settingsSizePreviewSession.end(value || null);
   });
-  on("settings:open-dashboard", () => showDashboard());
   handle("settings:get-preview-sound-url", () => {
     try { return themeLoader.getPreviewSoundUrl(); }
     catch { return null; }

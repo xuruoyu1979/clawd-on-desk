@@ -119,7 +119,6 @@ function createHarness(overrides = {}) {
     getLang: overrides.getLang || (() => "en"),
     settingsSizePreviewSession,
     isValidSizePreviewKey: (value) => /^P:\d+$/.test(value),
-    showDashboard: () => calls.push(["showDashboard"]),
     sendToRenderer: (...args) => calls.push(["sendToRenderer", ...args]),
     getDoNotDisturb: overrides.getDoNotDisturb || (() => false),
     getSoundMuted: overrides.getSoundMuted || (() => false),
@@ -139,7 +138,7 @@ test("settings IPC registers owned channels and leaves animation override channe
   assert.ok(ipcMain.handlers.has("settings:pick-sound-file"));
   assert.ok(ipcMain.handlers.has("settings:list-themes"));
   assert.ok(ipcMain.handlers.has("settings:refresh-codex-pets"));
-  assert.ok(ipcMain.listeners.has("settings:open-dashboard"));
+  assert.ok(!ipcMain.listeners.has("settings:open-dashboard"));
   assert.ok(!ipcMain.handlers.has("settings:getShortcutFailures"));
   assert.ok(!ipcMain.handlers.has("settings:enterShortcutRecording"));
   assert.ok(!ipcMain.handlers.has("settings:exitShortcutRecording"));
@@ -156,7 +155,7 @@ test("settings IPC registers owned channels and leaves animation override channe
   assert.strictEqual(ipcMain.listeners.size, 0);
 });
 
-test("settings IPC delegates controller, size preview, and dashboard handlers", async () => {
+test("settings IPC delegates controller and size preview handlers", async () => {
   const { ipcMain, calls } = createHarness();
 
   assert.deepStrictEqual(await ipcMain.invoke("settings:get-snapshot"), { lang: "en" });
@@ -186,7 +185,6 @@ test("settings IPC delegates controller, size preview, and dashboard handlers", 
     phase: "end",
     value: "P:35",
   });
-  ipcMain.send("settings:open-dashboard");
 
   assert.deepStrictEqual(calls, [
     ["applyUpdate", "size", "P:20"],
@@ -194,7 +192,6 @@ test("settings IPC delegates controller, size preview, and dashboard handlers", 
     ["sizeBegin"],
     ["sizePreview", "P:35"],
     ["sizeEnd", "P:35"],
-    ["showDashboard"],
   ]);
 });
 
