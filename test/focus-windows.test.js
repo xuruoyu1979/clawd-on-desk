@@ -146,5 +146,28 @@ describe("Windows terminal focus", () => {
       cleanup();
     }
   });
-});
 
+  it("logs non-Windows focus dispatch results without implying success", () => {
+    const macLogs = [];
+    const mac = loadFocusWithMock({ platform: "darwin" });
+    try {
+      const focus = mac.initFocus({ focusLog: (msg) => macLogs.push(msg) });
+      focus.focusTerminalWindow({ sourcePid: 3456, requestSource: "hud" });
+
+      assert.match(macLogs.join("\n"), /focus result branch=mac reason=submitted/);
+    } finally {
+      mac.cleanup();
+    }
+
+    const linuxLogs = [];
+    const linux = loadFocusWithMock({ platform: "linux" });
+    try {
+      const focus = linux.initFocus({ focusLog: (msg) => linuxLogs.push(msg) });
+      focus.focusTerminalWindow({ sourcePid: 4567, requestSource: "hud" });
+
+      assert.match(linuxLogs.join("\n"), /focus result branch=linux-command-submitted/);
+    } finally {
+      linux.cleanup();
+    }
+  });
+});

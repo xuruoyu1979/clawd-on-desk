@@ -333,7 +333,7 @@ function executeMacFocusRequest(request) {
     if (macQueuedFocusRequest) flushQueuedMacFocus();
   };
 
-  focusTerminalWindowLegacy(request, null, finalize);
+  focusTerminalWindowLegacy(request, finalize);
   scheduleTerminalTabFocus(request.editor, request.pidChain);
   scheduleITermTabFocus(request.sourcePid, request.pidChain);
 }
@@ -342,23 +342,24 @@ function requestMacFocus(request) {
   const elapsed = Date.now() - macFocusLastRunAt;
   const inCooldown = elapsed < MAC_FOCUS_THROTTLE_MS;
   const key = getMacFocusRequestKey(request.sourcePid, request.pidChain);
-  if (inCooldown && macFocusLastRequestKey === key) return;
+  if (inCooldown && macFocusLastRequestKey === key) return "dropped-duplicate";
 
   request = { ...request, key };
   if (macFocusInFlight) {
     macQueuedFocusRequest = request;
-    return;
+    return "queued";
   }
 
   if (inCooldown) {
     macQueuedFocusRequest = request;
     scheduleQueuedMacFocus(MAC_FOCUS_THROTTLE_MS - elapsed);
-    return;
+    return "queued";
   }
 
   macQueuedFocusRequest = null;
   clearMacFocusCooldownTimer();
   executeMacFocusRequest(request);
+  return "submitted";
 }
 
 function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
@@ -370,13 +371,15 @@ function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
   }
 
   if (isMac) {
-    requestMacFocus(request);
+    const result = requestMacFocus(request);
+    logFocusResult(`branch=mac reason=${result || "unknown"}`);
     return;
   }
 
   if (isLinux) {
     focusTerminalWindowLegacy(request);
     scheduleTerminalTabFocus(request.editor, request.pidChain);
+    logFocusResult("branch=linux-command-submitted");
     return;
   }
 
@@ -396,11 +399,10 @@ function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
   scheduleTerminalTabFocus(request.editor, request.pidChain);
 }
 
-function focusTerminalWindowLegacy(sourcePidOrRequest, cwd, onDone, pidChain) {
-  const request = normalizeFocusRequest(sourcePidOrRequest, cwd, null, pidChain);
+function focusTerminalWindowLegacy(request, onDone) {
   const { sourcePid } = request;
-  cwd = request.cwd;
-  pidChain = request.pidChain;
+  const cwd = request.cwd;
+  const pidChain = request.pidChain;
 
   if (!sourcePid) {
     if (onDone) onDone();

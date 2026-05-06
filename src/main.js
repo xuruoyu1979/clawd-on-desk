@@ -1707,6 +1707,7 @@ function getFocusableLocalHudSessionIds() {
 
 function focusDashboardSession(sessionId, options = {}) {
   if (!sessionId) return;
+  const requestSource = options.requestSource || "dashboard";
   const session = sessions.get(String(sessionId));
   if (session && session.sourcePid) {
     focusTerminalWindow({
@@ -1716,10 +1717,12 @@ function focusDashboardSession(sessionId, options = {}) {
       pidChain: session.pidChain,
       sessionId: String(sessionId),
       agentId: session.agentId,
-      requestSource: options.requestSource || "dashboard",
+      requestSource,
     });
+  } else if (!session) {
+    focusLog(`focus result branch=none reason=session-not-found source=${requestSource} sid=${String(sessionId)}`);
   } else {
-    focusLog(`focus result branch=none reason=no-source-pid sid=${String(sessionId)}`);
+    focusLog(`focus result branch=none reason=no-source-pid source=${requestSource} sid=${String(sessionId)}`);
   }
 }
 
@@ -4440,6 +4443,7 @@ function createWindow() {
 
   ipcMain.on("focus-terminal", () => {
     const focusableIds = getFocusableLocalHudSessionIds();
+    focusLog(`focus request source=pet-body sid=- focusableCount=${focusableIds.length}`);
     if (focusableIds.length > 1) {
       focusLog(`focus result branch=none reason=multi-session-open-dashboard count=${focusableIds.length}`);
       showDashboard();
