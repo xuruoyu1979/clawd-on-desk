@@ -62,6 +62,16 @@ describe("renderer object-channel selection", () => {
     assert.ok(source.includes("const cacheBust = `${Date.now()}-${++_imgCacheBustSeq}`;"));
     assert.ok(!source.includes("_t=${Date.now()}"));
   });
+
+  it("deduplicates displayed files by resolved asset URL, not filename alone", () => {
+    const source = readNormalized(RENDERER);
+
+    assert.ok(source.includes("let currentDisplayedAssetUrl = null;"));
+    assert.ok(source.includes("let pendingAssetUrl = null;"));
+    assert.ok(source.includes("const desiredAssetUrl = getAssetUrl(svg);"));
+    assert.ok(source.includes("currentDisplayedAssetUrl === desiredAssetUrl"));
+    assert.ok(source.includes("pendingAssetUrl === desiredAssetUrl"));
+  });
 });
 
 describe("renderer Cloudling pointer bridge", () => {

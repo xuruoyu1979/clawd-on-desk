@@ -605,7 +605,9 @@ function endDragReaction() {
 
 // --- Generic swap function: handles both <object> and <img> channels ---
 let currentDisplayedSvg = getObjectSvgName(clawdEl);
+let currentDisplayedAssetUrl = null;
 let pendingSvgFile = null; // tracks the SVG currently being loaded (for dedup)
+let pendingAssetUrl = null;
 currentIdleSvg = currentDisplayedSvg;
 
 /**
@@ -629,11 +631,13 @@ function swapToFile(file, state, useObjectChannel) {
     if (pendingNext.tagName === "OBJECT") releaseObject(pendingNext);
     else releaseImg(pendingNext);
     pendingNext = null;
+    pendingAssetUrl = null;
   }
 
   pendingSvgFile = file; // track what's loading for dedup
   const useObj = useObjectChannel !== undefined ? useObjectChannel : needsObjectChannel(state, file);
   const url = getAssetUrl(file);
+  pendingAssetUrl = url;
 
   if (useObj) {
     // Object channel: <object type="image/svg+xml">
@@ -665,8 +669,10 @@ function swapToFile(file, state, useObjectChannel) {
       }
       pendingNext = null;
       pendingSvgFile = null;
+      pendingAssetUrl = null;
       clawdEl = next;
       currentDisplayedSvg = file;
+      currentDisplayedAssetUrl = url;
 
       if (state && needsEyeTracking(state)) {
         attachEyeTracking(next);
@@ -684,7 +690,15 @@ function swapToFile(file, state, useObjectChannel) {
     pendingNext = next;
     setTimeout(() => {
       if (pendingNext !== next) return;
-      try { if (!next.contentDocument) { releaseObject(next); pendingNext = null; return; } } catch {}
+      try {
+        if (!next.contentDocument) {
+          releaseObject(next);
+          pendingNext = null;
+          pendingSvgFile = null;
+          pendingAssetUrl = null;
+          return;
+        }
+      } catch {}
       swap();
     }, 3000);
   } else {
@@ -718,8 +732,10 @@ function swapToFile(file, state, useObjectChannel) {
       }
       pendingNext = null;
       pendingSvgFile = null;
+      pendingAssetUrl = null;
       clawdEl = next;
       currentDisplayedSvg = file;
+      currentDisplayedAssetUrl = url;
       scheduleLowPowerIdlePause();
     };
 
@@ -758,11 +774,18 @@ window.electronAPI.onStateChange((state, svg) => {
     clearCloudlingPointerBridge();
   }
 
-  // Dedup: same file already displayed OR currently loading → don't re-swap
+  // Dedup only when the same file resolves to the same asset URL. Imported
+  // Codex Pet themes reuse filenames, so filename-only dedup can keep showing
+  // the previous theme until a drag/click forces a different animation.
   const desiredObjectChannel = needsObjectChannel(state, svg);
-  const alreadyDisplayed = clawdEl && clawdEl.isConnected && currentDisplayedSvg === svg;
+  const desiredAssetUrl = getAssetUrl(svg);
+  const alreadyDisplayed = clawdEl && clawdEl.isConnected
+    && currentDisplayedSvg === svg
+    && currentDisplayedAssetUrl === desiredAssetUrl;
   const displayedChannelMatches = !alreadyDisplayed || ((clawdEl.tagName === "OBJECT") === desiredObjectChannel);
-  const alreadyPending = pendingSvgFile === svg && pendingNext;
+  const alreadyPending = pendingSvgFile === svg
+    && pendingNext
+    && pendingAssetUrl === desiredAssetUrl;
   const pendingChannelMatches = !alreadyPending || ((pendingNext.tagName === "OBJECT") === desiredObjectChannel);
 
   if ((alreadyDisplayed && displayedChannelMatches) || (alreadyPending && pendingChannelMatches)) {
@@ -787,6 +810,7 @@ window.electronAPI.onStateChange((state, svg) => {
     else releaseImg(pendingNext);
     pendingNext = null;
     pendingSvgFile = null;
+    pendingAssetUrl = null;
   }
   detachEyeTracking();
 
