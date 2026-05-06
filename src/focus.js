@@ -2,6 +2,7 @@
 // Extracted from main.js L1030-1335
 
 const http = require("http");
+const crypto = require("crypto");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
 
@@ -108,10 +109,6 @@ for ($i = 0; $i -lt 8; $i++) {
     $curPid = $cim.ParentProcessId
 }
 if (-not $focused) {${wtTitleMatch}
-    if (-not $focused) {
-        $wt = Get-Process -Name 'WindowsTerminal' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($wt -and $wt.MainWindowHandle -ne 0) { [WinFocus]::Focus($wt.MainWindowHandle) }
-    }
 }
 `;
 }
@@ -126,6 +123,84 @@ let macFocusLastRunAt = 0;
 let macFocusLastRequestKey = null;
 let macQueuedFocusRequest = null;
 let macFocusCooldownTimer = null;
+
+function normalizePid(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+function normalizePidChain(value) {
+  if (!Array.isArray(value)) return null;
+  const out = value
+    .map(normalizePid)
+    .filter((pid, index, arr) => pid && arr.indexOf(pid) === index);
+  return out.length ? out : null;
+}
+
+function normalizeFocusRequest(sourcePidOrRequest, cwd, editor, pidChain, meta = {}) {
+  if (sourcePidOrRequest && typeof sourcePidOrRequest === "object" && !Array.isArray(sourcePidOrRequest)) {
+    const request = sourcePidOrRequest;
+    return {
+      sourcePid: normalizePid(request.sourcePid ?? request.source_pid),
+      cwd: typeof request.cwd === "string" ? request.cwd : "",
+      editor: request.editor === "code" || request.editor === "cursor" ? request.editor : null,
+      pidChain: normalizePidChain(request.pidChain ?? request.pid_chain),
+      sessionId: typeof request.sessionId === "string" ? request.sessionId : null,
+      agentId: typeof request.agentId === "string" ? request.agentId : null,
+      requestSource: typeof request.requestSource === "string" ? request.requestSource : null,
+    };
+  }
+
+  return {
+    sourcePid: normalizePid(sourcePidOrRequest),
+    cwd: typeof cwd === "string" ? cwd : "",
+    editor: editor === "code" || editor === "cursor" ? editor : null,
+    pidChain: normalizePidChain(pidChain),
+    sessionId: meta && typeof meta.sessionId === "string" ? meta.sessionId : null,
+    agentId: meta && typeof meta.agentId === "string" ? meta.agentId : null,
+    requestSource: meta && typeof meta.requestSource === "string" ? meta.requestSource : null,
+  };
+}
+
+function safeLogValue(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value).replace(/[\r\n\t]+/g, " ").trim() || "-";
+}
+
+function summarizeCwd(cwd) {
+  if (typeof cwd !== "string" || !cwd) return { tail: "-", hash: "-" };
+  const parts = cwd.split(/[\\/]+/).filter(Boolean);
+  const tail = parts.length ? `...\\${parts[parts.length - 1]}` : "-";
+  const hash = crypto.createHash("sha1").update(cwd).digest("hex").slice(0, 8);
+  return { tail, hash };
+}
+
+function formatPidChain(pidChain) {
+  return Array.isArray(pidChain) && pidChain.length ? `[${pidChain.join(">")}]` : "[]";
+}
+
+function focusLog(msg) {
+  if (!ctx || typeof ctx.focusLog !== "function") return;
+  try { ctx.focusLog(msg); } catch {}
+}
+
+function logFocusRequest(request) {
+  const cwd = summarizeCwd(request.cwd);
+  focusLog([
+    "focus request",
+    `source=${safeLogValue(request.requestSource)}`,
+    `sid=${safeLogValue(request.sessionId)}`,
+    `agent=${safeLogValue(request.agentId)}`,
+    `sourcePid=${request.sourcePid || "-"}`,
+    `cwdTail=${safeLogValue(cwd.tail)}`,
+    `cwdHash=${safeLogValue(cwd.hash)}`,
+    `chain=${formatPidChain(request.pidChain)}`,
+  ].join(" "));
+}
+
+function logFocusResult(reason) {
+  focusLog(`focus result ${reason}`);
+}
 
 function initFocusHelper() {
   if (!isWin || psProc) return;
@@ -258,18 +333,18 @@ function executeMacFocusRequest(request) {
     if (macQueuedFocusRequest) flushQueuedMacFocus();
   };
 
-  focusTerminalWindowLegacy(request.sourcePid, request.cwd, finalize, request.pidChain);
+  focusTerminalWindowLegacy(request, null, finalize);
   scheduleTerminalTabFocus(request.editor, request.pidChain);
   scheduleITermTabFocus(request.sourcePid, request.pidChain);
 }
 
-function requestMacFocus(sourcePid, cwd, editor, pidChain) {
+function requestMacFocus(request) {
   const elapsed = Date.now() - macFocusLastRunAt;
   const inCooldown = elapsed < MAC_FOCUS_THROTTLE_MS;
-  const key = getMacFocusRequestKey(sourcePid, pidChain);
+  const key = getMacFocusRequestKey(request.sourcePid, request.pidChain);
   if (inCooldown && macFocusLastRequestKey === key) return;
 
-  const request = { sourcePid, cwd, editor, pidChain, key };
+  request = { ...request, key };
   if (macFocusInFlight) {
     macQueuedFocusRequest = request;
     return;
@@ -286,17 +361,22 @@ function requestMacFocus(sourcePid, cwd, editor, pidChain) {
   executeMacFocusRequest(request);
 }
 
-function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
-  if (!sourcePid) return;
+function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
+  const request = normalizeFocusRequest(sourcePidOrRequest, cwd, editor, pidChain, meta);
+  logFocusRequest(request);
+  if (!request.sourcePid) {
+    logFocusResult("branch=none reason=no-source-pid");
+    return;
+  }
 
   if (isMac) {
-    requestMacFocus(sourcePid, cwd, editor, pidChain);
+    requestMacFocus(request);
     return;
   }
 
   if (isLinux) {
-    focusTerminalWindowLegacy(sourcePid, cwd);
-    scheduleTerminalTabFocus(editor, pidChain);
+    focusTerminalWindowLegacy(request);
+    scheduleTerminalTabFocus(request.editor, request.pidChain);
     return;
   }
 
@@ -308,14 +388,25 @@ function focusTerminalWindow(sourcePid, cwd, editor, pidChain) {
   }
 
   // Legacy focus for reliable window activation (ALT key trick + SetForegroundWindow)
-  focusTerminalWindowLegacy(sourcePid, cwd);
+  focusTerminalWindowLegacy(request);
+  logFocusResult("branch=windows-command-submitted");
 
   // VS Code / Cursor: request precise terminal tab switch via extension's HTTP server.
   // Delayed so legacy PowerShell focus completes first (it's fire-and-forget via stdin).
-  scheduleTerminalTabFocus(editor, pidChain);
+  scheduleTerminalTabFocus(request.editor, request.pidChain);
 }
 
-function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
+function focusTerminalWindowLegacy(sourcePidOrRequest, cwd, onDone, pidChain) {
+  const request = normalizeFocusRequest(sourcePidOrRequest, cwd, null, pidChain);
+  const { sourcePid } = request;
+  cwd = request.cwd;
+  pidChain = request.pidChain;
+
+  if (!sourcePid) {
+    if (onDone) onDone();
+    return false;
+  }
+
   if (isMac) {
     const pidCandidates = [sourcePid];
     if (Array.isArray(pidChain)) {
@@ -341,7 +432,7 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
       if (err) console.warn("focusTerminal macOS failed:", err.message);
       if (onDone) onDone();
     });
-    return;
+    return true;
   }
 
   if (isLinux) {
@@ -369,7 +460,7 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
         if (onDone) onDone();
       });
     });
-    return;
+    return true;
   }
 
   // Build candidate folder names from cwd for title matching (deepest first).
@@ -390,6 +481,7 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
   const cmd = makeFocusCmd(sourcePid, cwdCandidates);
   if (psProc && psProc.stdin.writable) {
     psProc.stdin.write(cmd + "\n");
+    return true;
   } else {
     // Fallback: one-shot PowerShell if persistent process died
     psProc = null;
@@ -400,6 +492,7 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
     );
     // Re-init persistent process for next call
     initFocusHelper();
+    return true;
   }
 }
 
@@ -410,6 +503,17 @@ function cleanup() {
   macFocusInFlight = false;
 }
 
-return { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, cleanup };
+return {
+  initFocusHelper,
+  killFocusHelper,
+  focusTerminalWindow,
+  clearMacFocusCooldownTimer,
+  cleanup,
+  __test: {
+    makeFocusCmd,
+    normalizeFocusRequest,
+    summarizeCwd,
+  },
+};
 
 };

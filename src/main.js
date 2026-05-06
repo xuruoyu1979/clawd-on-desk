@@ -48,6 +48,9 @@ const {
   animateWindowOpacity,
   setWindowOpacity,
 } = require("./window-opacity-transition");
+const {
+  getFocusableLocalHudSessionIds: selectFocusableLocalHudSessionIds,
+} = require("./session-focus");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -1409,9 +1412,19 @@ const _permCtx = {
   reapplyMacVisibility,
   isAgentPermissionsEnabled: (agentId) =>
     _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
-  focusTerminalForSession: (sessionId) => {
+  focusTerminalForSession: (sessionId, options = {}) => {
     const s = sessions.get(sessionId);
-    if (s && s.sourcePid) focusTerminalWindow(s.sourcePid, s.cwd, s.editor, s.pidChain);
+    if (s && s.sourcePid) {
+      focusTerminalWindow({
+        sourcePid: s.sourcePid,
+        cwd: s.cwd,
+        editor: s.editor,
+        pidChain: s.pidChain,
+        sessionId: String(sessionId),
+        agentId: s.agentId,
+        requestSource: options.requestSource || "permission-bubble",
+      });
+    }
   },
   getSettingsSnapshot: () => _settingsController.getSnapshot(),
   subscribeShortcuts: (cb) => _settingsController.subscribeKey("shortcuts", (_value, snapshot) => {
@@ -1427,6 +1440,7 @@ const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
 let updateDebugLog = null; // set after app.whenReady()
 let sessionDebugLog = null; // set after app.whenReady()
+let focusDebugLog = null; // set after app.whenReady()
 
 const _updateBubbleCtx = {
   get win() { return win; },
@@ -1578,7 +1592,6 @@ const { setState, applyState, updateSession, resolveDisplayState, getSvgOverride
         startWakePoll, stopWakePoll, detectRunningAgentProcesses,
         startStartupRecovery: _startStartupRecovery } = _state;
 const sessions = _state.sessions;
-const STATE_PRIORITY = _state.STATE_PRIORITY;
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) {
@@ -1684,14 +1697,29 @@ requestFastTick = (maxDelay) => _tick.scheduleSoon(maxDelay);
 const { startMainTick, resetIdleTimer } = _tick;
 
 // ── Terminal focus — delegated to src/focus.js ──
-const _focus = require("./focus")({ _allowSetForeground });
+const _focus = require("./focus")({ _allowSetForeground, focusLog });
 const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer } = _focus;
 
-function focusDashboardSession(sessionId) {
+function getFocusableLocalHudSessionIds() {
+  if (!_state || typeof _state.buildSessionSnapshot !== "function") return [];
+  return selectFocusableLocalHudSessionIds(_state.buildSessionSnapshot());
+}
+
+function focusDashboardSession(sessionId, options = {}) {
   if (!sessionId) return;
   const session = sessions.get(String(sessionId));
   if (session && session.sourcePid) {
-    focusTerminalWindow(session.sourcePid, session.cwd, session.editor, session.pidChain);
+    focusTerminalWindow({
+      sourcePid: session.sourcePid,
+      cwd: session.cwd,
+      editor: session.editor,
+      pidChain: session.pidChain,
+      sessionId: String(sessionId),
+      agentId: session.agentId,
+      requestSource: options.requestSource || "dashboard",
+    });
+  } else {
+    focusLog(`focus result branch=none reason=no-source-pid sid=${String(sessionId)}`);
   }
 }
 
@@ -1879,6 +1907,12 @@ function sessionLog(msg) {
   if (!sessionDebugLog) return;
   const { rotatedAppend } = require("./log-rotate");
   rotatedAppend(sessionDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
+}
+
+function focusLog(msg) {
+  if (!focusDebugLog) return;
+  const { rotatedAppend } = require("./log-rotate");
+  rotatedAppend(focusDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
 // ── Menu — delegated to src/menu.js ──
@@ -3235,13 +3269,17 @@ function _runAnimationOverridePreview(stateKey, file, durationMs) {
 // in this process calls _settingsController directly — no IPC round-trip.
 ipcMain.handle("dashboard:get-snapshot", () => _state.buildSessionSnapshot());
 ipcMain.handle("dashboard:get-i18n", () => getDashboardI18nPayload());
-ipcMain.on("dashboard:focus-session", (_event, sessionId) => focusDashboardSession(sessionId));
+ipcMain.on("dashboard:focus-session", (_event, sessionId) =>
+  focusDashboardSession(sessionId, { requestSource: "dashboard" })
+);
 ipcMain.handle("dashboard:hide-session", (_event, sessionId) => hideDashboardSession(sessionId));
 ipcMain.handle("dashboard:set-session-alias", async (_event, payload) => {
   return _settingsController.applyCommand("setSessionAlias", payload);
 });
 ipcMain.handle("session-hud:get-i18n", () => getDashboardI18nPayload());
-ipcMain.on("session-hud:focus-session", (_event, sessionId) => focusDashboardSession(sessionId));
+ipcMain.on("session-hud:focus-session", (_event, sessionId) =>
+  focusDashboardSession(sessionId, { requestSource: "hud" })
+);
 ipcMain.on("session-hud:open-dashboard", () => showDashboard());
 
 ipcMain.handle("settings:get-snapshot", () => _settingsController.getSnapshot());
@@ -4401,18 +4439,17 @@ function createWindow() {
   });
 
   ipcMain.on("focus-terminal", () => {
-    // Find the best session to focus: prefer highest priority (non-idle), then most recent
-    let best = null, bestTime = 0, bestPriority = -1;
-    for (const [, s] of sessions) {
-      if (!s.sourcePid) continue;
-      const pri = STATE_PRIORITY[s.state] || 0;
-      if (pri > bestPriority || (pri === bestPriority && s.updatedAt > bestTime)) {
-        best = s;
-        bestTime = s.updatedAt;
-        bestPriority = pri;
-      }
+    const focusableIds = getFocusableLocalHudSessionIds();
+    if (focusableIds.length > 1) {
+      focusLog(`focus result branch=none reason=multi-session-open-dashboard count=${focusableIds.length}`);
+      showDashboard();
+      return;
     }
-    if (best) focusTerminalWindow(best.sourcePid, best.cwd, best.editor, best.pidChain);
+    if (focusableIds.length === 1) {
+      focusDashboardSession(focusableIds[0], { requestSource: "pet-body" });
+      return;
+    }
+    focusLog("focus result branch=none reason=no-focusable-session source=pet-body");
   });
 
   ipcMain.on("show-dashboard", () => {
@@ -4967,6 +5004,7 @@ if (!gotTheLock) {
     permDebugLog = path.join(app.getPath("userData"), "permission-debug.log");
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
+    focusDebugLog = path.join(app.getPath("userData"), "focus-debug.log");
     createWindow();
     if (shouldOpenSettingsWindowFromArgv(process.argv)) {
       openSettingsWindow();
