@@ -15,6 +15,7 @@ module.exports = function initFocus(ctx) {
 const PS_FOCUS_ADDTYPE = `
 Add-Type @"
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Runtime.InteropServices;
 public class WinFocus {
@@ -36,8 +37,9 @@ public class WinFocus {
         keybd_event(0x12, 0, 2, UIntPtr.Zero);
         SetForegroundWindow(hWnd);
     }
-    public static IntPtr FindByPidTitle(uint targetPid, string sub) {
-        IntPtr found = IntPtr.Zero;
+    public static IntPtr[] FindByPidTitles(uint targetPid, string[] subs) {
+        var found = new List<IntPtr>();
+        if (subs == null || subs.Length == 0) return found.ToArray();
         EnumWindows((hWnd, _) => {
             if (!IsWindowVisible(hWnd)) return true;
             uint pid; GetWindowThreadProcessId(hWnd, out pid);
@@ -46,22 +48,43 @@ public class WinFocus {
             if (len == 0) return true;
             var sb = new StringBuilder(len + 1);
             GetWindowText(hWnd, sb, sb.Capacity);
-            if (sb.ToString().IndexOf(sub, StringComparison.OrdinalIgnoreCase) >= 0) {
-                found = hWnd;
-                return false;
+            var title = sb.ToString();
+            foreach (string sub in subs) {
+                if (!String.IsNullOrEmpty(sub) &&
+                    title.IndexOf(sub, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    found.Add(hWnd);
+                    break;
+                }
             }
             return true;
         }, IntPtr.Zero);
-        return found;
+        return found.ToArray();
     }
 }
 "@
 `;
 
+function makeFocusResultLogBlock(logPath) {
+  const encodedPath = typeof logPath === "string" && logPath
+    ? Buffer.from(logPath, "utf8").toString("base64")
+    : "";
+  return `
+function Write-ClawdFocusResult([string]$reason) {
+    $logPathB64 = '${encodedPath}'
+    if (-not $logPathB64) { return }
+    try {
+        $logPath = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($logPathB64))
+        if (-not $logPath) { return }
+        $line = '[' + [DateTime]::UtcNow.ToString('o') + '] focus result branch=windows-helper reason=' + $reason
+        Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
+    } catch {}
+}`;
+}
+
 function makeFocusCmd(sourcePid, cwdCandidates) {
   // Walk up the process tree (same proven logic as before).
-  // When we find the process with MainWindowHandle, try title-matching first
-  // to support multi-window editors (Cursor/VS Code). Fall back to MainWindowHandle.
+  // When cwd candidates exist, only focus a unique title match. This avoids
+  // jumping to the wrong terminal just because an ancestor has MainWindowHandle.
   // Base64-encode cwd candidates so CJK/Unicode chars survive the Node→PowerShell
   // stdin pipe (PowerShell 5.1 reads stdin as system codepage, not UTF-8).
   const psNames = cwdCandidates.length
@@ -70,46 +93,69 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
         return `([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))`;
       }).join(",")
     : "";
-  const titleMatchBlock = psNames ? `
-        $matched = $false
-        foreach ($name in @(${psNames})) {
-            $hwnd = [WinFocus]::FindByPidTitle([uint32]$curPid, $name)
-            if ($hwnd -ne [IntPtr]::Zero) {
-                [WinFocus]::Focus($hwnd); $matched = $true; break
-            }
+  const titleNames = psNames ? `@(${psNames})` : "@()";
+  const parentWindowBlock = psNames ? `
+        $matches = @([WinFocus]::FindByPidTitles([uint32]$curPid, [string[]]$titleNames))
+        if ($matches.Count -eq 1) {
+            [WinFocus]::Focus($matches[0])
+            $focused = $true
+            $reason = 'parent-title-match'
+        } elseif ($matches.Count -gt 1) {
+            $reason = 'parent-title-ambiguous'
+        } else {
+            $reason = 'parent-title-mismatch'
         }
-        if ($matched) { $focused = $true; break }` : "";
-  // Windows Terminal fallback: same title matching but against WT windows
+        break` : `
+        if (@('WindowsTerminal', 'WindowsTerminalPreview') -notcontains $proc.ProcessName) {
+            [WinFocus]::Focus($proc.MainWindowHandle)
+            $focused = $true
+            $reason = 'parent-direct-no-title'
+        } else {
+            $reason = 'windows-terminal-no-title'
+        }
+        break`;
   const wtTitleMatch = psNames ? `
     $wtProcs = Get-Process -Name 'WindowsTerminal' -ErrorAction SilentlyContinue
+    $wtMatches = @()
     foreach ($wt in $wtProcs) {
         if ($wt.MainWindowHandle -eq 0) { continue }
-        foreach ($name in @(${psNames})) {
-            $hwnd = [WinFocus]::FindByPidTitle([uint32]$wt.Id, $name)
-            if ($hwnd -ne [IntPtr]::Zero) {
-                [WinFocus]::Focus($hwnd); $focused = $true; break
+        $matches = @([WinFocus]::FindByPidTitles([uint32]$wt.Id, [string[]]$titleNames))
+        foreach ($hwnd in $matches) {
+            $exists = $false
+            foreach ($existing in $wtMatches) {
+                if ($existing -eq $hwnd) { $exists = $true; break }
             }
+            if (-not $exists) { $wtMatches += $hwnd }
         }
-        if ($focused) { break }
-    }` : "";
+    }
+    if ($wtMatches.Count -eq 1) {
+        [WinFocus]::Focus($wtMatches[0])
+        $focused = $true
+        $reason = 'wt-title-match'
+    } elseif ($wtMatches.Count -gt 1) {
+        $reason = 'wt-title-ambiguous'
+    } else {
+        $reason = 'wt-title-mismatch'
+    }` : `
+    $reason = 'no-parent-window-no-title'`;
 
-  return `
+  return `${makeFocusResultLogBlock(getFocusLogPath())}
+$titleNames = ${titleNames}
 $curPid = ${sourcePid}
 $focused = $false
+$reason = 'no-parent-window'
 for ($i = 0; $i -lt 8; $i++) {
     $proc = Get-Process -Id $curPid -ErrorAction SilentlyContinue
     if (-not $proc -or $proc.ProcessName -eq 'explorer') { break }
-    if ($proc.MainWindowHandle -ne 0) {${titleMatchBlock}
-        [WinFocus]::Focus($proc.MainWindowHandle)
-        $focused = $true
-        break
+    if ($proc.MainWindowHandle -ne 0) {${parentWindowBlock}
     }
     $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$curPid" -ErrorAction SilentlyContinue
     if (-not $cim -or $cim.ParentProcessId -eq 0 -or $cim.ParentProcessId -eq $curPid) { break }
     $curPid = $cim.ParentProcessId
 }
-if (-not $focused) {${wtTitleMatch}
+if (-not $focused -and $reason -eq 'no-parent-window') {${wtTitleMatch}
 }
+Write-ClawdFocusResult $reason
 `;
 }
 
@@ -182,6 +228,16 @@ function formatPidChain(pidChain) {
 function focusLog(msg) {
   if (!ctx || typeof ctx.focusLog !== "function") return;
   try { ctx.focusLog(msg); } catch {}
+}
+
+function getFocusLogPath() {
+  if (!ctx || typeof ctx.getFocusLogPath !== "function") return "";
+  try {
+    const filePath = ctx.getFocusLogPath();
+    return typeof filePath === "string" ? filePath : "";
+  } catch {
+    return "";
+  }
 }
 
 function logFocusRequest(request) {

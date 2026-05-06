@@ -1,5 +1,6 @@
 "use strict";
 
+// This file mocks process.platform while loading src/focus; keep those mocks contained here.
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
@@ -66,6 +67,55 @@ describe("Windows terminal focus", () => {
 
       assert.match(cmd, /Get-Process -Name 'WindowsTerminal'/);
       assert.doesNotMatch(cmd, /Select-Object -First 1/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("requires a unique cwd title match before focusing a parent window", () => {
+    const { initFocus, cleanup } = loadFocusWithMock();
+    try {
+      const focus = initFocus({});
+      const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
+
+      assert.match(cmd, /FindByPidTitles/);
+      assert.match(cmd, /\$matches\.Count -eq 1/);
+      assert.match(cmd, /parent-title-mismatch/);
+      assert.match(cmd, /parent-title-ambiguous/);
+      assert.doesNotMatch(cmd, /\[WinFocus\]::Focus\(\$proc\.MainWindowHandle\)/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("only focuses a unique Windows Terminal title match", () => {
+    const { initFocus, cleanup } = loadFocusWithMock();
+    try {
+      const focus = initFocus({});
+      const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
+
+      assert.match(cmd, /\$wtMatches = @\(\)/);
+      assert.match(cmd, /\$wtMatches\.Count -eq 1/);
+      assert.match(cmd, /wt-title-match/);
+      assert.match(cmd, /wt-title-ambiguous/);
+      assert.match(cmd, /wt-title-mismatch/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps the Windows helper log path out of generated scripts", () => {
+    const { initFocus, cleanup } = loadFocusWithMock();
+    try {
+      const focus = initFocus({
+        getFocusLogPath: () => "C:\\Users\\SecretUser\\AppData\\Roaming\\Clawd\\focus-debug.log",
+      });
+      const cmd = focus.__test.makeFocusCmd(1234, ["repo"]);
+
+      assert.match(cmd, /Write-ClawdFocusResult/);
+      assert.match(cmd, /FromBase64String/);
+      assert.doesNotMatch(cmd, /C:\\Users\\SecretUser/);
+      assert.doesNotMatch(cmd, /SecretUser/);
     } finally {
       cleanup();
     }
