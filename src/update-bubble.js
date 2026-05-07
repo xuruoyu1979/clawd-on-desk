@@ -12,6 +12,36 @@ const EDGE_MARGIN = 8;
 const GAP = 6;
 const MAC_FLOATING_TOPMOST_DELAY_MS = 120;
 
+function requiredDependency(value, name, owner) {
+  if (!value) throw new Error(`${owner} requires ${name}`);
+  return value;
+}
+
+function registerUpdateBubbleIpc(options = {}) {
+  const ipcMain = requiredDependency(options.ipcMain, "ipcMain", "registerUpdateBubbleIpc");
+  const updateBubble = requiredDependency(options.updateBubble, "updateBubble", "registerUpdateBubbleIpc");
+  requiredDependency(updateBubble.handleUpdateBubbleHeight, "updateBubble.handleUpdateBubbleHeight", "registerUpdateBubbleIpc");
+  requiredDependency(updateBubble.handleUpdateBubbleAction, "updateBubble.handleUpdateBubbleAction", "registerUpdateBubbleIpc");
+  const disposers = [];
+
+  function on(channel, listener) {
+    ipcMain.on(channel, listener);
+    disposers.push(() => ipcMain.removeListener(channel, listener));
+  }
+
+  on("update-bubble-height", (event, height) => updateBubble.handleUpdateBubbleHeight(event, height));
+  on("update-bubble-action", (event, actionId) => updateBubble.handleUpdateBubbleAction(event, actionId));
+
+  return {
+    dispose() {
+      while (disposers.length) {
+        const dispose = disposers.pop();
+        dispose();
+      }
+    },
+  };
+}
+
 function deferMacFloatingVisibility(ctx, win) {
   if (!isMac || !win || win.isDestroyed()) return;
   const deferUntil = Date.now() + MAC_FLOATING_TOPMOST_DELAY_MS;
@@ -385,6 +415,8 @@ module.exports = function initUpdateBubble(ctx) {
     getBubbleWindow: () => bubble,
   };
 };
+
+module.exports.registerUpdateBubbleIpc = registerUpdateBubbleIpc;
 
 module.exports.__test = {
   computeAutoCloseRemainingMs,

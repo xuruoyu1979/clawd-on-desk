@@ -40,6 +40,36 @@ const LINUX_WINDOW_TYPE = "toolbar";
 // single tall bubble never hugs or exceeds the visible work area.
 const BUBBLE_HEIGHT_RESERVE = 24;
 
+function requiredDependency(value, name, owner) {
+  if (!value) throw new Error(`${owner} requires ${name}`);
+  return value;
+}
+
+function registerPermissionIpc(options = {}) {
+  const ipcMain = requiredDependency(options.ipcMain, "ipcMain", "registerPermissionIpc");
+  const permission = requiredDependency(options.permission, "permission", "registerPermissionIpc");
+  requiredDependency(permission.handleBubbleHeight, "permission.handleBubbleHeight", "registerPermissionIpc");
+  requiredDependency(permission.handleDecide, "permission.handleDecide", "registerPermissionIpc");
+  const disposers = [];
+
+  function on(channel, listener) {
+    ipcMain.on(channel, listener);
+    disposers.push(() => ipcMain.removeListener(channel, listener));
+  }
+
+  on("bubble-height", (event, height) => permission.handleBubbleHeight(event, height));
+  on("permission-decide", (event, behavior) => permission.handleDecide(event, behavior));
+
+  return {
+    dispose() {
+      while (disposers.length) {
+        const dispose = disposers.pop();
+        dispose();
+      }
+    },
+  };
+}
+
 function clampBubbleHeight(naturalHeight, workAreaHeight, reserve = BUBBLE_HEIGHT_RESERVE) {
   const roundedHeight = Math.ceil(Number(naturalHeight));
   if (!Number.isFinite(roundedHeight) || roundedHeight <= 0) return 0;
@@ -1098,6 +1128,8 @@ return {
 };
 
 };
+
+module.exports.registerPermissionIpc = registerPermissionIpc;
 
 // Test-only exports — bypasses the initPermission factory so unit tests can
 // hit the pure layout function without standing up Electron / ctx mocks.

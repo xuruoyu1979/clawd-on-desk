@@ -14,6 +14,10 @@ const {
 const { registerSettingsIpc } = require("./settings-ipc");
 const { registerSessionIpc } = require("./session-ipc");
 const { registerPetInteractionIpc } = require("./pet-interaction-ipc");
+const initPermission = require("./permission");
+const { registerPermissionIpc } = initPermission;
+const initUpdateBubble = require("./update-bubble");
+const { registerUpdateBubbleIpc } = initUpdateBubble;
 const createShortcutRuntime = require("./shortcut-runtime");
 const hitGeometry = require("./hit-geometry");
 const animationCycle = require("./animation-cycle");
@@ -991,7 +995,7 @@ const _permCtx = {
   clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
   repositionUpdateBubble: () => repositionUpdateBubble(),
 };
-const _perm = require("./permission")(_permCtx);
+const _perm = initPermission(_permCtx);
 const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles, showKimiNotifyBubble, clearKimiNotifyBubbles, syncPermissionShortcuts, replyOpencodePermission } = _perm;
 const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
@@ -1013,13 +1017,11 @@ const _updateBubbleCtx = {
   guardAlwaysOnTop,
   reapplyMacVisibility,
 };
-const _updateBubble = require("./update-bubble")(_updateBubbleCtx);
+const _updateBubble = initUpdateBubble(_updateBubbleCtx);
 const {
   showUpdateBubble,
   hideUpdateBubble,
   repositionUpdateBubble,
-  handleUpdateBubbleAction,
-  handleUpdateBubbleHeight,
   syncVisibility: syncUpdateBubbleVisibility,
 } = _updateBubble;
 
@@ -3380,10 +3382,15 @@ function createWindow() {
     focusSession: (sessionId, options) => focusDashboardSession(sessionId, options),
   });
 
-  ipcMain.on("bubble-height", (event, height) => _perm.handleBubbleHeight(event, height));
-  ipcMain.on("permission-decide", (event, behavior) => _perm.handleDecide(event, behavior));
-  ipcMain.on("update-bubble-height", (event, height) => handleUpdateBubbleHeight(event, height));
-  ipcMain.on("update-bubble-action", (event, actionId) => handleUpdateBubbleAction(event, actionId));
+  registerPermissionIpc({
+    ipcMain,
+    permission: _perm,
+  });
+
+  registerUpdateBubbleIpc({
+    ipcMain,
+    updateBubble: _updateBubble,
+  });
 
   initFocusHelper();
   startMainTick();
