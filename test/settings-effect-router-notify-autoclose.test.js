@@ -47,6 +47,13 @@ describe("settings effect router notification auto-close sync", () => {
     calls.length = 0;
     emit({ notificationBubbleAutoCloseSeconds: 10 });
     assert.deepStrictEqual(calls, [["refreshPassive"]]);
+
+    calls.length = 0;
+    emit({ hideBubbles: true, notificationBubbleAutoCloseSeconds: 10 });
+    assert.deepStrictEqual(calls, [
+      ["clearCodex", undefined, "settings-policy-disabled"],
+      ["clearKimi", undefined, "settings-policy-disabled"],
+    ]);
   });
 
   it("hides 0-second update bubbles and refreshes visible update-bubble timers for positive values", () => {
@@ -66,5 +73,9 @@ describe("settings effect router notification auto-close sync", () => {
     calls.length = 0;
     emit({ updateBubbleAutoCloseSeconds: 10 });
     assert.deepStrictEqual(calls, [["refreshUpdate"]]);
+
+    calls.length = 0;
+    emit({ hideBubbles: true, updateBubbleAutoCloseSeconds: 10 });
+    assert.deepStrictEqual(calls, [["hideUpdate"]]);
   });
 });
