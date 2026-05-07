@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const createThemeContext = require("./theme-context");
 
 // ── Defaults (used when theme.json omits optional fields) ──
 
@@ -126,6 +127,7 @@ const ROOT_ABSOLUTE_PATH_RE = /^[\\/](?![\\/])/;
 // ── State ──
 
 let activeTheme = null;
+let activeThemeContext = null;
 let builtinThemesDir = null;   // set by init()
 let assetsSvgDir = null;       // assets/svg/ for built-in theme
 let assetsSoundsDir = null;    // assets/sounds/ for built-in theme
@@ -151,6 +153,7 @@ function init(appDir, userData) {
     themeCacheDir = path.join(userData, "theme-cache");
     soundOverridesRoot = path.join(userData, "sound-overrides");
   }
+  if (activeTheme) activeThemeContext = _createThemeContext(activeTheme);
 }
 
 // Directory where sound-override files for `themeId` live. main.js creates /
@@ -159,6 +162,13 @@ function init(appDir, userData) {
 function getSoundOverridesDir(themeId) {
   if (!soundOverridesRoot || typeof themeId !== "string" || !themeId) return null;
   return path.join(soundOverridesRoot, themeId);
+}
+
+function _createThemeContext(theme) {
+  return createThemeContext(theme, {
+    assetsSvgDir,
+    assetsSoundsDir,
+  });
 }
 
 /**
@@ -264,6 +274,7 @@ function loadTheme(themeId, opts = {}) {
   theme._soundOverrideFiles = _resolveSoundOverrideFiles(themeId, userOverrides);
 
   activeTheme = theme;
+  activeThemeContext = _createThemeContext(theme);
   return theme;
 }
 
@@ -814,26 +825,13 @@ function resolveHint(hookFilename) {
  * @returns {string} absolute file path
  */
 function getAssetPath(filename) {
+  if (activeThemeContext) return activeThemeContext.resolveAssetPath(filename);
   return _resolveAssetPath(activeTheme, filename);
 }
 
 function _resolveAssetPath(theme, filename) {
-  const safeFilename = path.basename(filename);
-  if (!theme) return path.join(assetsSvgDir, safeFilename);
-
-  if (theme._builtin) {
-    // Built-in theme with own assets dir (e.g., calico with APNGs + SVGs)
-    const themeAsset = path.join(theme._themeDir, "assets", safeFilename);
-    if (fs.existsSync(themeAsset)) return themeAsset;
-    return path.join(assetsSvgDir, safeFilename);
-  }
-
-  // External theme: SVGs from cache, everything else from source
-  if (safeFilename.endsWith(".svg")) {
-    return path.join(theme._assetsDir || _externalAssetsSourceDir(theme._themeDir), safeFilename);
-  }
-  // Non-SVG: direct from theme's assets dir (no sanitization needed)
-  return path.join(theme._themeDir, "assets", safeFilename);
+  if (theme === activeTheme && activeThemeContext) return activeThemeContext.resolveAssetPath(filename);
+  return _createThemeContext(theme).resolveAssetPath(filename);
 }
 
 /**
@@ -842,19 +840,7 @@ function _resolveAssetPath(theme, filename) {
  * @returns {string} path prefix
  */
 function getRendererAssetsPath() {
-  if (!activeTheme) return "../assets/svg";
-  if (activeTheme._builtin) {
-    // Built-in theme with own assets dir (e.g., calico with SVG + APNGs)
-    const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
-    if (fs.existsSync(themeAssetsDir)) {
-      // Use relative path (not file:// URL) so SVG internal <style> works
-      // file:// absolute URLs may cause browser to restrict inline CSS in SVG
-      return "../themes/" + activeTheme._id + "/assets";
-    }
-    return "../assets/svg";
-  }
-  // External theme: return file:// URL to the cache dir for SVGs
-  return activeTheme._assetsFileUrl || "../assets/svg";
+  return activeThemeContext ? activeThemeContext.getRendererAssetsPath() : "../assets/svg";
 }
 
 /**
@@ -863,16 +849,7 @@ function getRendererAssetsPath() {
  * @returns {string|null} file:// URL or null for built-in
  */
 function getRendererSourceAssetsPath() {
-  if (!activeTheme) return null;
-  if (activeTheme._builtin) {
-    // Built-in theme with own assets dir (e.g., calico with APNGs)
-    const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
-    if (fs.existsSync(themeAssetsDir)) {
-      return "../themes/" + activeTheme._id + "/assets";
-    }
-    return null;
-  }
-  return pathToFileURL(path.join(activeTheme._themeDir, "assets")).href;
+  return activeThemeContext ? activeThemeContext.getRendererSourceAssetsPath() : null;
 }
 
 /**
@@ -880,43 +857,14 @@ function getRendererSourceAssetsPath() {
  * Contains only the subset renderer.js needs.
  */
 function getRendererConfig() {
-  if (!activeTheme) return null;
-  const t = activeTheme;
-  const trustedScriptedSvgFiles = t._builtin && t.trustedRuntime
-    ? (t.trustedRuntime.scriptedSvgFiles || [])
-    : [];
-  return {
-    viewBox: t.viewBox,
-    miniModeViewBox: t.miniMode ? t.miniMode.viewBox : null,
-    fileViewBoxes: { ...(t.fileViewBoxes || {}) },
-    layout: t.layout,
-    assetsPath: getRendererAssetsPath(),
-    // For external themes: non-SVG assets served from source dir (not cache)
-    sourceAssetsPath: getRendererSourceAssetsPath(),
-    eyeTracking: t.eyeTracking,
-    glyphFlips: t.miniMode ? t.miniMode.glyphFlips : {},
-    miniFlipAssets: t.miniMode ? !!t.miniMode.flipAssets : false,
-    dragSvg: t.reactions && t.reactions.drag ? t.reactions.drag.file : null,
-    idleFollowSvg: t.states.idle[0],
-    // renderer needs to know which states need eye tracking (for <object> vs <img> decision)
-    eyeTrackingStates: t.eyeTracking.enabled ? t.eyeTracking.states : [],
-    trustedScriptedSvgFiles: [...trustedScriptedSvgFiles],
-    rendering: t.rendering || { svgChannel: "auto" },
-    objectScale: t.objectScale,
-    transitions: t.transitions || {},
-  };
+  return activeThemeContext ? activeThemeContext.getRendererConfig() : null;
 }
 
 /**
  * Build config object to inject into hit-renderer process.
  */
 function getHitRendererConfig() {
-  if (!activeTheme) return null;
-  const t = activeTheme;
-  return {
-    reactions: t.reactions || {},
-    idleFollowSvg: t.states.idle[0],
-  };
+  return activeThemeContext ? activeThemeContext.getHitRendererConfig() : null;
 }
 
 /**
@@ -1973,32 +1921,7 @@ function mergeDefaults(raw, themeId, isBuiltin) {
  * @returns {string|null} file:// URL, or null if sound not defined
  */
 function getSoundUrl(soundName) {
-  if (!activeTheme || !activeTheme.sounds) return null;
-
-  const overrideMap = activeTheme._soundOverrideFiles;
-  if (overrideMap && Object.prototype.hasOwnProperty.call(overrideMap, soundName)) {
-    const overridePath = overrideMap[soundName];
-    if (overridePath && fs.existsSync(overridePath)) {
-      return pathToFileURL(overridePath).href;
-    }
-  }
-
-  const filename = activeTheme.sounds[soundName];
-  if (!filename) return null;
-
-  const absPath = activeTheme._builtin
-    ? path.join(assetsSoundsDir, filename)
-    : path.join(activeTheme._themeDir, "sounds", filename);
-
-  if (fs.existsSync(absPath)) return pathToFileURL(absPath).href;
-
-  // Fallback to built-in sounds for external themes that inherit defaults
-  if (!activeTheme._builtin) {
-    const fallback = path.join(assetsSoundsDir, filename);
-    if (fs.existsSync(fallback)) return pathToFileURL(fallback).href;
-  }
-
-  return null;
+  return activeThemeContext ? activeThemeContext.getSoundUrl(soundName) : null;
 }
 
 function getPreviewSoundUrl() {
