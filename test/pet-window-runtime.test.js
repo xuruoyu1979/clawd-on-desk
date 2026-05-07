@@ -67,7 +67,11 @@ function createRuntime(overrides = {}) {
   const runtime = createPetWindowRuntime({
     screen: {
       getAllDisplays: () => displays,
-      getCursorScreenPoint: () => overrides.cursor || { x: 100, y: 100 },
+      getCursorScreenPoint: () => (
+        typeof overrides.cursor === "function"
+          ? overrides.cursor()
+          : (overrides.cursor || { x: 100, y: 100 })
+      ),
       getDisplayNearestPoint: () => displays[0],
       getPrimaryDisplay: () => displays[0],
     },
@@ -139,7 +143,7 @@ describe("pet-window-runtime", () => {
 
     assert.ok(start >= 0 && end > start);
     assert.match(petRuntimeOptions, /isNearWorkAreaEdge:\s*\(bounds\)\s*=>\s*isNearWorkAreaEdge\(bounds\)/);
-    assert.doesNotMatch(petRuntimeOptions, /\n\s*isNearWorkAreaEdge,\r?\n/);
+    assert.doesNotMatch(petRuntimeOptions, /[,{]\s*isNearWorkAreaEdge\s*,/);
   });
 
   it("creates the hit window with the Windows drag focusability contract", () => {
@@ -239,6 +243,25 @@ describe("pet-window-runtime", () => {
     harness.runtime.syncHitWin();
 
     assert.deepStrictEqual(harness.hitWin.calls, []);
+  });
+
+  it("reasserts Windows topmost when drag movement lands near a work-area edge", () => {
+    let cursor = { x: 100, y: 100 };
+    const harness = createRuntime({
+      cursor: () => cursor,
+      nearEdge: true,
+    });
+
+    harness.runtime.setDragLocked(true);
+    harness.runtime.beginDragSnapshot();
+    cursor = { x: 120, y: 100 };
+    harness.runtime.moveWindowForDrag();
+
+    assert.deepStrictEqual(harness.renderWin.calls.filter((call) => call[0] === "setBounds"), [
+      ["setBounds", { x: 30, y: 20, width: 100, height: 100 }],
+    ]);
+    assert.ok(harness.calls.some((call) => call[0] === "reassertWinTopmost"));
+    assert.ok(harness.calls.some((call) => call[0] === "repositionAnchoredSurfaces"));
   });
 
   it("preserves mini transition guards for drag and display changes", () => {

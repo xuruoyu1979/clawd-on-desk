@@ -123,7 +123,11 @@ function createRuntime(options = {}) {
     getFadeSequencer: () => sequencer,
     getPetWindowBounds: () => options.petWindowBounds || { x: 10, y: 20, width: 100, height: 100 },
     applyPetWindowBounds: (bounds) => calls.push(["applyBounds", bounds]),
-    computeFinalDragBounds: () => null,
+    computeFinalDragBounds: (...args) => (
+      typeof options.computeFinalDragBounds === "function"
+        ? options.computeFinalDragBounds(...args)
+        : null
+    ),
     clampToScreenVisual: (x, y) => ({ x, y }),
     flushRuntimeStateToPrefs: () => calls.push("flushPrefs"),
     syncHitStateAfterLoad: () => calls.push("syncHitState"),
@@ -253,6 +257,24 @@ describe("theme-runtime active ownership", () => {
       "startMainTick",
       "flushPrefs",
     ]);
+  });
+
+  it("applies clamped preserved bounds after theme reload when the clamp path adjusts them", () => {
+    makeFixture();
+    const { runtime, calls } = createRuntime({
+      computeFinalDragBounds: () => ({ x: 15, y: 25, width: 100, height: 100 }),
+    });
+    runtime.loadInitialTheme("clawd");
+
+    runtime.activateTheme("calico");
+
+    assert.deepStrictEqual(
+      calls.filter((call) => Array.isArray(call) && call[0] === "applyBounds"),
+      [
+        ["applyBounds", { x: 10, y: 20, width: 100, height: 100 }],
+        ["applyBounds", { x: 15, y: 25, width: 100, height: 100 }],
+      ]
+    );
   });
 
   it("exits mini mode and skips preserved bounds when the new theme lacks mini support", () => {
