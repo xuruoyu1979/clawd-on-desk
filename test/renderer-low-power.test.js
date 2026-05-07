@@ -88,6 +88,16 @@ describe("renderer Cloudling pointer bridge", () => {
 });
 
 describe("renderer glyph flip compensation", () => {
+  it("flips reverse-drawn mini crabwalk assets during pre-entry without entering mini layout", () => {
+    const source = fs.readFileSync(RENDERER, "utf8");
+
+    assert.ok(source.includes("let _miniPreEntryMode = false;"));
+    assert.ok(source.includes("_miniPreEntryMode = !!enabled && preEntry;"));
+    assert.ok(source.includes("_miniPreEntryMode && state === \"mini-crabwalk\""));
+    assert.ok(source.includes("_inMiniMode = !!enabled && !preEntry;"));
+    assert.ok(source.includes("applyMiniFlip(next, state);"));
+  });
+
   it("notifies object-channel SVGs when mini-left glyph compensation changes", () => {
     const source = fs.readFileSync(RENDERER, "utf8");
 

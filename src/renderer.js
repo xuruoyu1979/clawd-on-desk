@@ -325,6 +325,7 @@ let _fileOffsets = {};
 let _transitions = {};  // per-file fade config: { "file.apng": { in: 400, out: 400 } }
 let _miniFlipAssets = false; // theme's mini assets drawn in reverse direction
 let _inMiniMode = false;
+let _miniPreEntryMode = false;
 let _viewportOffsetY = 0;
 
 function setViewportOffset(offsetY) {
@@ -337,9 +338,13 @@ function setViewportOffset(offsetY) {
   }
 }
 
-function applyMiniFlip(el) {
+function shouldApplyMiniAssetFlip(state) {
+  return _miniFlipAssets && (_inMiniMode || (_miniPreEntryMode && state === "mini-crabwalk"));
+}
+
+function applyMiniFlip(el, state = currentState) {
   if (!el || el.tagName !== "IMG") return;
-  el.style.transform = (_miniFlipAssets && _inMiniMode) ? "scaleX(-1)" : "";
+  el.style.transform = shouldApplyMiniAssetFlip(state) ? "scaleX(-1)" : "";
 }
 
 // ── Layered tracking state (multi-layer eye/head/body tracking) ──
@@ -399,10 +404,11 @@ window.electronAPI.onDndChange((enabled) => { dndEnabled = enabled; });
 
 window.electronAPI.onMiniModeChange((enabled, edge, options) => {
   const preEntry = !!(options && options.preEntry);
+  _miniPreEntryMode = !!enabled && preEntry;
   _inMiniMode = !!enabled && !preEntry;
   miniLeftFlip = !!enabled && edge === "left";
   container.classList.toggle("mini-left", miniLeftFlip);
-  applyMiniFlip(clawdEl);
+  applyMiniFlip(clawdEl, currentState);
   if (miniLeftFlip) {
     applyGlyphFlipCompensation(clawdEl);
   } else {
@@ -708,7 +714,7 @@ function swapToFile(file, state, useObjectChannel) {
     next.id = "clawd";
     next.style.opacity = "0";
     applyObjectScaleStyle(next, file, state);
-    applyMiniFlip(next);
+    applyMiniFlip(next, state);
 
     const swap = () => {
       if (pendingNext !== next) return;
