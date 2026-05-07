@@ -7,8 +7,14 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { VISUAL_FALLBACK_STATES } = require("./theme-loader");
-const { sessionAliasKey } = require("./session-alias");
-const { readCodexThreadName } = require("../hooks/codex-session-index");
+const {
+  deriveSessionBadge,
+  normalizeTitle,
+  shouldAutoClearDetachedSession: shouldAutoClearDetachedSessionWithDeps,
+  buildSessionSnapshot: buildSessionSnapshotFromSessions,
+  getActiveSessionAliasKeys: getActiveSessionAliasKeysFromSessions,
+  sessionSnapshotSignature,
+} = require("./state-session-snapshot");
 
 // ── Agent icons (official logos from assets/icons/agents/) ──
 const AGENT_ICON_DIR = path.join(__dirname, "..", "assets", "icons", "agents");
@@ -67,30 +73,6 @@ const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification"
 // user-facing status ("Running" / "Done" / "Interrupted" / "Idle") without
 // extending the state machine. Cap avoids unbounded growth on long sessions.
 const RECENT_EVENT_LIMIT = 8;
-
-// Hook event name → i18n key for recentEvents.label derivation (C2 renders at
-// read time so a language switch updates already-stored events too).
-// eslint-disable-next-line no-unused-vars
-const EVENT_LABEL_KEYS = {
-  SessionStart: "eventLabelSessionStart",
-  SessionEnd: "eventLabelSessionEnd",
-  UserPromptSubmit: "eventLabelUserPromptSubmit",
-  PreToolUse: "eventLabelPreToolUse",
-  PostToolUse: "eventLabelPostToolUse",
-  PostToolUseFailure: "eventLabelPostToolUseFailure",
-  AfterAgent: "eventLabelAfterAgent",
-  Stop: "eventLabelStop",
-  StopFailure: "eventLabelStopFailure",
-  SubagentStart: "eventLabelSubagentStart",
-  SubagentStop: "eventLabelSubagentStop",
-  PreCompress: "eventLabelPreCompress",
-  PreCompact: "eventLabelPreCompact",
-  PostCompact: "eventLabelPostCompact",
-  Notification: "eventLabelNotification",
-  Elicitation: "eventLabelElicitation",
-  WorktreeCreate: "eventLabelWorktreeCreate",
-  "stale-cleanup": "eventLabelStaleCleanup",
-};
 
 // Session display hints — validated against theme.displayHintMap keys
 let DISPLAY_HINT_MAP = {};
@@ -747,61 +729,11 @@ function pushRecentEvent(existing, state, event) {
   return previous;
 }
 
-// Derive a user-facing status badge from a session. Returns one of:
-// "running" / "done" / "interrupted" / "idle".
-// Intentionally 4 categories — not 5. There is no "exited" because sessions
-// are deleted on SessionEnd (src/state.js `sessions.delete(sessionId)`),
-// so a session with state:"sleeping"+event:"SessionEnd" is unreachable in
-// the menu iteration.
-function deriveSessionBadge(session) {
-  if (!session) return "idle";
-  // Any non-idle/non-sleeping state → session is actively doing something
-  if (session.state !== "idle" && session.state !== "sleeping") return "running";
-  // Sleeping is treated as idle (the pet sleeping doesn't mean the session is dead)
-  if (session.state === "sleeping") return "idle";
-  // state === "idle": disambiguate by most-recent event
-  const events = Array.isArray(session.recentEvents) ? session.recentEvents : [];
-  const latest = events.length ? events[events.length - 1] : null;
-  const latestEvent = latest && latest.event;
-  if (latestEvent === "StopFailure" || latestEvent === "PostToolUseFailure") return "interrupted";
-  if (latestEvent === "Stop" || latestEvent === "PostCompact") return "done";
-  return "idle";
-}
-
-function isEndedSessionBadge(badge) {
-  return badge === "done" || badge === "interrupted";
-}
-
 function shouldAutoClearDetachedSession(session, badge) {
-  if (ctx.sessionHudCleanupDetached !== true) return false;
-  if (!session || session.headless || session.state !== "idle" || session.agentPid) return false;
-  if (!session.pidReachable || !session.sourcePid) return false;
-  if (!isEndedSessionBadge(badge)) return false;
-  return !isProcessAlive(session.sourcePid);
-}
-
-// Local title normalizer (trim, strip control chars, clamp, empty → null).
-// Note: hooks/clawd-hook.js has an identical helper; hook scripts can't require src/* (different runtime
-// context: plain node child process, no Electron), so the two are kept in
-// sync manually rather than sharing a module.
-const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
-const SESSION_TITLE_MAX = 80;
-
-function normalizeTitle(value) {
-  if (typeof value !== "string") return null;
-  const collapsed = value
-    .replace(SESSION_TITLE_CONTROL_RE, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!collapsed) return null;
-  return collapsed.length > SESSION_TITLE_MAX
-    ? `${collapsed.slice(0, SESSION_TITLE_MAX - 1)}\u2026`
-    : collapsed;
-}
-
-function sessionUpdatedAt(session) {
-  const updatedAt = Number(session && session.updatedAt);
-  return Number.isFinite(updatedAt) ? updatedAt : 0;
+  return shouldAutoClearDetachedSessionWithDeps(session, badge, {
+    sessionHudCleanupDetached: ctx.sessionHudCleanupDetached === true,
+    isProcessAlive,
+  });
 }
 
 function getSessionAliases() {
@@ -812,172 +744,18 @@ function getSessionAliases() {
     : {};
 }
 
-function getSessionAliasEntry(id, sessionLike, sessionAliases = {}) {
-  const scopedAliasKey = sessionAliasKey(
-    sessionLike && sessionLike.host,
-    sessionLike && sessionLike.agentId,
-    id,
-    { cwd: sessionLike && sessionLike.cwd }
-  );
-  if (scopedAliasKey && sessionAliases[scopedAliasKey]) return sessionAliases[scopedAliasKey];
-
-  const legacyAliasKey = sessionAliasKey(
-    sessionLike && sessionLike.host,
-    sessionLike && sessionLike.agentId,
-    id
-  );
-  if (legacyAliasKey && legacyAliasKey !== scopedAliasKey) return sessionAliases[legacyAliasKey] || null;
-  return legacyAliasKey ? sessionAliases[legacyAliasKey] : null;
-}
-
-function sessionDisplayTitle(id, sessionLike, sessionAliases = {}) {
-  const alias = getSessionAliasEntry(id, sessionLike, sessionAliases);
-  if (alias && typeof alias.title === "string" && alias.title) return alias.title;
-  const title = getEffectiveSessionTitle(id, sessionLike);
-  if (title) return title;
-  const cwd = sessionLike && sessionLike.cwd;
-  if (cwd) return path.basename(cwd);
-  return id && id.length > 6 ? `${id.slice(0, 6)}..` : id;
-}
-
-function getEffectiveSessionTitle(id, sessionLike) {
-  if (sessionLike && sessionLike.agentId === "codex" && !sessionLike.host) {
-    const threadName = normalizeTitle(readCodexThreadName(id));
-    if (threadName) return threadName;
-  }
-  return normalizeTitle(sessionLike && sessionLike.sessionTitle);
-}
-
-function sessionMenuComparator(a, b) {
-  const pa = STATE_PRIORITY[a.state] || 0;
-  const pb = STATE_PRIORITY[b.state] || 0;
-  if (pb !== pa) return pb - pa;
-  return sessionUpdatedAt(b) - sessionUpdatedAt(a);
-}
-
-function sessionUpdatedAtComparator(a, b) {
-  const byTime = sessionUpdatedAt(b) - sessionUpdatedAt(a);
-  if (byTime !== 0) return byTime;
-  return String(a.id).localeCompare(String(b.id));
-}
-
-function buildSessionSnapshotEntry(id, session, sessionAliases = {}) {
-  const alias = getSessionAliasEntry(id, session, sessionAliases);
-  const recentEvents = Array.isArray(session && session.recentEvents)
-    ? session.recentEvents
-    : [];
-  const latestEvent = recentEvents.length ? recentEvents[recentEvents.length - 1] : null;
-  const rawEvent = latestEvent && latestEvent.event ? latestEvent.event : null;
-  const eventAt = Number(latestEvent && latestEvent.at);
-  const badge = deriveSessionBadge(session);
-  return {
-    id,
-    agentId: (session && session.agentId) || null,
-    iconUrl: getAgentIconUrl(session && session.agentId),
-    state: (session && session.state) || "idle",
-    badge,
-    hiddenFromHud: shouldAutoClearDetachedSession(session, badge),
-    hasAlias: !!(alias && typeof alias.title === "string" && alias.title),
-    sessionTitle: getEffectiveSessionTitle(id, session),
-    displayTitle: sessionDisplayTitle(id, session, sessionAliases),
-    cwd: (session && session.cwd) || "",
-    updatedAt: sessionUpdatedAt(session),
-    sourcePid: (session && session.sourcePid) || null,
-    host: (session && session.host) || null,
-    headless: !!(session && session.headless),
-    lastEvent: latestEvent ? {
-      labelKey: rawEvent ? (EVENT_LABEL_KEYS[rawEvent] || null) : null,
-      rawEvent,
-      at: Number.isFinite(eventAt) ? eventAt : 0,
-    } : null,
-  };
-}
-
 function buildSessionSnapshot() {
-  const entries = [];
-  const sessionAliases = getSessionAliases();
-  for (const [id, session] of sessions) {
-    entries.push(buildSessionSnapshotEntry(id, session, sessionAliases));
-  }
-
-  const dashboardEntries = entries.slice().sort(sessionUpdatedAtComparator);
-  const menuEntries = entries.slice().sort(sessionMenuComparator);
-  const orderedIds = dashboardEntries.map((entry) => entry.id);
-  const menuOrderedIds = menuEntries.map((entry) => entry.id);
-  const hudEntries = dashboardEntries.filter((entry) =>
-    !entry.headless && entry.state !== "sleeping" && !entry.hiddenFromHud
-  );
-
-  const groupMap = new Map();
-  for (const entry of dashboardEntries) {
-    const host = entry.host || "";
-    if (!groupMap.has(host)) groupMap.set(host, []);
-    groupMap.get(host).push(entry.id);
-  }
-  const groups = [];
-  if (groupMap.has("")) {
-    groups.push({ host: "", ids: groupMap.get("") });
-  }
-  for (const [host, ids] of groupMap) {
-    if (!host) continue;
-    groups.push({ host, ids });
-  }
-
-  const lastSession = dashboardEntries[0] || null;
-  return {
-    sessions: entries,
-    groups,
-    orderedIds,
-    menuOrderedIds,
-    hudTotalNonIdle: hudEntries.length,
-    hudLastSessionId: hudEntries.length ? hudEntries[0].id : null,
-    hudLastTitle: hudEntries.length ? hudEntries[0].displayTitle : null,
-    lastSessionId: lastSession ? lastSession.id : null,
-    lastTitle: lastSession ? lastSession.displayTitle : null,
-  };
+  return buildSessionSnapshotFromSessions(sessions, {
+    sessionAliases: getSessionAliases(),
+    getAgentIconUrl,
+    statePriority: STATE_PRIORITY,
+    sessionHudCleanupDetached: ctx.sessionHudCleanupDetached === true,
+    isProcessAlive,
+  });
 }
 
 function getActiveSessionAliasKeys() {
-  const keys = new Set();
-  for (const [id, session] of sessions) {
-    const key = sessionAliasKey(
-      session && session.host,
-      session && session.agentId,
-      id,
-      { cwd: session && session.cwd }
-    );
-    if (key) keys.add(key);
-  }
-  return keys;
-}
-
-function sessionSnapshotSignature(snapshot) {
-  return JSON.stringify({
-    orderedIds: snapshot.orderedIds,
-    menuOrderedIds: snapshot.menuOrderedIds,
-    hudTotalNonIdle: snapshot.hudTotalNonIdle,
-    hudLastSessionId: snapshot.hudLastSessionId,
-    hudLastTitle: snapshot.hudLastTitle,
-    lastSessionId: snapshot.lastSessionId,
-    lastTitle: snapshot.lastTitle,
-    sessions: snapshot.sessions.map((entry) => ({
-      id: entry.id,
-      state: entry.state,
-      badge: entry.badge,
-      hasAlias: entry.hasAlias,
-      sessionTitle: entry.sessionTitle,
-      displayTitle: entry.displayTitle,
-      cwd: entry.cwd,
-      agentId: entry.agentId,
-      sourcePid: entry.sourcePid,
-      headless: entry.headless,
-      hiddenFromHud: !!entry.hiddenFromHud,
-      host: entry.host,
-      lastEventLabelKey: entry.lastEvent ? entry.lastEvent.labelKey : null,
-      lastEventRawEvent: entry.lastEvent ? entry.lastEvent.rawEvent : null,
-      lastEventAt: entry.lastEvent ? entry.lastEvent.at : null,
-    })),
-  });
+  return getActiveSessionAliasKeysFromSessions(sessions);
 }
 
 function broadcastSessionSnapshot(snapshot) {
