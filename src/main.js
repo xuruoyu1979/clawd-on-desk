@@ -20,7 +20,7 @@ const { registerUpdateBubbleIpc } = initUpdateBubble;
 const createSettingsAnimationOverridesMain = require("./settings-animation-overrides-main");
 const { registerSettingsAnimationOverridesIpc } = createSettingsAnimationOverridesMain;
 const createShortcutRuntime = require("./shortcut-runtime");
-const hitGeometry = require("./hit-geometry");
+const createPetGeometryMain = require("./pet-geometry-main");
 const {
   findNearestWorkArea,
   computeLooseClamp,
@@ -32,7 +32,6 @@ const {
 } = require("./work-area");
 const {
   getThemeMarginBox,
-  computeThemeAnchorRect,
   computeStableVisibleContentMargins,
   getLooseDragMargins,
   getRestClampMargins,
@@ -553,19 +552,21 @@ if (activeTheme._id !== _requestedThemeId || activeTheme._variantId !== _request
 }
 
 // ── CSS <object> sizing (from theme) ──
+const petGeometryMain = createPetGeometryMain({
+  getActiveTheme: () => activeTheme,
+  getCurrentState: () => _state.getCurrentState(),
+  getCurrentSvg: () => _state.getCurrentSvg(),
+  getCurrentHitBox: () => _state.getCurrentHitBox(),
+  getMiniMode: () => _mini.getMiniMode(),
+  getMiniPeekOffset: () => _mini.PEEK_OFFSET,
+});
+
 function getObjRect(bounds) {
-  if (!bounds) return null;
-  const state = _state.getCurrentState();
-  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
-  return hitGeometry.getAssetRectScreen(activeTheme, bounds, state, file)
-    || { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
+  return petGeometryMain.getObjRect(bounds);
 }
 
 function getAssetPointerPayload(bounds, point) {
-  if (!bounds || !point || !activeTheme) return null;
-  const state = _state.getCurrentState();
-  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
-  return hitGeometry.getAssetPointerPayload(activeTheme, bounds, state, file, point);
+  return petGeometryMain.getAssetPointerPayload(bounds, point);
 }
 
 let win;
@@ -1161,48 +1162,15 @@ const sessions = _state.sessions;
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) {
-  if (!bounds) return null;
-  const state = _state.getCurrentState();
-  const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
-  const hit = hitGeometry.getHitRectScreen(
-    activeTheme,
-    bounds,
-    state,
-    file,
-    _state.getCurrentHitBox(),
-    {
-      padX: _mini.getMiniMode() ? _mini.PEEK_OFFSET : 0,
-      padY: _mini.getMiniMode() ? 8 : 0,
-    }
-  );
-  return hit || { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height };
+  return petGeometryMain.getHitRectScreen(bounds);
 }
 
 function getUpdateBubbleAnchorRect(bounds) {
-  if (!bounds || !activeTheme) return getHitRectScreen(bounds);
-
-  const stableAnchor = computeThemeAnchorRect(activeTheme, bounds);
-  if (stableAnchor) return stableAnchor;
-
-  const box = getThemeMarginBox(activeTheme);
-  const currentFile = _state.getCurrentSvg();
-  if (box && currentFile) {
-    const currentAnchor = computeThemeAnchorRect(activeTheme, bounds, {
-      box,
-      state: _state.getCurrentState(),
-      file: currentFile,
-    });
-    if (currentAnchor) return currentAnchor;
-  }
-
-  return getHitRectScreen(bounds);
+  return petGeometryMain.getUpdateBubbleAnchorRect(bounds);
 }
 
 function getSessionHudAnchorRect(bounds) {
-  if (!bounds || !activeTheme) return null;
-  const box = getThemeMarginBox(activeTheme);
-  if (!box) return null;
-  return computeThemeAnchorRect(activeTheme, bounds, { box });
+  return petGeometryMain.getSessionHudAnchorRect(bounds);
 }
 
 function getVisibleContentMargins(bounds) {
