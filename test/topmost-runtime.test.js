@@ -165,6 +165,28 @@ describe("topmost runtime Windows recovery", () => {
     assert.strictEqual(timers.intervals[0].cleared, true);
   });
 
+  it("cleanup clears both the watchdog interval and pending HWND recovery", () => {
+    const timers = makeTimers();
+    const win = new FakeWindow();
+    const runtime = createTopmostRuntime({
+      isWin: true,
+      getWin: () => win,
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+    });
+
+    runtime.startTopmostWatchdog();
+    runtime.scheduleHwndRecovery();
+    runtime.cleanup();
+
+    assert.strictEqual(timers.intervals.length, 1);
+    assert.strictEqual(timers.timeouts.length, 1);
+    assert.strictEqual(timers.intervals[0].cleared, true);
+    assert.strictEqual(timers.timeouts[0].cleared, true);
+  });
+
   it("detects work-area edge proximity using the injected work-area resolver", () => {
     const runtime = createTopmostRuntime({
       isWin: true,
@@ -177,6 +199,26 @@ describe("topmost runtime Windows recovery", () => {
 });
 
 describe("topmost runtime macOS visibility", () => {
+  it("uses native macOS stationary visibility without Electron fallback when available", () => {
+    const win = new FakeWindow();
+    const stationaryCalls = [];
+    const runtime = createTopmostRuntime({
+      isMac: true,
+      getWin: () => win,
+      applyStationaryCollectionBehavior: (window) => {
+        stationaryCalls.push(window);
+        return true;
+      },
+    });
+
+    runtime.reapplyMacVisibility();
+
+    assert.deepStrictEqual(win.calls, [
+      ["setAlwaysOnTop", true, createTopmostRuntime.MAC_TOPMOST_LEVEL],
+    ]);
+    assert.deepStrictEqual(stationaryCalls, [win]);
+  });
+
   it("reapplies native visibility first and falls back to Electron cross-space visibility", () => {
     const win = new FakeWindow();
     const hitWin = new FakeWindow();
