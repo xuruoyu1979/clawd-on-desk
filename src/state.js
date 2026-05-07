@@ -21,6 +21,10 @@ const {
   getStaleSessionDecision,
 } = require("./state-stale-cleanup");
 const {
+  createHitboxRuntime,
+  resolveHitBoxForSvg: resolveHitBoxForSvgWithRuntime,
+} = require("./state-hitbox-resolver");
+const {
   deriveSessionBadge,
   normalizeTitle,
   shouldAutoClearDetachedSession: shouldAutoClearDetachedSessionWithDeps,
@@ -99,6 +103,7 @@ let HIT_BOXES = {};
 let FILE_HIT_BOXES = {};
 let WIDE_SVGS = new Set();
 let SLEEPING_SVGS = new Set();
+let hitboxRuntime = { hitBoxes: HIT_BOXES, fileHitBoxes: FILE_HIT_BOXES, wideSvgs: WIDE_SVGS, sleepingSvgs: SLEEPING_SVGS };
 let currentHitBox = HIT_BOXES.default;
 
 // ── State machine internal ──
@@ -187,10 +192,7 @@ const STATE_LABEL_KEY = {
 };
 
 function resolveHitBoxForSvg(svg) {
-  if (svg && FILE_HIT_BOXES[svg]) return FILE_HIT_BOXES[svg];
-  if (svg && SLEEPING_SVGS.has(svg)) return HIT_BOXES.sleeping;
-  if (svg && WIDE_SVGS.has(svg)) return HIT_BOXES.wide;
-  return HIT_BOXES.default;
+  return resolveHitBoxForSvgWithRuntime(svg, hitboxRuntime);
 }
 
 function refreshTheme() {
@@ -216,10 +218,11 @@ function refreshTheme() {
   COLLAPSE_DURATION = theme.timings.collapseDuration || 0;
   SLEEP_MODE = theme.sleepSequence && theme.sleepSequence.mode === "direct" ? "direct" : "full";
   DISPLAY_HINT_MAP = theme.displayHintMap || {};
-  HIT_BOXES = theme.hitBoxes;
-  FILE_HIT_BOXES = theme.fileHitBoxes || {};
-  WIDE_SVGS = new Set(theme.wideHitboxFiles || []);
-  SLEEPING_SVGS = new Set(theme.sleepingHitboxFiles || []);
+  hitboxRuntime = createHitboxRuntime(theme);
+  HIT_BOXES = hitboxRuntime.hitBoxes;
+  FILE_HIT_BOXES = hitboxRuntime.fileHitBoxes;
+  WIDE_SVGS = hitboxRuntime.wideSvgs;
+  SLEEPING_SVGS = hitboxRuntime.sleepingSvgs;
 
   currentHitBox = resolveHitBoxForSvg(currentSvg);
   refreshUpdateVisualOverride();
