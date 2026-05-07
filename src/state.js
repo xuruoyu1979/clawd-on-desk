@@ -6,12 +6,17 @@ try { ({ screen, nativeImage } = require("electron")); } catch { screen = null; 
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
-const { VISUAL_FALLBACK_STATES } = require("./theme-loader");
 const {
   createStatePriorityConstants,
   getStatePriority,
   resolveDisplayStateFromSessions,
 } = require("./state-priority");
+const {
+  buildStateBindings,
+  hasOwnVisualFiles: hasOwnVisualFilesWithBindings,
+  resolveVisualBinding: resolveVisualBindingWithBindings,
+  getSvgOverride: getSvgOverrideWithDeps,
+} = require("./state-visual-resolver");
 const {
   deriveSessionBadge,
   normalizeTitle,
@@ -181,38 +186,6 @@ const STATE_LABEL_KEY = {
   idle: "sessionIdle", sleeping: "sessionSleeping",
 };
 
-function buildStateBindings(nextTheme) {
-  const bindings = {};
-  const sourceBindings = nextTheme && nextTheme._stateBindings;
-  if (sourceBindings && typeof sourceBindings === "object") {
-    for (const [stateKey, entry] of Object.entries(sourceBindings)) {
-      bindings[stateKey] = {
-        files: Array.isArray(entry && entry.files) ? [...entry.files] : [],
-        fallbackTo: typeof (entry && entry.fallbackTo) === "string" && entry.fallbackTo ? entry.fallbackTo : null,
-      };
-    }
-  }
-  if (nextTheme && nextTheme.states) {
-    for (const [stateKey, files] of Object.entries(nextTheme.states)) {
-      const normalizedFiles = Array.isArray(files) ? [...files] : [];
-      if (!bindings[stateKey]) {
-        bindings[stateKey] = { files: normalizedFiles, fallbackTo: null };
-      } else if (bindings[stateKey].files.length === 0) {
-        bindings[stateKey].files = normalizedFiles;
-      }
-    }
-  }
-  if (nextTheme && nextTheme.miniMode && nextTheme.miniMode.states) {
-    for (const [stateKey, files] of Object.entries(nextTheme.miniMode.states)) {
-      bindings[stateKey] = {
-        files: Array.isArray(files) ? [...files] : [],
-        fallbackTo: null,
-      };
-    }
-  }
-  return bindings;
-}
-
 function resolveHitBoxForSvg(svg) {
   if (svg && FILE_HIT_BOXES[svg]) return FILE_HIT_BOXES[svg];
   if (svg && SLEEPING_SVGS.has(svg)) return HIT_BOXES.sleeping;
@@ -326,35 +299,12 @@ function isOneshotDisabled(logicalState) {
   catch { return false; }
 }
 
-function pickStateFile(files) {
-  if (!Array.isArray(files) || files.length === 0) return null;
-  return files[Math.floor(Math.random() * files.length)];
-}
-
 function hasOwnVisualFiles(state) {
-  const entry = STATE_BINDINGS[state];
-  return !!(entry && Array.isArray(entry.files) && entry.files.length > 0);
+  return hasOwnVisualFilesWithBindings(STATE_BINDINGS, state);
 }
 
 function resolveVisualBinding(state) {
-  let cursor = state;
-  let visited = null;
-  for (let hops = 0; hops <= 3; hops += 1) {
-    const entry = STATE_BINDINGS[cursor];
-    if (entry && Array.isArray(entry.files) && entry.files.length > 0) {
-      return pickStateFile(entry.files);
-    }
-    if (!entry || !entry.fallbackTo || !VISUAL_FALLBACK_STATES.has(cursor)) break;
-    if (!visited) visited = new Set([cursor]);
-    if (visited.has(entry.fallbackTo)) break;
-    visited.add(entry.fallbackTo);
-    cursor = entry.fallbackTo;
-  }
-  const idleEntry = STATE_BINDINGS.idle;
-  if (idleEntry && Array.isArray(idleEntry.files) && idleEntry.files.length > 0) {
-    return pickStateFile(idleEntry.files);
-  }
-  return null;
+  return resolveVisualBindingWithBindings(state, STATE_BINDINGS);
 }
 
 function applyResolvedDisplayState() {
@@ -1366,74 +1316,16 @@ function setUpdateVisualState(kind) {
   return updateVisualState;
 }
 
-function getActiveWorkingCount() {
-  let n = 0;
-  for (const [, s] of sessions) {
-    if (!s.headless && (s.state === "working" || s.state === "thinking" || s.state === "juggling")) n++;
-  }
-  return n;
-}
-
-function getWorkingSvg() {
-  const n = getActiveWorkingCount();
-  if (theme.workingTiers) {
-    for (const tier of theme.workingTiers) {
-      if (n >= tier.minSessions) return tier.file;
-    }
-  }
-  return STATE_SVGS.working[0];
-}
-
-function getWinningSessionDisplayHint(targetState) {
-  let best = null;
-  let bestAt = -1;
-  for (const [, s] of sessions) {
-    if (s.headless || s.state !== targetState) continue;
-    if (s.updatedAt >= bestAt) {
-      bestAt = s.updatedAt;
-      best = s;
-    }
-  }
-  if (!best || !best.displayHint) return null;
-  // Resolve semantic hint token through displayHintMap
-  const resolved = DISPLAY_HINT_MAP[best.displayHint];
-  return resolved || null;
-}
-
 function getSvgOverride(state) {
-  if (updateVisualState && state === updateVisualState && updateVisualSvgOverride) {
-    return updateVisualSvgOverride;
-  }
-  if (state === "idle") return SVG_IDLE_FOLLOW;
-  if (state === "working") {
-    const hinted = getWinningSessionDisplayHint("working");
-    if (hinted) return hinted;
-    return getWorkingSvg();
-  }
-  if (state === "juggling") {
-    const hinted = getWinningSessionDisplayHint("juggling");
-    if (hinted) return hinted;
-    return getJugglingSvg();
-  }
-  if (state === "thinking") {
-    const hinted = getWinningSessionDisplayHint("thinking");
-    if (hinted) return hinted;
-    return STATE_SVGS.thinking[0];
-  }
-  return null;
-}
-
-function getJugglingSvg() {
-  let n = 0;
-  for (const [, s] of sessions) {
-    if (!s.headless && s.state === "juggling") n++;
-  }
-  if (theme.jugglingTiers) {
-    for (const tier of theme.jugglingTiers) {
-      if (n >= tier.minSessions) return tier.file;
-    }
-  }
-  return STATE_SVGS.juggling[0];
+  return getSvgOverrideWithDeps(state, {
+    updateVisualState,
+    updateVisualSvgOverride,
+    idleFollowSvg: SVG_IDLE_FOLLOW,
+    sessions,
+    displayHintMap: DISPLAY_HINT_MAP,
+    theme,
+    stateSvgs: STATE_SVGS,
+  });
 }
 
 // ── Session Dashboard ──
