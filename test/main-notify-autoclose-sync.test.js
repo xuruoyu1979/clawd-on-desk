@@ -2,41 +2,69 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const fs = require("node:fs");
-const path = require("node:path");
 
-describe("main settings subscriber notification auto-close sync", () => {
-  it("refreshes visible notify timers when notification auto-close seconds change to a positive value", () => {
-    const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+const createSettingsEffectRouter = require("../src/settings-effect-router");
 
-    assert.ok(
-      source.includes('changes.notificationBubbleAutoCloseSeconds === 0'),
-      "main.js should keep the immediate-clear path for 0-second notification bubbles"
-    );
-    assert.ok(
-      source.includes('changes.notificationBubbleAutoCloseSeconds > 0'),
-      "main.js should react to positive notificationBubbleAutoCloseSeconds changes"
-    );
-    assert.ok(
-      source.includes('_perm.refreshPassiveNotifyAutoClose'),
-      "main.js should trigger permission-side notify timer refreshes"
-    );
+function createFakeSettingsController() {
+  let subscriber = null;
+  return {
+    controller: {
+      getSnapshot: () => ({ shortcuts: {} }),
+      subscribe: (fn) => {
+        subscriber = fn;
+        return () => {
+          if (subscriber === fn) subscriber = null;
+        };
+      },
+      subscribeKey: () => () => {},
+    },
+    emit(changes) {
+      assert.strictEqual(typeof subscriber, "function", "router should subscribe to settings");
+      subscriber({ changes, snapshot: { shortcuts: {}, ...changes } });
+    },
+  };
+}
+
+describe("settings effect router notification auto-close sync", () => {
+  it("clears 0-second notify bubbles and refreshes visible notify timers for positive values", () => {
+    const calls = [];
+    const { controller, emit } = createFakeSettingsController();
+    const router = createSettingsEffectRouter({
+      settingsController: controller,
+      clearCodexNotifyBubbles: (...args) => calls.push(["clearCodex", ...args]),
+      clearKimiNotifyBubbles: (...args) => calls.push(["clearKimi", ...args]),
+      refreshPassiveNotifyAutoClose: () => calls.push(["refreshPassive"]),
+      updateMirrors: () => {},
+    });
+
+    router.start();
+    emit({ notificationBubbleAutoCloseSeconds: 0 });
+    assert.deepStrictEqual(calls, [
+      ["clearCodex", undefined, "settings-policy-disabled"],
+      ["clearKimi", undefined, "settings-policy-disabled"],
+    ]);
+
+    calls.length = 0;
+    emit({ notificationBubbleAutoCloseSeconds: 10 });
+    assert.deepStrictEqual(calls, [["refreshPassive"]]);
   });
 
-  it("refreshes visible update-bubble timers when update auto-close seconds change to a positive value", () => {
-    const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+  it("hides 0-second update bubbles and refreshes visible update-bubble timers for positive values", () => {
+    const calls = [];
+    const { controller, emit } = createFakeSettingsController();
+    const router = createSettingsEffectRouter({
+      settingsController: controller,
+      hideUpdateBubbleForPolicy: () => calls.push(["hideUpdate"]),
+      refreshUpdateBubbleAutoClose: () => calls.push(["refreshUpdate"]),
+      updateMirrors: () => {},
+    });
 
-    assert.ok(
-      source.includes('changes.updateBubbleAutoCloseSeconds === 0'),
-      "main.js should keep the immediate-hide path for 0-second update bubbles"
-    );
-    assert.ok(
-      source.includes('changes.updateBubbleAutoCloseSeconds > 0'),
-      "main.js should react to positive updateBubbleAutoCloseSeconds changes"
-    );
-    assert.ok(
-      source.includes('_updateBubble.refreshAutoCloseForPolicy'),
-      "main.js should trigger update-bubble timer refreshes"
-    );
+    router.start();
+    emit({ updateBubbleAutoCloseSeconds: 0 });
+    assert.deepStrictEqual(calls, [["hideUpdate"]]);
+
+    calls.length = 0;
+    emit({ updateBubbleAutoCloseSeconds: 10 });
+    assert.deepStrictEqual(calls, [["refreshUpdate"]]);
   });
 });

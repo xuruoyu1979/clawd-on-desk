@@ -11,6 +11,7 @@ const {
   createSettingsSizePreviewSession,
 } = require("./settings-size-preview-session");
 const { registerSettingsIpc } = require("./settings-ipc");
+const createSettingsEffectRouter = require("./settings-effect-router");
 const { registerSessionIpc } = require("./session-ipc");
 const { registerPetInteractionIpc } = require("./pet-interaction-ipc");
 const initPermission = require("./permission");
@@ -282,7 +283,7 @@ const _settingsController = createSettingsController({
 
 // Mirror of `_settingsController.get("lang")` so existing sync read sites in
 // menu.js / state.js / etc. don't have to round-trip through the controller.
-// Updated by the subscriber in `wireSettingsSubscribers()` below — never
+// Updated by the settings-effect-router subscriber below; never
 // assign directly.
 let lang = _settingsController.get("lang");
 const translate = createTranslator(() => lang);
@@ -626,8 +627,8 @@ function getEffectiveCurrentPixelSize(overrideWa) {
 let contextMenu;
 let doNotDisturb = false;
 let isQuitting = false;
-// Mirror caches — kept in sync with the settings store via the subscriber
-// in wireSettingsSubscribers() further down. Read freely; never assign
+// Mirror caches: kept in sync with the settings store via settings-effect-router
+// further down. Read freely; never assign
 // directly (writes go through ctx setters → controller.applyUpdate).
 let showTray = _settingsController.get("showTray");
 let showDock = _settingsController.get("showDock");
@@ -1456,8 +1457,8 @@ function focusLog(msg) {
 //
 // Setters that previously assigned to module-level vars now route through
 // `_settingsController.applyUpdate(key, value)`. The mirror cache is updated
-// by the subscriber wired in `wireSettingsSubscribers()` after this ctx is
-// built. Side effects that used to live inside setters (e.g.
+// by the settings-effect-router subscriber after this ctx is built. Side
+// effects that used to live inside setters (e.g.
 // `syncPermissionShortcuts()` for hideBubbles) are now reactive and live in
 // the subscriber too.
 const _menuCtx = {
@@ -1539,219 +1540,54 @@ const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
         destroyTray, showPetContextMenu, ensureContextMenuOwner,
         requestAppQuit, applyDockVisibility } = _menu;
 
-// ── Settings subscribers ──
-//
-// Single source of truth: any change to `_settingsController` lands here
-// first. We update the mirror caches above (so existing sync read sites
-// still work), then fire reactive side effects (menu rebuild, permission
-// shortcut resync, bubble reposition, etc.). Setters in the ctx above
-// route writes through the controller, so menu clicks and IPC updates
-// from a future settings panel land here identically.
-const MENU_AFFECTING_KEYS = new Set([
-  "lang", "soundMuted", "bubbleFollowPet", "hideBubbles", "permissionBubblesEnabled",
-  "notificationBubbleAutoCloseSeconds", "updateBubbleAutoCloseSeconds",
-  "manageClaudeHooksAutomatically", "autoStartWithClaude", "openAtLogin", "showTray", "showDock", "theme", "size",
-  "sessionAliases",
-]);
-let lastTogglePetShortcut = ((_settingsController.getSnapshot().shortcuts) || {}).togglePet || null;
+// ── Settings effect router ──
+const SETTINGS_MIRROR_SETTERS = {
+  lang: (v) => { lang = v; }, size: (v) => { currentSize = v; }, showTray: (v) => { showTray = v; },
+  showDock: (v) => { showDock = v; }, manageClaudeHooksAutomatically: (v) => { manageClaudeHooksAutomatically = v; },
+  autoStartWithClaude: (v) => { autoStartWithClaude = v; }, openAtLogin: (v) => { openAtLogin = v; },
+  bubbleFollowPet: (v) => { bubbleFollowPet = v; }, sessionHudEnabled: (v) => { sessionHudEnabled = v; },
+  sessionHudShowElapsed: (v) => { sessionHudShowElapsed = v; }, sessionHudCleanupDetached: (v) => { sessionHudCleanupDetached = v; },
+  soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
+  allowEdgePinning: (v) => { allowEdgePinningCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; },
+};
 
-function wireSettingsSubscribers() {
-  _settingsController.subscribe(({ changes }) => {
-    // 1. Update mirror caches first so any side-effect handler reads fresh values.
-    if ("lang" in changes) lang = changes.lang;
-    if ("size" in changes) currentSize = changes.size;
-    if ("showTray" in changes) {
-      showTray = changes.showTray;
-      try { changes.showTray ? createTray() : destroyTray(); } catch (err) {
-        console.warn("Clawd: tray toggle failed:", err && err.message);
-      }
-    }
-    if ("showDock" in changes) {
-      showDock = changes.showDock;
-      try { applyDockVisibility(); } catch (err) {
-        console.warn("Clawd: applyDockVisibility failed:", err && err.message);
-      }
-    }
-    if ("manageClaudeHooksAutomatically" in changes) {
-      manageClaudeHooksAutomatically = changes.manageClaudeHooksAutomatically;
-    }
-    // autoStartWithClaude / openAtLogin are object-form pre-commit gates in
-    // settings-actions.js — by the time we get here the system call already
-    // succeeded (or the commit was rejected), so the subscriber only needs
-    // to update the mirror cache. No more registerHooks/setLoginItemSettings
-    // here; that violates the unidirectional flow (see plan §4.2).
-    if ("autoStartWithClaude" in changes) {
-      autoStartWithClaude = changes.autoStartWithClaude;
-    }
-    if ("openAtLogin" in changes) {
-      openAtLogin = changes.openAtLogin;
-    }
-    if ("bubbleFollowPet" in changes) bubbleFollowPet = changes.bubbleFollowPet;
-    if ("sessionHudEnabled" in changes) sessionHudEnabled = changes.sessionHudEnabled;
-    if ("sessionHudShowElapsed" in changes) sessionHudShowElapsed = changes.sessionHudShowElapsed;
-    if ("sessionHudCleanupDetached" in changes) sessionHudCleanupDetached = changes.sessionHudCleanupDetached;
-    if ("soundMuted" in changes) soundMuted = changes.soundMuted;
-    if ("soundVolume" in changes) soundVolume = changes.soundVolume;
-    if ("lowPowerIdleMode" in changes) {
-      lowPowerIdleMode = changes.lowPowerIdleMode;
-      sendToRenderer("low-power-idle-mode-change", lowPowerIdleMode);
-    }
-    if ("allowEdgePinning" in changes) allowEdgePinningCached = changes.allowEdgePinning;
-    if ("keepSizeAcrossDisplays" in changes) keepSizeAcrossDisplaysCached = changes.keepSizeAcrossDisplays;
-    if ("lang" in changes) {
-      try { sendDashboardI18n(); } catch (err) {
-        console.warn("Clawd: dashboard lang broadcast failed:", err && err.message);
-      }
-      try { sendSessionHudI18n(); } catch (err) {
-        console.warn("Clawd: session HUD lang broadcast failed:", err && err.message);
-      }
-    }
-    if ("sessionAliases" in changes) {
-      try { _state.emitSessionSnapshot({ force: true }); } catch (err) {
-        console.warn("Clawd: session alias snapshot broadcast failed:", err && err.message);
-      }
-    }
+function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }
 
-    // 2. Reactive side effects (mirror what the legacy setters / click handlers used to do).
-    if ("hideBubbles" in changes || "permissionBubblesEnabled" in changes) {
-      try { syncPermissionShortcuts(); } catch (err) {
-        console.warn("Clawd: syncPermissionShortcuts failed:", err && err.message);
-      }
-    }
-    if (
-      ("permissionBubblesEnabled" in changes && changes.permissionBubblesEnabled === false) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-    ) {
-      try {
-        if (_perm && typeof _perm.dismissInteractivePermissionBubbles === "function") {
-          _perm.dismissInteractivePermissionBubbles();
-        }
-      } catch (err) {
-        console.warn("Clawd: dismiss interactive bubbles failed:", err && err.message);
-      }
-    }
-    if (
-      ("notificationBubbleAutoCloseSeconds" in changes && changes.notificationBubbleAutoCloseSeconds === 0) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-      ) {
-        try {
-          clearCodexNotifyBubbles(undefined, "settings-policy-disabled");
-          clearKimiNotifyBubbles(undefined, "settings-policy-disabled");
-        } catch (err) {
-          console.warn("Clawd: clear notification bubbles failed:", err && err.message);
-        }
-    } else if (
-      "notificationBubbleAutoCloseSeconds" in changes &&
-      changes.notificationBubbleAutoCloseSeconds > 0
-    ) {
-      try {
-        if (_perm && typeof _perm.refreshPassiveNotifyAutoClose === "function") {
-          _perm.refreshPassiveNotifyAutoClose();
-        }
-      } catch (err) {
-        console.warn("Clawd: refresh notification bubble timers failed:", err && err.message);
-      }
-    }
-    if (
-      ("updateBubbleAutoCloseSeconds" in changes && changes.updateBubbleAutoCloseSeconds === 0) ||
-      ("hideBubbles" in changes && changes.hideBubbles === true)
-    ) {
-      try {
-        if (_updateBubble && typeof _updateBubble.hideForPolicy === "function") _updateBubble.hideForPolicy();
-      } catch (err) {
-        console.warn("Clawd: hide update bubble failed:", err && err.message);
-      }
-    } else if (
-      "updateBubbleAutoCloseSeconds" in changes &&
-      changes.updateBubbleAutoCloseSeconds > 0
-    ) {
-      try {
-        if (_updateBubble && typeof _updateBubble.refreshAutoCloseForPolicy === "function") {
-          _updateBubble.refreshAutoCloseForPolicy();
-        }
-      } catch (err) {
-        console.warn("Clawd: refresh update bubble timer failed:", err && err.message);
-      }
-    }
-    if ("bubbleFollowPet" in changes) {
-      try { repositionFloatingBubbles(); } catch (err) {
-        console.warn("Clawd: repositionFloatingBubbles failed:", err && err.message);
-      }
-    }
-    if ("sessionHudEnabled" in changes || "sessionHudShowElapsed" in changes) {
-      try {
-        syncSessionHudVisibility();
-        repositionFloatingBubbles();
-      } catch (err) {
-        console.warn("Clawd: session HUD setting sync failed:", err && err.message);
-      }
-    }
-    if ("sessionHudCleanupDetached" in changes && changes.sessionHudCleanupDetached === true) {
-      try {
-        _state.cleanStaleSessions();
-        _state.emitSessionSnapshot({ force: true });
-      } catch (err) {
-        console.warn("Clawd: detached session cleanup sweep failed:", err && err.message);
-      }
-    } else if ("sessionHudCleanupDetached" in changes) {
-      try {
-        _state.emitSessionSnapshot({ force: true });
-      } catch (err) {
-        console.warn("Clawd: detached session cleanup snapshot refresh failed:", err && err.message);
-      }
-    }
-    if ("allowEdgePinning" in changes) {
-      try {
-        if (
-          win && !win.isDestroyed() &&
-          !dragLocked &&
-          !_mini.getMiniMode() &&
-          !_mini.getMiniTransitioning()
-        ) {
-          const size = getEffectiveCurrentPixelSize();
-          const virtualBounds = getPetWindowBounds();
-          const clamped = computeFinalDragBounds(virtualBounds, size, clampToScreenVisual);
-          if (clamped) applyPetWindowBounds(clamped);
-          syncHitWin();
-          repositionFloatingBubbles();
-        }
-      } catch (err) {
-        console.warn("Clawd: allowEdgePinning re-clamp failed:", err && err.message);
-      }
-    }
+function callRuntimeMethod(owner, method, ...args) { return owner && typeof owner[method] === "function" ? owner[method](...args) : undefined; }
 
-    // 3. Menu rebuild — only for menu-affecting keys to avoid thrashing on
-    //    window position / mini state changes.
-    for (const key of Object.keys(changes)) {
-      if (MENU_AFFECTING_KEYS.has(key)) {
-        try { rebuildAllMenus(); } catch (err) {
-          console.warn("Clawd: rebuildAllMenus failed:", err && err.message);
-        }
-        break;
-      }
-    }
-
-    // 4. Broadcast to all renderer windows for the future settings panel.
-    try {
-      for (const bw of BrowserWindow.getAllWindows()) {
-        if (!bw.isDestroyed() && bw.webContents && !bw.webContents.isDestroyed()) {
-          bw.webContents.send("settings-changed", { changes, snapshot: _settingsController.getSnapshot() });
-        }
-      }
-    } catch (err) {
-      console.warn("Clawd: settings-changed broadcast failed:", err && err.message);
-    }
-  });
+function reclampPetAfterEdgePinningChange() {
+  if (!win || win.isDestroyed() || dragLocked || _mini.getMiniMode() || _mini.getMiniTransitioning()) return;
+  const clamped = computeFinalDragBounds(getPetWindowBounds(), getEffectiveCurrentPixelSize(), clampToScreenVisual);
+  if (clamped) applyPetWindowBounds(clamped);
+  syncHitWin(); repositionFloatingBubbles();
 }
-wireSettingsSubscribers();
-_settingsController.subscribeKey("shortcuts", (_value, snapshot) => {
-  const nextTogglePetShortcut = (snapshot && snapshot.shortcuts && snapshot.shortcuts.togglePet) || null;
-  if (nextTogglePetShortcut === lastTogglePetShortcut) return;
-  lastTogglePetShortcut = nextTogglePetShortcut;
-  try { rebuildAllMenus(); } catch (err) {
-    console.warn("Clawd: rebuildAllMenus failed:", err && err.message);
-  }
+
+const settingsEffectRouter = createSettingsEffectRouter({
+  settingsController: _settingsController,
+  BrowserWindow,
+  updateMirrors: updateSettingsMirrors,
+  createTray,
+  destroyTray,
+  applyDockVisibility,
+  sendToRenderer,
+  sendDashboardI18n: () => sendDashboardI18n(),
+  sendSessionHudI18n: () => sendSessionHudI18n(),
+  emitSessionSnapshot: (options) => _state.emitSessionSnapshot(options),
+  cleanStaleSessions: () => _state.cleanStaleSessions(),
+  syncPermissionShortcuts,
+  dismissInteractivePermissionBubbles: () => callRuntimeMethod(_perm, "dismissInteractivePermissionBubbles"),
+  clearCodexNotifyBubbles,
+  clearKimiNotifyBubbles,
+  refreshPassiveNotifyAutoClose: () => callRuntimeMethod(_perm, "refreshPassiveNotifyAutoClose"),
+  hideUpdateBubbleForPolicy: () => callRuntimeMethod(_updateBubble, "hideForPolicy"),
+  refreshUpdateBubbleAutoClose: () => callRuntimeMethod(_updateBubble, "refreshAutoCloseForPolicy"),
+  repositionFloatingBubbles,
+  syncSessionHudVisibility: () => syncSessionHudVisibility(),
+  reclampPetAfterEdgePinningChange,
+  rebuildAllMenus,
+  logWarn: console.warn,
 });
+settingsEffectRouter.start();
 
 animationOverridesMain = createSettingsAnimationOverridesMain({
   app,
