@@ -18,6 +18,9 @@ const {
   getSvgOverride: getSvgOverrideWithDeps,
 } = require("./state-visual-resolver");
 const {
+  getStaleSessionDecision,
+} = require("./state-stale-cleanup");
+const {
   deriveSessionBadge,
   normalizeTitle,
   shouldAutoClearDetachedSession: shouldAutoClearDetachedSessionWithDeps,
@@ -83,9 +86,6 @@ let DISPLAY_HINT_MAP = {};
 // ── Session tracking ──
 const sessions = new Map();
 const MAX_SESSIONS = 20;
-const SESSION_STALE_MS = 600000;
-const WORKING_STALE_MS = 300000;
-const DETACHED_IDLE_STALE_MS = 30000;
 const CODEX_EXIT_PROBE_DELAYS_MS = [1000, 3000, 8000, 15000];
 let lastSessionSnapshotSignature = null;
 let lastSessionSnapshot = null;
@@ -1003,61 +1003,29 @@ function cleanStaleSessions() {
   let changed = false;
   let snapshotRefreshNeeded = false;
   for (const [id, s] of sessions) {
-    const age = now - s.updatedAt;
+    const decision = getStaleSessionDecision(s, {
+      now,
+      isProcessAlive,
+      deriveSessionBadge,
+      shouldAutoClearDetachedSession,
+    });
 
-    if (s.pidReachable && s.agentPid && !isProcessAlive(s.agentPid)) {
-      debugSession(`stale-delete agent-exit ${describeSession(id, s)}`);
-      if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-agent-exit");
+    if (decision.snapshotRefreshNeeded) snapshotRefreshNeeded = true;
+
+    if (decision.action === "delete") {
+      const badgeSuffix = decision.reason === "detached-ended" ? ` badge=${decision.badge}` : "";
+      debugSession(`stale-delete ${decision.reason} ${describeSession(id, s)}${badgeSuffix}`);
+      if (s && s.agentId === "codex") cancelCodexExitProbe(id, `stale-delete-${decision.reason}`);
       if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
       sessions.delete(id); changed = true;
       continue;
     }
 
-    const badge = deriveSessionBadge(s);
-    const autoClearDetached = shouldAutoClearDetachedSession(s, badge);
-    if (autoClearDetached) {
-      if (age > DETACHED_IDLE_STALE_MS) {
-        debugSession(`stale-delete detached-ended ${describeSession(id, s)} badge=${badge}`);
-        if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-detached-ended");
-        if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
-        sessions.delete(id); changed = true;
-        continue;
-      }
-      snapshotRefreshNeeded = true;
-    }
-
-    if (age > SESSION_STALE_MS) {
-      if (s.pidReachable && s.sourcePid) {
-        if (!isProcessAlive(s.sourcePid)) {
-          debugSession(`stale-delete source-exit ${describeSession(id, s)}`);
-          if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-source-exit");
-          if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
-          sessions.delete(id); changed = true;
-        } else if (s.state !== "idle") {
-          debugSession(`stale-idle session-timeout ${describeSession(id, s)}`);
-          s.state = "idle"; s.displayHint = null; changed = true;
-        }
-      } else if (!s.pidReachable) {
-        debugSession(`stale-delete unreachable ${describeSession(id, s)}`);
-        if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-unreachable");
-        if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
-        sessions.delete(id); changed = true;
-      } else {
-        debugSession(`stale-delete no-source ${describeSession(id, s)}`);
-        if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-no-source");
-        if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
-        sessions.delete(id); changed = true;
-      }
-    } else if (age > WORKING_STALE_MS) {
-      if (s.pidReachable && s.sourcePid && !isProcessAlive(s.sourcePid)) {
-        debugSession(`stale-delete working-source-exit ${describeSession(id, s)}`);
-        if (s && s.agentId === "codex") cancelCodexExitProbe(id, "stale-delete-working-source-exit");
-        if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
-        sessions.delete(id); changed = true;
-      } else if (s.state === "working" || s.state === "juggling" || s.state === "thinking") {
-        debugSession(`stale-idle working-timeout ${describeSession(id, s)}`);
-        s.state = "idle"; s.displayHint = null; s.updatedAt = now; changed = true;
-      }
+    if (decision.action === "idle") {
+      debugSession(`stale-idle ${decision.reason} ${describeSession(id, s)}`);
+      s.state = "idle"; s.displayHint = null;
+      if (decision.updateTimestamp) s.updatedAt = now;
+      changed = true;
     }
   }
   if (changed && sessions.size === 0) {
