@@ -2168,7 +2168,7 @@ describe("settings renderer browser environment", () => {
     const html = fs.readFileSync(SETTINGS_HTML, "utf8");
     const previewHtml = fs.readFileSync(SETTINGS_ANIMATION_PREVIEW, "utf8");
     const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
-    const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
+    const animationOverridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-animation-overrides-main.js"), "utf8");
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const rendererSource = fs.readFileSync(SETTINGS_RENDERER, "utf8");
 
@@ -2188,25 +2188,25 @@ describe("settings renderer browser environment", () => {
     assert.ok(previewHtml.includes("script-src 'unsafe-inline'"));
     assert.ok(previewHtml.includes("window.renderAnimationPreviewPoster"));
     assert.ok(previewHtml.includes("width: 285%;"));
-    assert.ok(mainSource.includes("ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION"));
+    assert.ok(animationOverridesSource.includes("ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION"));
     assert.ok(!overridesSource.includes('document.createElement("iframe")'));
     assert.ok(overridesSource.includes('if (url.protocol === "data:" || url.protocol === "blob:") return fileUrl;'));
     assert.ok(overridesSource.includes("getCardPreviewUrl(card)"));
     assert.ok(overridesSource.includes("getAssetPreviewUrl(selected)"));
-    assert.ok(mainSource.includes("function _needsScriptedAnimationPreviewPoster"));
-    assert.ok(mainSource.includes("function _isObjectChannelSvgAnimationFile"));
-    assert.ok(mainSource.includes('theme.rendering.svgChannel === "object"'));
-    assert.ok(mainSource.includes("function _captureAnimationPreviewPosterDataUrl"));
-    assert.ok(mainSource.includes("function _scheduleAnimationPreviewPosters"));
-    assert.ok(mainSource.includes("capturePage"));
-    assert.ok(mainSource.includes("settings:animation-preview-poster-ready"));
+    assert.ok(animationOverridesSource.includes("function needsScriptedAnimationPreviewPoster"));
+    assert.ok(animationOverridesSource.includes("function isObjectChannelSvgAnimationFile"));
+    assert.ok(animationOverridesSource.includes('theme.rendering.svgChannel === "object"'));
+    assert.ok(animationOverridesSource.includes("function captureAnimationPreviewPosterDataUrl"));
+    assert.ok(animationOverridesSource.includes("function scheduleAnimationPreviewPosters"));
+    assert.ok(animationOverridesSource.includes("capturePage"));
+    assert.ok(animationOverridesSource.includes("settings:animation-preview-poster-ready"));
     assert.ok(preloadSource.includes("onAnimationPreviewPosterReady"));
     assert.ok(rendererSource.includes("onAnimationPreviewPosterReady"));
-    assert.ok(mainSource.includes("theme._builtin"));
-    assert.ok(mainSource.includes("trustedRuntime.scriptedSvgFiles"));
-    assert.ok(mainSource.includes("currentFilePreviewUrl: preview.previewImageUrl"));
-    assert.ok(mainSource.includes("previewPosterPending: preview.previewPosterPending"));
-    assert.ok(!mainSource.includes("function _hydrateAnimationPreviewPosters"));
+    assert.ok(animationOverridesSource.includes("theme._builtin"));
+    assert.ok(animationOverridesSource.includes("trustedRuntime.scriptedSvgFiles"));
+    assert.ok(animationOverridesSource.includes("currentFilePreviewUrl: preview.previewImageUrl"));
+    assert.ok(animationOverridesSource.includes("previewPosterPending: preview.previewPosterPending"));
+    assert.ok(!animationOverridesSource.includes("function hydrateAnimationPreviewPosters"));
   });
 
   it("merges pushed animation preview posters without accepting stale cache keys", () => {

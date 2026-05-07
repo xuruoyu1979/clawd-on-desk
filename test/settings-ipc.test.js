@@ -131,7 +131,7 @@ function createHarness(overrides = {}) {
   return { ipcMain, runtime, calls, activeTheme };
 }
 
-test("settings IPC registers owned channels and leaves animation override channels in main", () => {
+test("settings IPC registers owned channels and leaves animation override channels to their module", () => {
   const { ipcMain, runtime } = createHarness();
 
   assert.ok(ipcMain.handlers.has("settings:get-snapshot"));
