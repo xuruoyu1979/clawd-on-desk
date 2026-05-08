@@ -338,6 +338,56 @@ test("remoteSsh:deploy returns target_drift warning when markDeployed sees drift
   ipc.dispose();
 });
 
+test("remoteSsh:deploy returns stamp_failed warning when markDeployed returns error", async () => {
+  // applyCommand returns { status:"error" } for validator/persist failures
+  // WITHOUT throwing — easy to miss. If we don't surface this, the UI shows
+  // "Deploy succeeded" but lastDeployedAt is silently never written, so the
+  // profile card keeps saying "never deployed".
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([baseProfile], async (action) => {
+    if (action === "remoteSsh.markDeployed") {
+      return { status: "error", message: "persist failed: ENOSPC" };
+    }
+    return { status: "ok" };
+  });
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+    deployFn: async () => ({ ok: true }),
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
+  assert.equal(r.status, "ok", "deploy itself ran");
+  assert.equal(r.warning, "stamp_failed",
+    "non-throw stamp errors must surface as warning, not silent success");
+  assert.match(r.message, /persist failed/);
+  ipc.dispose();
+});
+
+test("remoteSsh:deploy returns stamp_failed warning when markDeployed throws", async () => {
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([baseProfile], async () => {
+    throw new Error("controller exploded");
+  });
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+    deployFn: async () => ({ ok: true }),
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
+  assert.equal(r.status, "ok");
+  assert.equal(r.warning, "stamp_failed");
+  assert.match(r.message, /controller exploded/);
+  ipc.dispose();
+});
+
 test("remoteSsh:deploy on failure does NOT stamp lastDeployedAt", async () => {
   const ipcMain = mockIpcMain();
   const { BrowserWindow } = mockBrowserWindow();

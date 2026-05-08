@@ -399,31 +399,50 @@
       // Clear ONLY this profile's log; other profiles mid-deploy keep theirs.
       view.progressLog.set(profile.id, []);
       ops.requestRender({ content: true });
-      window.remoteSsh.deploy(profile.id).then((r) => {
-        view.deployingProfileIds.delete(profile.id);
-        if (r && r.status === "ok") {
-          if (r.warning === "target_drift") {
-            // The user edited host/port/identityFile/remoteForwardPort/
-            // hostPrefix while the 30s deploy was running. The deploy ran
-            // against the OLD target — markDeployed refused to stamp the
-            // new (drifted) profile as deployed. Tell the user to redeploy.
-            const driftedField = r.driftedField || "target";
-            ops.showToast(
-              `${t("remoteSshDeployDriftWarning")} (${driftedField})`,
-              { ttl: 10000, error: true }
-            );
+      window.remoteSsh.deploy(profile.id)
+        .then((r) => {
+          if (r && r.status === "ok") {
+            if (r.warning === "target_drift") {
+              // The user edited host/port/identityFile/remoteForwardPort/
+              // hostPrefix while the 30s deploy was running. The deploy ran
+              // against the OLD target — markDeployed refused to stamp the
+              // new (drifted) profile as deployed. Tell the user to redeploy.
+              const driftedField = r.driftedField || "target";
+              ops.showToast(
+                `${t("remoteSshDeployDriftWarning")} (${driftedField})`,
+                { ttl: 10000, error: true }
+              );
+            } else if (r.warning === "stamp_failed") {
+              // Deploy itself ran but lastDeployedAt couldn't be persisted
+              // (validator/persist error). Show as error so the user knows
+              // the "deployed" timestamp on the card is stale.
+              ops.showToast(
+                `${t("remoteSshDeploySuccess")} (${r.message || "stamp failed"})`,
+                { ttl: 10000, error: true }
+              );
+            } else {
+              // Append codex /hooks reminder — Deploy installs the hooks but the
+              // user still has to review them once in codex TUI before they go
+              // live (sha256 trusted_hash gate in ~/.codex/config.toml).
+              ops.showToast(`${t("remoteSshDeploySuccess")} ${t("codexHookReviewReminder")}`,
+                { ttl: 8000 });
+            }
           } else {
-            // Append codex /hooks reminder — Deploy installs the hooks but the
-            // user still has to review them once in codex TUI before they go
-            // live (sha256 trusted_hash gate in ~/.codex/config.toml).
-            ops.showToast(`${t("remoteSshDeploySuccess")} ${t("codexHookReviewReminder")}`,
-              { ttl: 8000 });
+            ops.showToast((r && r.message) || "deploy failed", { error: true });
           }
-        } else {
-          ops.showToast((r && r.message) || "deploy failed", { error: true });
-        }
-        ops.requestRender({ content: true });
-      });
+        })
+        .catch((err) => {
+          // IPC invoke can reject (channel not registered, main crashed, etc).
+          // Without this catch the .finally cleanup still runs but the user
+          // sees no feedback for the failure.
+          ops.showToast((err && err.message) || "deploy IPC failed", { error: true });
+        })
+        .finally(() => {
+          // Always clear the deploying flag — otherwise an unexpected reject
+          // leaves the button stuck on "Deploying…" until a tab re-render.
+          view.deployingProfileIds.delete(profile.id);
+          ops.requestRender({ content: true });
+        });
     });
     actions.appendChild(deployBtn);
     section.appendChild(actions);

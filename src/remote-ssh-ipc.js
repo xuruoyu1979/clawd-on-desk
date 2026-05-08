@@ -182,8 +182,20 @@ function registerRemoteSshIpc(options = {}) {
             // avoid mislabeling the new (drifted) config as "deployed".
             return { status: "ok", warning: "target_drift", driftedField: stamp.targetDrift };
           }
+          if (!stamp || stamp.status !== "ok") {
+            // Stamp returned an error object (validator / persist failed) —
+            // applyCommand doesn't throw for these, it returns { status:"error" }.
+            // Without this branch the UI would falsely show "Deploy succeeded"
+            // while lastDeployedAt was never persisted. Surface as warning so
+            // the user knows the deploy ran but the timestamp is stale.
+            const msg = (stamp && stamp.message) || "stamp returned non-ok";
+            log("remote-ssh: failed to stamp lastDeployedAt:", msg);
+            return { status: "ok", warning: "stamp_failed", message: msg };
+          }
         } catch (err) {
-          log("remote-ssh: failed to stamp lastDeployedAt:", err && err.message);
+          const msg = (err && err.message) || "stamp threw";
+          log("remote-ssh: failed to stamp lastDeployedAt:", msg);
+          return { status: "ok", warning: "stamp_failed", message: msg };
         }
         return { status: "ok" };
       }
