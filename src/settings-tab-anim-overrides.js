@@ -53,6 +53,35 @@
     return state.mountedControls.animOverrideTimingSliders;
   }
 
+  function getMountedOverrideStatusControls() {
+    if (!state.mountedControls || typeof state.mountedControls !== "object") {
+      state.mountedControls = {};
+    }
+    if (!state.mountedControls.animOverrideStatusControls
+      || typeof state.mountedControls.animOverrideStatusControls.get !== "function") {
+      state.mountedControls.animOverrideStatusControls = new Map();
+    }
+    return state.mountedControls.animOverrideStatusControls;
+  }
+
+  function getPendingWideHitboxOverrideEdits() {
+    if (!runtime.pendingWideHitboxOverrideEdits || typeof runtime.pendingWideHitboxOverrideEdits.get !== "function") {
+      runtime.pendingWideHitboxOverrideEdits = new Map();
+    }
+    return runtime.pendingWideHitboxOverrideEdits;
+  }
+
+  function getMountedWideHitboxToggles() {
+    if (!state.mountedControls || typeof state.mountedControls !== "object") {
+      state.mountedControls = {};
+    }
+    if (!state.mountedControls.animOverrideWideHitboxToggles
+      || typeof state.mountedControls.animOverrideWideHitboxToggles.get !== "function") {
+      state.mountedControls.animOverrideWideHitboxToggles = new Map();
+    }
+    return state.mountedControls.animOverrideWideHitboxToggles;
+  }
+
   function timingControlKey(cardId, field) {
     return `${cardId}:${field}`;
   }
@@ -130,6 +159,48 @@
     edits.delete(token.id);
   }
 
+  function transitionMatchesThemeDefault(transition, defaultTransition) {
+    if (!transition || !defaultTransition) return false;
+    return transition.in === defaultTransition.in && transition.out === defaultTransition.out;
+  }
+
+  function hasTransitionOverride(entry) {
+    return !!(entry && Object.prototype.hasOwnProperty.call(entry, "transition"));
+  }
+
+  function wideHitboxResetVisible(card) {
+    if (!card) return false;
+    return !!card.wideHitboxEnabled !== !!card.wideHitboxThemeDefault;
+  }
+
+  function recordPendingWideHitboxOverrideEdit(card, targetEnabled) {
+    if (!card || !card.id || !card.currentFile) return null;
+    const edits = getPendingWideHitboxOverrideEdits();
+    const seq = Number.isFinite(runtime.nextWideHitboxOverrideEditSeq)
+      ? runtime.nextWideHitboxOverrideEditSeq
+      : 1;
+    runtime.nextWideHitboxOverrideEditSeq = seq + 1;
+    const themeDefault = !!card.wideHitboxThemeDefault;
+    const effectiveEnabled = !!targetEnabled;
+    const commandEnabled = effectiveEnabled === themeDefault ? null : effectiveEnabled;
+    edits.set(card.id, {
+      seq,
+      currentFile: card.currentFile,
+      themeDefault,
+      effectiveEnabled,
+      commandEnabled,
+    });
+    return { id: card.id, seq };
+  }
+
+  function clearPendingWideHitboxOverrideEdit(token) {
+    if (!token || !token.id) return;
+    const edits = getPendingWideHitboxOverrideEdits();
+    const current = edits.get(token.id);
+    if (!current || current.seq !== token.seq) return;
+    edits.delete(token.id);
+  }
+
   function applyPendingAnimationOverrideEdit(card) {
     if (!card || !card.id) return card;
     const pending = getPendingAnimationOverrideEdits().get(card.id);
@@ -137,9 +208,28 @@
     return {
       ...card,
       transition: pending.transition ? { ...pending.transition } : card.transition,
+      ...(pending.transition ? {
+        hasTransitionOverride: !transitionMatchesThemeDefault(pending.transition, card.transitionThemeDefault),
+      } : {}),
       ...(Object.prototype.hasOwnProperty.call(pending, "autoReturnMs") ? { autoReturnMs: pending.autoReturnMs } : {}),
       ...(Object.prototype.hasOwnProperty.call(pending, "durationMs") ? { durationMs: pending.durationMs } : {}),
     };
+  }
+
+  function applyPendingWideHitboxOverrideEdit(card) {
+    if (!card || !card.id) return card;
+    const pending = getPendingWideHitboxOverrideEdits().get(card.id);
+    if (!pending) return card;
+    return {
+      ...card,
+      wideHitboxEnabled: pending.effectiveEnabled,
+      wideHitboxOverridden: pending.commandEnabled !== null,
+      wideHitboxThemeDefault: pending.themeDefault,
+    };
+  }
+
+  function applyPendingAnimOverrideCard(card) {
+    return applyPendingWideHitboxOverrideEdit(applyPendingAnimationOverrideEdit(card));
   }
 
   function cardReflectsPendingEdit(card, pending) {
@@ -167,6 +257,24 @@
     }
   }
 
+  function cardReflectsPendingWideHitboxOverride(card, pending) {
+    if (!card || !pending) return false;
+    return (
+      !!card.wideHitboxEnabled === pending.effectiveEnabled
+      && !!card.wideHitboxThemeDefault === pending.themeDefault
+      && !!card.wideHitboxOverridden === (pending.commandEnabled !== null)
+    );
+  }
+
+  function reconcilePendingWideHitboxOverrideEdits() {
+    const edits = getPendingWideHitboxOverrideEdits();
+    if (!edits.size) return;
+    for (const [id, pending] of edits) {
+      const card = getAnimOverrideCardById(id);
+      if (cardReflectsPendingWideHitboxOverride(card, pending)) edits.delete(id);
+    }
+  }
+
   function syncMountedTimingSliders() {
     const controls = getMountedTimingSliders();
     for (const [key, control] of controls) {
@@ -177,6 +285,58 @@
       const card = applyPendingAnimationOverrideEdit(getAnimOverrideCardById(control.cardId));
       const value = getCardTimingValue(card, control.field);
       if (Number.isFinite(value)) control.setValue(value);
+    }
+  }
+
+  function setSummaryOverrideBadge(container, visible) {
+    if (!container) return;
+    const existingDot = container.querySelector(".anim-override-badge-dot");
+    const existingWrap = existingDot && existingDot.parentNode;
+    if (!visible) {
+      if (existingWrap && typeof existingWrap.remove === "function") existingWrap.remove();
+      return;
+    }
+    if (existingDot) return;
+    const dotWrap = document.createElement("span");
+    dotWrap.className = "anim-override-badge";
+    dotWrap.title = t("animOverridesOverriddenTooltip");
+    const dot = document.createElement("span");
+    dot.className = "anim-override-badge-dot";
+    dotWrap.appendChild(dot);
+    container.appendChild(dotWrap);
+  }
+
+  function syncMountedOverrideStatusControls() {
+    const controls = getMountedOverrideStatusControls();
+    for (const [cardId, control] of controls) {
+      if (!control || !control.row || !control.row.parentNode) {
+        controls.delete(cardId);
+        continue;
+      }
+      const card = applyPendingAnimOverrideCard(getAnimOverrideCardById(cardId) || control.card);
+      const overridden = isCardOverridden(card);
+      control.card = card || control.card;
+      if (control.resetBtn) control.resetBtn.disabled = !overridden;
+      setSummaryOverrideBadge(control.summaryBadges, overridden);
+    }
+  }
+
+  function syncMountedWideHitboxToggles() {
+    const controls = getMountedWideHitboxToggles();
+    const pendingEdits = getPendingWideHitboxOverrideEdits();
+    for (const [cardId, control] of controls) {
+      if (!control || !control.row || !control.row.parentNode) {
+        controls.delete(cardId);
+        continue;
+      }
+      const card = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(cardId) || control.card);
+      const pending = pendingEdits.get(cardId);
+      control.card = card || control.card;
+      control.input.checked = !!(card && card.wideHitboxEnabled);
+      control.input.disabled = !!pending;
+      control.badge.hidden = !wideHitboxResetVisible(card);
+      control.badge.disabled = !!pending || !wideHitboxResetVisible(card);
+      control.row.classList.toggle("pending", !!pending);
     }
   }
 
@@ -222,6 +382,10 @@
     }
     pruneEmptyObject(themeMap, "idleAnimations");
     pruneEmptyObject(themeMap, "reactions");
+    if (themeMap.hitbox && typeof themeMap.hitbox === "object") {
+      pruneEmptyObject(themeMap.hitbox, "wide");
+      pruneEmptyObject(themeMap, "hitbox");
+    }
   }
 
   function ensureThemeOverrideEntry(themeMap, pending) {
@@ -275,16 +439,33 @@
     return true;
   }
 
+  function applyPendingWideHitboxEditToThemeOverrides(themeMap, pending) {
+    if (!themeMap || !pending || !pending.currentFile) return false;
+    themeMap.hitbox = themeMap.hitbox || {};
+    themeMap.hitbox.wide = themeMap.hitbox.wide || {};
+    if (pending.commandEnabled === null) {
+      delete themeMap.hitbox.wide[pending.currentFile];
+    } else {
+      themeMap.hitbox.wide[pending.currentFile] = pending.commandEnabled;
+    }
+    pruneThemeOverrideMap(themeMap);
+    return true;
+  }
+
   function pendingEditsMatchThemeOverrideBroadcast(previousSnapshot, nextSnapshot) {
     const themeId = getCurrentOverrideThemeId();
     if (!themeId || !previousSnapshot || !nextSnapshot) return false;
     const edits = getPendingAnimationOverrideEdits();
-    if (!edits.size) return false;
+    const wideHitboxEdits = getPendingWideHitboxOverrideEdits();
+    if (!edits.size && !wideHitboxEdits.size) return false;
     const expectedOverrides = clonePlainObject(previousSnapshot.themeOverrides || {});
     const expectedThemeMap = expectedOverrides[themeId] || {};
     expectedOverrides[themeId] = expectedThemeMap;
     for (const pending of edits.values()) {
       if (!applyPendingEditToThemeOverrides(expectedThemeMap, pending)) return false;
+    }
+    for (const pending of wideHitboxEdits.values()) {
+      if (!applyPendingWideHitboxEditToThemeOverrides(expectedThemeMap, pending)) return false;
     }
     pruneThemeOverrideMap(expectedThemeMap);
     pruneEmptyObject(expectedOverrides, themeId);
@@ -397,12 +578,16 @@
     } else {
       base.stateKey = card.stateKey;
     }
-    return { ...base, ...patch };
+    const request = { ...base, ...patch };
+    if (patch && patch.transition && card.transitionThemeDefault) {
+      request.transitionThemeDefault = { ...card.transitionThemeDefault };
+    }
+    return request;
   }
 
   function getCurrentAnimationOverrideCard(card) {
     if (!card || !card.id) return card;
-    return applyPendingAnimationOverrideEdit(getAnimOverrideCardById(card.id) || card);
+    return applyPendingAnimOverrideCard(getAnimOverrideCardById(card.id) || card);
   }
 
   function runAnimationOverrideCommand(card, patch) {
@@ -412,14 +597,19 @@
     return window.settingsAPI.command("setAnimationOverride", payload).then((result) => {
       if (!result || result.status !== "ok" || result.noop) {
         clearPendingAnimationOverrideEdit(pendingToken);
-        if (timingOnly) syncMountedTimingSliders();
+        if (timingOnly) {
+          syncMountedTimingSliders();
+          syncMountedOverrideStatusControls();
+        }
         return result;
       }
       return ops.fetchAnimationOverridesData().then(() => {
         reconcilePendingAnimationOverrideEdits();
+        reconcilePendingWideHitboxOverrideEdits();
         ops.normalizeAssetPickerSelection();
         if (timingOnly && state.activeTab === "animOverrides") {
           syncMountedTimingSliders();
+          syncMountedOverrideStatusControls();
         } else if (state.activeTab === "animOverrides") {
           ops.requestRender({ content: true });
         }
@@ -440,13 +630,16 @@
     if (runtime.assetPicker.state) return false;
     if (runtime.animOverridesSubtab !== "animations") return false;
     if (!runtime.animationOverridesData) return false;
-    if (!getPendingAnimationOverrideEdits().size) return false;
+    if (!getPendingAnimationOverrideEdits().size && !getPendingWideHitboxOverrideEdits().size) return false;
     if (!pendingEditsMatchThemeOverrideBroadcast(context.previousSnapshot, context.snapshot)) return false;
 
     ops.fetchAnimationOverridesData().then(() => {
       reconcilePendingAnimationOverrideEdits();
+      reconcilePendingWideHitboxOverrideEdits();
       ops.normalizeAssetPickerSelection();
       syncMountedTimingSliders();
+      syncMountedWideHitboxToggles();
+      syncMountedOverrideStatusControls();
       ops.requestRender({ modal: true });
     });
     return true;
@@ -924,24 +1117,57 @@
   function isCardOverridden(card) {
     const themeId = getCurrentOverrideThemeId();
     if (!themeId) return false;
+    const hasTransitionFlag = Object.prototype.hasOwnProperty.call(card, "hasTransitionOverride");
+    const hasAutoReturnFlag = Object.prototype.hasOwnProperty.call(card, "hasAutoReturnOverride");
+    const hasDurationFlag = Object.prototype.hasOwnProperty.call(card, "hasDurationOverride");
+    const hasWideHitboxFlag = Object.prototype.hasOwnProperty.call(card, "wideHitboxOverridden");
+    const cardFlagOverride = !!(
+      (hasTransitionFlag && card.hasTransitionOverride)
+      || (hasAutoReturnFlag && card.hasAutoReturnOverride)
+      || (hasDurationFlag && card.hasDurationOverride)
+      || (hasWideHitboxFlag && card.wideHitboxOverridden)
+    );
     const map = readers.readThemeOverrideMap(themeId);
-    if (!map) return false;
+    if (!map) return cardFlagOverride;
+    const hasMaterialEntryOverride = (entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      return Object.keys(entry).some((key) => key !== "transition" && key !== "durationMs");
+    };
     if (card.slotType === "tier") {
       const group = map.tiers && map.tiers[card.tierGroup];
-      return !!(group && group[card.originalFile]);
+      const entry = group && group[card.originalFile];
+      return !!(hasMaterialEntryOverride(entry)
+        || (hasTransitionFlag ? card.hasTransitionOverride : hasTransitionOverride(entry)));
     }
     if (card.slotType === "idleAnimation") {
       const group = map.idleAnimations;
-      return !!(group && group[card.originalFile]);
+      const entry = group && group[card.originalFile];
+      return !!(hasMaterialEntryOverride(entry)
+        || (hasTransitionFlag ? card.hasTransitionOverride : hasTransitionOverride(entry))
+        || (hasDurationFlag ? card.hasDurationOverride : (entry && Object.prototype.hasOwnProperty.call(entry, "durationMs"))));
+    }
+    if (card.slotType === "reaction") {
+      const entry = map.reactions && map.reactions[card.reactionKey];
+      return !!(hasMaterialEntryOverride(entry)
+        || (hasTransitionFlag ? card.hasTransitionOverride : hasTransitionOverride(entry))
+        || (hasDurationFlag ? card.hasDurationOverride : (entry && Object.prototype.hasOwnProperty.call(entry, "durationMs"))));
     }
     const entry = map.states && map.states[card.stateKey];
-    if (entry) return true;
+    if (entry && hasMaterialEntryOverride(entry)) return true;
+    if (hasTransitionFlag ? card.hasTransitionOverride : hasTransitionOverride(entry)) return true;
     const autoReturn = map.timings && map.timings.autoReturn;
-    return !!(autoReturn && Object.prototype.hasOwnProperty.call(autoReturn, card.stateKey));
+    if (hasAutoReturnFlag ? card.hasAutoReturnOverride : (autoReturn && Object.prototype.hasOwnProperty.call(autoReturn, card.stateKey))) {
+      return true;
+    }
+    const wideHitbox = map.hitbox && map.hitbox.wide;
+    if (hasWideHitboxFlag) return !!card.wideHitboxOverridden;
+    return !!(card.currentFile
+      && wideHitbox
+      && Object.prototype.hasOwnProperty.call(wideHitbox, card.currentFile));
   }
 
   function buildAnimOverrideRow(card) {
-    card = applyPendingAnimationOverrideEdit(card);
+    card = applyPendingAnimOverrideCard(card);
     const row = document.createElement("details");
     row.className = "anim-override-row";
     if (card.fallbackTargetState) row.classList.add("inherited");
@@ -954,6 +1180,11 @@
 
     row.appendChild(buildAnimOverrideSummary(card));
     row.appendChild(buildAnimOverrideDrawer(card));
+    if (card && card.id) {
+      const controls = getMountedOverrideStatusControls();
+      const current = controls.get(card.id) || { cardId: card.id };
+      controls.set(card.id, { ...current, row, card });
+    }
     return row;
   }
 
@@ -1022,6 +1253,11 @@
       badges.appendChild(dotWrap);
     }
     summary.appendChild(badges);
+    if (card && card.id) {
+      const controls = getMountedOverrideStatusControls();
+      const current = controls.get(card.id) || { cardId: card.id };
+      controls.set(card.id, { ...current, summaryBadges: badges, card });
+    }
 
     const changeBtn = document.createElement("button");
     changeBtn.type = "button";
@@ -1039,25 +1275,65 @@
 
   function runWideHitboxCommand(card, enabled) {
     const themeId = getCurrentOverrideThemeId();
-    if (!themeId || !card.currentFile) return;
-    window.settingsAPI.command("setWideHitboxOverride", {
+    if (!themeId || !card || !card.id || !card.currentFile) return Promise.resolve({ status: "noop" });
+    if (getPendingWideHitboxOverrideEdits().has(card.id)) return Promise.resolve({ status: "noop" });
+    const pendingToken = recordPendingWideHitboxOverrideEdit(card, enabled);
+    const pending = pendingToken && getPendingWideHitboxOverrideEdits().get(card.id);
+    if (!pending) return Promise.resolve({ status: "noop" });
+    syncMountedWideHitboxToggles();
+    return window.settingsAPI.command("setWideHitboxOverride", {
       themeId,
       file: card.currentFile,
-      enabled,
+      enabled: pending.commandEnabled,
     }).then((result) => {
-      if (!result || result.status !== "ok" || result.noop) return;
+      if (!result || result.status !== "ok" || result.noop) {
+        clearPendingWideHitboxOverrideEdit(pendingToken);
+        syncMountedWideHitboxToggles();
+        if (result && result.status === "error") {
+          ops.showToast(t("toastSaveFailed") + ((result && result.message) || ""), { error: true });
+        }
+        return result;
+      }
       return ops.fetchAnimationOverridesData().then(() => {
-        if (state.activeTab === "animOverrides") ops.requestRender({ content: true });
+        reconcilePendingWideHitboxOverrideEdits();
+        ops.normalizeAssetPickerSelection();
+        if (state.activeTab === "animOverrides") {
+          syncMountedWideHitboxToggles();
+        }
+        ops.requestRender({ modal: true });
+        return result;
       });
+    }).catch((err) => {
+      clearPendingWideHitboxOverrideEdit(pendingToken);
+      syncMountedWideHitboxToggles();
+      ops.showToast(t("toastSaveFailed") + ((err && err.message) || ""), { error: true });
+      return { status: "error", message: err && err.message };
+    });
+  }
+
+  function resetAnimationOverrideCard(card) {
+    const patch = {
+      file: null,
+      transition: null,
+      ...(card.supportsAutoReturn ? { autoReturnMs: null } : {}),
+      ...(card.supportsDuration ? { durationMs: null } : {}),
+    };
+    return runAnimationOverrideCommand(card, patch).then((result) => {
+      if (result && result.status === "error") return result;
+      const currentCard = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(card.id) || card);
+      if (currentCard.slotType === "reaction" || !currentCard.wideHitboxOverridden) return result;
+      return runWideHitboxCommand(currentCard, !!currentCard.wideHitboxThemeDefault);
     });
   }
 
   function buildAnimWideHitboxToggle(card) {
-    const row = document.createElement("label");
+    const row = document.createElement("div");
     row.className = "anim-override-toggle-row";
+    const pending = !!(card && card.id && getPendingWideHitboxOverrideEdits().has(card.id));
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = !!card.wideHitboxEnabled;
+    input.disabled = pending;
     const label = document.createElement("div");
     label.className = "anim-override-toggle-label";
     const title = document.createElement("div");
@@ -1068,22 +1344,37 @@
     desc.className = "anim-override-toggle-desc";
     desc.textContent = t("animOverridesWideHitboxDesc");
     label.appendChild(desc);
-    if (card.wideHitboxOverridden) {
-      const badge = document.createElement("button");
-      badge.type = "button";
-      badge.className = "anim-override-reset-chip";
-      badge.textContent = t("animOverridesWideHitboxResetToTheme");
-      badge.addEventListener("click", (e) => {
-        e.preventDefault();
-        runWideHitboxCommand(card, null);
-      });
-      label.appendChild(badge);
-    }
+
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "anim-override-reset-chip";
+    badge.textContent = t("animOverridesWideHitboxResetToTheme");
+    badge.hidden = !wideHitboxResetVisible(card);
+    badge.disabled = pending || !wideHitboxResetVisible(card);
+    badge.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const currentCard = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(card.id) || card);
+      runWideHitboxCommand(currentCard, !!currentCard.wideHitboxThemeDefault);
+    });
+    label.appendChild(badge);
+
     input.addEventListener("change", () => {
-      runWideHitboxCommand(card, input.checked);
+      const currentCard = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(card.id) || card);
+      runWideHitboxCommand(currentCard, input.checked);
     });
     row.appendChild(input);
     row.appendChild(label);
+    row.classList.toggle("pending", pending);
+    if (card && card.id) {
+      getMountedWideHitboxToggles().set(card.id, {
+        row,
+        input,
+        badge,
+        cardId: card.id,
+        card,
+      });
+    }
     return row;
   }
 
@@ -1226,17 +1517,14 @@
     resetBtn.className = "soft-btn";
     resetBtn.textContent = t("animOverridesReset");
     resetBtn.disabled = !isCardOverridden(card);
-    helpers.attachActivation(resetBtn, () => {
-      const patch = {
-        file: null,
-        transition: null,
-        ...(card.supportsAutoReturn ? { autoReturnMs: null } : {}),
-        ...(card.supportsDuration ? { durationMs: null } : {}),
-      };
-      return runAnimationOverrideCommand(card, patch);
-    });
+    helpers.attachActivation(resetBtn, () => resetAnimationOverrideCard(card));
     footer.appendChild(resetBtn);
     drawer.appendChild(footer);
+    if (card && card.id) {
+      const controls = getMountedOverrideStatusControls();
+      const current = controls.get(card.id) || { cardId: card.id };
+      controls.set(card.id, { ...current, resetBtn, card });
+    }
 
     return drawer;
   }

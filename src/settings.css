@@ -1467,8 +1467,6 @@ html, body {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  cursor: pointer;
-  user-select: none;
 }
 .anim-override-toggle-row input[type="checkbox"] {
   margin: 3px 0 0 0;
@@ -1500,6 +1498,9 @@ html, body {
   border-radius: 999px;
   padding: 2px 8px;
   cursor: pointer;
+}
+.anim-override-reset-chip[hidden] {
+  display: none;
 }
 .anim-override-reset-chip:hover {
   color: var(--text-primary);

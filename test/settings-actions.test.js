@@ -1597,6 +1597,32 @@ describe("setWideHitboxOverride command", () => {
       hitbox: { wide: { "foo.svg": true } },
     });
   });
+
+  it("prefers refreshActiveThemeHitboxOverrides over activateTheme for active theme changes", () => {
+    let refreshedWith = null;
+    let activated = false;
+    const snapshot = { theme: "clawd", themeOverrides: {} };
+    const r = commandRegistry.setWideHitboxOverride(
+      { themeId: "clawd", file: "foo.svg", enabled: true },
+      {
+        snapshot,
+        refreshActiveThemeHitboxOverrides: (id, overrideMap) => {
+          refreshedWith = { id, overrideMap };
+        },
+        activateTheme: () => {
+          activated = true;
+        },
+      }
+    );
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(refreshedWith, {
+      id: "clawd",
+      overrideMap: {
+        hitbox: { wide: { "foo.svg": true } },
+      },
+    });
+    assert.strictEqual(activated, false);
+  });
 });
 
 describe("theme override subtree preservation", () => {
