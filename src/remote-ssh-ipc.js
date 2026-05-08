@@ -55,6 +55,10 @@ function registerRemoteSshIpc(options = {}) {
   const log = options.log || (() => {});
   const isPackaged = !!options.isPackaged;
   const hooksDir = options.hooksDir;
+  // Test-only injection points. Production main.js never overrides these.
+  const deployFn = options.deployFn || deploy;
+  const startCodexMonitorFn = options.startCodexMonitorFn || startCodexMonitor;
+  const stopCodexMonitorFn = options.stopCodexMonitorFn || stopCodexMonitor;
 
   const disposers = [];
 
@@ -104,7 +108,7 @@ function registerRemoteSshIpc(options = {}) {
       // Auto-start codex monitor if profile opted in.
       if (profile.autoStartCodexMonitor === true) {
         // best-effort; do not block on this
-        startCodexMonitor({ profile, runtime: remoteSshRuntime, deps: { spawn } })
+        startCodexMonitorFn({ profile, runtime: remoteSshRuntime, deps: { spawn } })
           .catch((err) => log("codex monitor start failed:", err && err.message));
       }
       return { status: "ok", state: remoteSshRuntime.getProfileStatus(id) };
@@ -123,7 +127,7 @@ function registerRemoteSshIpc(options = {}) {
       remoteSshRuntime.disconnect(id);
       // Best-effort cleanup of remote codex monitor if profile had it on.
       if (profile && profile.autoStartCodexMonitor === true) {
-        stopCodexMonitor({ profile, runtime: remoteSshRuntime, deps: { spawn } })
+        stopCodexMonitorFn({ profile, runtime: remoteSshRuntime, deps: { spawn } })
           .catch((err) => log("codex monitor stop failed:", err && err.message));
       }
       return { status: "ok", state: remoteSshRuntime.getProfileStatus(id) };
@@ -139,14 +143,26 @@ function registerRemoteSshIpc(options = {}) {
     const profile = id ? findProfile(settingsController, id) : null;
     if (!profile) return { status: "error", message: "profile not found" };
     try {
-      const result = await deploy({
+      const result = await deployFn({
         profile,
         runtime: remoteSshRuntime,
         deps: { spawn, hooksDir, isPackaged },
       });
-      return result.ok
-        ? { status: "ok" }
-        : { status: "error", message: result.message, step: result.step };
+      if (result.ok) {
+        // Stamp profile with deploy timestamp so the UI can flag profiles
+        // that have never been deployed (Connect alone doesn't push hooks
+        // to the remote — users who only click Connect see a "connected"
+        // tunnel that never fires events because the remote codex / claude
+        // has no hook config).
+        const updated = { ...profile, lastDeployedAt: Date.now() };
+        try {
+          await settingsController.applyCommand("remoteSsh.update", updated);
+        } catch (err) {
+          log("remote-ssh: failed to stamp lastDeployedAt:", err && err.message);
+        }
+        return { status: "ok" };
+      }
+      return { status: "error", message: result.message, step: result.step };
     } catch (err) {
       return { status: "error", message: (err && err.message) || "deploy threw" };
     }

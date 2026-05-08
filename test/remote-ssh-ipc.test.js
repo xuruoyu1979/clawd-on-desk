@@ -60,8 +60,14 @@ function mockBrowserWindow() {
 }
 
 function mockSettingsController(profiles = []) {
+  const commandCalls = [];
   return {
     getSnapshot: () => ({ remoteSsh: { profiles } }),
+    applyCommand: async (action, args) => {
+      commandCalls.push({ action, args });
+      return { status: "ok" };
+    },
+    _commandCalls: commandCalls,
   };
 }
 
@@ -253,6 +259,75 @@ test("remoteSsh:disconnect calls runtime.disconnect with id", async () => {
   });
   await ipcMain.invoke("remoteSsh:disconnect", "p1");
   assert.equal(disconnectId, "p1");
+  ipc.dispose();
+});
+
+// ── Deploy stamp ──
+
+test("remoteSsh:deploy stamps lastDeployedAt via remoteSsh.update on success", async () => {
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([baseProfile]);
+  const before = Date.now();
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+    // Inject a fake deploy that just resolves ok — we're testing the
+    // post-success commit, not the deploy steps themselves.
+    deployFn: async () => ({ ok: true }),
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
+  assert.equal(r.status, "ok");
+  // Exactly one update command fired.
+  assert.equal(settingsController._commandCalls.length, 1);
+  assert.equal(settingsController._commandCalls[0].action, "remoteSsh.update");
+  // Timestamp is recent + the rest of the profile is intact.
+  const updated = settingsController._commandCalls[0].args;
+  assert.equal(updated.id, "p1");
+  assert.equal(updated.host, "user@pi");
+  assert.ok(Number.isFinite(updated.lastDeployedAt));
+  assert.ok(updated.lastDeployedAt >= before, "lastDeployedAt must be >= before-call time");
+  assert.ok(updated.lastDeployedAt <= Date.now(), "lastDeployedAt must be <= now");
+  ipc.dispose();
+});
+
+test("remoteSsh:deploy on failure does NOT stamp lastDeployedAt", async () => {
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([baseProfile]);
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+    deployFn: async () => ({ ok: false, step: "scp", message: "scp failed" }),
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
+  assert.equal(r.status, "error");
+  assert.equal(r.step, "scp");
+  // No update command was fired — failed deploys must not stamp.
+  assert.equal(settingsController._commandCalls.length, 0);
+  ipc.dispose();
+});
+
+test("remoteSsh:deploy on unknown profile id → error, no stamp", async () => {
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([]);
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "ghost");
+  assert.equal(r.status, "error");
+  assert.equal(settingsController._commandCalls.length, 0);
   ipc.dispose();
 });
 

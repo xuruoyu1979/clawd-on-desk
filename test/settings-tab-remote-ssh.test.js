@@ -134,10 +134,34 @@ test("settings.css defines remote-ssh-* layout rules used by the tab", () => {
     "remote-ssh-field-hint",
     "remote-ssh-field-check",
     "remote-ssh-form-actions",
+    "remote-ssh-hooks-row",
+    "remote-ssh-hooks-label",
+    "remote-ssh-hooks-value",
+    "remote-ssh-hooks-never",
+    "remote-ssh-hooks-deployed",
+    "remote-ssh-deploy-warn",
   ];
   for (const cls of required) {
     assert.match(css, new RegExp(`\\.${cls}\\b`),
       `settings.css must define .${cls}`);
+  }
+});
+
+test("settings-i18n.js: hooks deploy status keys present in all 4 langs", () => {
+  const code = fs.readFileSync(path.join(SRC_DIR, "settings-i18n.js"), "utf8");
+  const REQUIRED_KEYS = [
+    "remoteSshHooksLabel",
+    "remoteSshHooksNever",
+    "remoteSshHooksDeployedJustNow",
+    "remoteSshHooksDeployedAgoMin",
+    "remoteSshHooksDeployedAgoHr",
+    "remoteSshHooksDeployedAgoDay",
+    "remoteSshConnectWarnNoDeploy",
+  ];
+  for (const key of REQUIRED_KEYS) {
+    const matches = code.match(new RegExp(`\\b${key}\\b`, "g")) || [];
+    assert.ok(matches.length >= 4,
+      `key ${key} should appear ≥4 times (one per lang); found ${matches.length}`);
   }
 });
 

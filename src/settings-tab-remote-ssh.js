@@ -104,6 +104,20 @@
     return t("remoteSshStatus_" + status) || status;
   }
 
+  function formatTimeAgo(ts) {
+    if (!Number.isFinite(ts) || ts <= 0) return null;
+    const diffMs = Date.now() - ts;
+    if (diffMs < 0) return t("remoteSshHooksDeployedJustNow");
+    const sec = Math.floor(diffMs / 1000);
+    if (sec < 60) return t("remoteSshHooksDeployedJustNow");
+    const min = Math.floor(sec / 60);
+    if (min < 60) return t("remoteSshHooksDeployedAgoMin").replace("{n}", String(min));
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return t("remoteSshHooksDeployedAgoHr").replace("{n}", String(hr));
+    const day = Math.floor(hr / 24);
+    return t("remoteSshHooksDeployedAgoDay").replace("{n}", String(day));
+  }
+
   function callCommand(action, payload) {
     if (!window.settingsAPI || typeof window.settingsAPI.command !== "function") {
       ops.showToast(t("toastSaveFailed") + "settings API unavailable", { error: true });
@@ -218,6 +232,18 @@
     actions.className = "remote-ssh-card-actions";
     actions.appendChild(badge);
 
+    // Surface "hooks never deployed" before the user clicks Connect — Connect
+    // alone only builds the reverse tunnel, it does not push hook files. A
+    // tunnel with no hooks shows green "connected" but the desktop pet
+    // never reacts because remote codex/claude has no hook config.
+    if (!Number.isFinite(profile.lastDeployedAt)) {
+      const warn = document.createElement("span");
+      warn.className = "remote-ssh-deploy-warn";
+      warn.textContent = "⚠";
+      warn.title = t("remoteSshConnectWarnNoDeploy");
+      actions.appendChild(warn);
+    }
+
     const connectBtn = document.createElement("button");
     connectBtn.className = "soft-btn";
     if (status.status === "connected" || status.status === "connecting" || status.status === "reconnecting") {
@@ -297,6 +323,29 @@
       statusRow.appendChild(msg);
     }
     section.appendChild(statusRow);
+
+    // Hooks deployment row — independent of tunnel status. Connect alone does
+    // not push hooks; users need to see clearly whether hooks ever made it
+    // to the remote, otherwise a green "connected" looks like everything's
+    // fine while the desktop pet stays silent.
+    const hooksRow = document.createElement("div");
+    hooksRow.className = "remote-ssh-hooks-row";
+    const hooksLabel = document.createElement("span");
+    hooksLabel.className = "remote-ssh-hooks-label";
+    hooksLabel.textContent = t("remoteSshHooksLabel");
+    hooksRow.appendChild(hooksLabel);
+    const hooksValue = document.createElement("span");
+    if (Number.isFinite(profile.lastDeployedAt) && profile.lastDeployedAt > 0) {
+      hooksValue.className = "remote-ssh-hooks-value remote-ssh-hooks-deployed";
+      hooksValue.textContent = formatTimeAgo(profile.lastDeployedAt) || "";
+      hooksValue.title = new Date(profile.lastDeployedAt).toLocaleString();
+    } else {
+      hooksValue.className = "remote-ssh-hooks-value remote-ssh-hooks-never";
+      hooksValue.textContent = "⚠ " + t("remoteSshHooksNever");
+      hooksValue.title = t("remoteSshConnectWarnNoDeploy");
+    }
+    hooksRow.appendChild(hooksValue);
+    section.appendChild(hooksRow);
 
     // Action buttons
     const actions = document.createElement("div");

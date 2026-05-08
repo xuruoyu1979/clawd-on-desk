@@ -2361,3 +2361,33 @@ html, body {
   gap: 8px;
   margin-top: 8px;
 }
+.remote-ssh-hooks-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.remote-ssh-hooks-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.remote-ssh-hooks-value {
+  color: var(--text-primary);
+}
+.remote-ssh-hooks-value.remote-ssh-hooks-never {
+  color: var(--toast-error);
+  font-weight: 600;
+}
+.remote-ssh-hooks-value.remote-ssh-hooks-deployed {
+  color: var(--text-secondary);
+}
+.remote-ssh-deploy-warn {
+  font-size: 13px;
+  color: var(--toast-error);
+  cursor: help;
+}

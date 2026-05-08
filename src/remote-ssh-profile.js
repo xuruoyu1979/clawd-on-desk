@@ -128,6 +128,16 @@ function validateProfile(profile) {
   if (typeof profile.connectOnLaunch !== "boolean") {
     return { status: "error", message: "profile.connectOnLaunch must be a boolean" };
   }
+  // lastDeployedAt is set by the IPC layer after a successful Deploy. It's
+  // optional (a fresh profile starts without one) and must be a finite
+  // positive integer when present. The UI consumes it to surface "Hooks not
+  // deployed" vs "Hooks deployed N minutes ago" so users don't connect a
+  // tunnel that has no hooks on the other end.
+  if (profile.lastDeployedAt !== undefined && profile.lastDeployedAt !== null) {
+    if (!Number.isFinite(profile.lastDeployedAt) || profile.lastDeployedAt <= 0) {
+      return { status: "error", message: "profile.lastDeployedAt must be a positive finite number" };
+    }
+  }
   return { status: "ok" };
 }
 
@@ -150,6 +160,9 @@ function sanitizeProfile(raw) {
     autoStartCodexMonitor: raw.autoStartCodexMonitor === true,
     connectOnLaunch: raw.connectOnLaunch === true,
     createdAt: Number.isFinite(raw.createdAt) ? raw.createdAt : Date.now(),
+    lastDeployedAt: Number.isFinite(raw.lastDeployedAt) && raw.lastDeployedAt > 0
+      ? raw.lastDeployedAt
+      : undefined,
   };
   // Strip undefineds for cleaner JSON.
   for (const k of Object.keys(out)) {

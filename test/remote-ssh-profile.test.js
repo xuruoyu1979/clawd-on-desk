@@ -250,6 +250,33 @@ test("validateProfile accepts safe hostPrefix values", () => {
   }
 });
 
+test("validateProfile accepts lastDeployedAt as positive finite number", () => {
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: Date.now() })).status, "ok");
+});
+
+test("validateProfile accepts profiles without lastDeployedAt (fresh / never deployed)", () => {
+  const p = basicProfile();
+  delete p.lastDeployedAt;
+  assert.equal(validateProfile(p).status, "ok");
+});
+
+test("validateProfile rejects negative / zero / non-finite lastDeployedAt", () => {
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: -1 })).status, "error");
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: 0 })).status, "error");
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: NaN })).status, "error");
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: Infinity })).status, "error");
+  assert.equal(validateProfile(basicProfile({ lastDeployedAt: "today" })).status, "error");
+});
+
+test("sanitizeProfile preserves valid lastDeployedAt; drops invalid", () => {
+  const ts = Date.now();
+  const ok = sanitizeProfile({ ...basicProfile(), lastDeployedAt: ts });
+  assert.equal(ok.lastDeployedAt, ts);
+  // Invalid values are dropped (becomes undefined → omitted from JSON).
+  const bad = sanitizeProfile({ ...basicProfile(), lastDeployedAt: -5 });
+  assert.equal(Object.prototype.hasOwnProperty.call(bad, "lastDeployedAt"), false);
+});
+
 test("validateProfile rejects non-boolean autoStartCodexMonitor / connectOnLaunch", () => {
   assert.equal(validateProfile(basicProfile({ autoStartCodexMonitor: "true" })).status, "error");
   assert.equal(validateProfile(basicProfile({ connectOnLaunch: 1 })).status, "error");
