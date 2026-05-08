@@ -876,6 +876,7 @@ describe("settings renderer browser environment", () => {
       "settings-tab-anim-overrides.js",
       "settings-tab-shortcuts.js",
       "settings-tab-about.js",
+      "settings-tab-remote-ssh.js",
       "settings-doctor-modal.js",
       "settings-renderer.js",
     ];

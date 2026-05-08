@@ -136,7 +136,7 @@ function createIntegrationSyncRuntime(options = {}) {
         updated,
         configChanged,
         message: configChanged
-          ? "Codex hooks repaired and [features].codex_hooks enabled"
+          ? "Codex hooks repaired and [features].hooks updated"
           : "Codex hooks repaired",
       };
     } catch (err) {

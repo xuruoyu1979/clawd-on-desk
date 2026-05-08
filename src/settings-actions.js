@@ -101,6 +101,12 @@ const {
   repairLocalServer,
   uninstallHooks,
 } = require("./settings-actions-system");
+const {
+  validateProfile: validateRemoteSshProfile,
+  sanitizeProfile: sanitizeRemoteSshProfile,
+  deployTargetFingerprint,
+  deployTargetDrift,
+} = require("./remote-ssh-profile");
 
 // ── updateRegistry ──
 // Maps prefs field name → validator. Controller looks up by key and runs.
@@ -245,6 +251,26 @@ const updateRegistry = {
   // Letting this field have an effect would double-activate when the UI
   // updates `theme` and `themeVariant` separately.
   themeVariant: requirePlainObject("themeVariant"),
+
+  // Remote SSH profile store. Plain validator — actual CRUD goes through
+  // commandRegistry below to keep id-uniqueness, default-fill, and
+  // monotonic createdAt logic in one place. The validator only ensures the
+  // top-level shape is sane so direct hydrate paths can't write garbage.
+  remoteSsh(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "remoteSsh must be a plain object" };
+    }
+    if (!Array.isArray(value.profiles)) {
+      return { status: "error", message: "remoteSsh.profiles must be an array" };
+    }
+    for (let i = 0; i < value.profiles.length; i++) {
+      const r = validateRemoteSshProfile(value.profiles[i]);
+      if (r.status !== "ok") {
+        return { status: "error", message: `remoteSsh.profiles[${i}]: ${r.message}` };
+      }
+    }
+    return { status: "ok" };
+  },
 
   shortcuts: {
     validate(value) {
@@ -495,6 +521,170 @@ function resizePet(payload, deps) {
   }
 }
 
+// ── Remote SSH profile commands ──
+//
+// Three commands route through the controller so the IPC layer never writes
+// prefs directly. Each returns `{ status, commit }` so the controller can
+// atomically validate + write the new `remoteSsh` field.
+//
+// id semantics: `add` requires the caller to supply an id (the renderer
+// generates a uuid). This keeps the renderer in charge of the id it'll later
+// reference for connect/disconnect, avoiding a roundtrip race.
+
+function _remoteSshSnapshot(deps) {
+  const snap = (deps && deps.snapshot) || {};
+  const cur = snap.remoteSsh && typeof snap.remoteSsh === "object" ? snap.remoteSsh : {};
+  const profiles = Array.isArray(cur.profiles) ? cur.profiles.slice() : [];
+  return { profiles };
+}
+
+function remoteSshAddProfile(payload, deps) {
+  const profile = sanitizeRemoteSshProfile(payload);
+  if (!profile) {
+    const detail = validateRemoteSshProfile(payload || {});
+    return {
+      status: "error",
+      message: detail.status === "error" ? detail.message : "remoteSsh.add: invalid profile",
+    };
+  }
+  const next = _remoteSshSnapshot(deps);
+  if (next.profiles.some((p) => p.id === profile.id)) {
+    return { status: "error", message: `remoteSsh.add: profile id "${profile.id}" already exists` };
+  }
+  next.profiles.push(profile);
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
+function remoteSshUpdateProfile(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "remoteSsh.update: payload must be an object" };
+  }
+  const profile = sanitizeRemoteSshProfile(payload);
+  if (!profile) {
+    const detail = validateRemoteSshProfile(payload || {});
+    return {
+      status: "error",
+      message: detail.status === "error" ? detail.message : "remoteSsh.update: invalid profile",
+    };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === profile.id);
+  if (idx === -1) {
+    return { status: "error", message: `remoteSsh.update: profile id "${profile.id}" not found` };
+  }
+  // Preserve original createdAt if caller didn't supply one new.
+  const prev = next.profiles[idx];
+  if (Number.isFinite(prev.createdAt) && !Number.isFinite(payload.createdAt)) {
+    profile.createdAt = prev.createdAt;
+  }
+  // Preserve lastDeployedAt across cosmetic edits (label, autoStartCodexMonitor,
+  // connectOnLaunch). Only clear it when deploy target fields drifted — those
+  // changes mean the previous deploy is no longer valid for the new target,
+  // so the UI should re-warn "never deployed" until user runs Deploy again.
+  // Use deployTargetFingerprint to normalize port-22-vs-undefined and empty
+  // optional strings before comparing — naive prev[f] === profile[f] would
+  // false-flag "port drift" when prev had port:22 and the UI saveBtn omitted
+  // the default 22 from the payload.
+  if (Number.isFinite(prev.lastDeployedAt) && !Number.isFinite(payload.lastDeployedAt)) {
+    const drift = deployTargetDrift(deployTargetFingerprint(prev), deployTargetFingerprint(profile));
+    if (drift === null) profile.lastDeployedAt = prev.lastDeployedAt;
+  }
+  next.profiles[idx] = profile;
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
+// Stamp deploy completion onto a profile WITHOUT touching any other field.
+// Use this from the deploy IPC handler instead of remoteSsh.update with a
+// pre-deploy profile snapshot — deploy can take 30+ seconds, during which
+// the user may have edited the profile. Re-writing the whole profile from
+// the snapshot would clobber those edits (lost-update race).
+//
+// expectedTarget is an optional fingerprint of {host, port, identityFile,
+// remoteForwardPort, hostPrefix} captured by the caller at deploy start.
+// If the current profile's target fields drifted away from that fingerprint,
+// the deploy ran against an old target — we no-op rather than falsely claim
+// the new (drifted) configuration is "deployed". Caller learns from the
+// noop+targetDrift response and can prompt the user to redeploy.
+function remoteSshMarkDeployed(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "remoteSsh.markDeployed: payload must be an object" };
+  }
+  const { id, deployedAt, expectedTarget } = payload;
+  if (typeof id !== "string" || !id) {
+    return { status: "error", message: "remoteSsh.markDeployed.id must be a non-empty string" };
+  }
+  if (!Number.isFinite(deployedAt) || deployedAt <= 0) {
+    return { status: "error", message: "remoteSsh.markDeployed.deployedAt must be a positive finite number" };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === id);
+  if (idx === -1) {
+    // Profile was deleted mid-deploy — silently skip rather than error.
+    return { status: "ok", noop: true, reason: "profile_deleted" };
+  }
+  const current = next.profiles[idx];
+  if (expectedTarget && typeof expectedTarget === "object") {
+    // Normalize both sides through deployTargetFingerprint so port-22 vs
+    // undefined / empty-string vs missing don't false-flag drift. This also
+    // means the IPC caller's expectedTarget can be a raw profile-shaped
+    // object — fingerprint normalizes it the same way.
+    const drift = deployTargetDrift(
+      deployTargetFingerprint(current),
+      deployTargetFingerprint(expectedTarget)
+    );
+    if (drift) {
+      return {
+        status: "ok",
+        noop: true,
+        reason: "target_drift",
+        targetDrift: drift,
+        message: `remoteSsh.markDeployed: profile ${id}.${drift} changed during deploy; not stamping`,
+      };
+    }
+  }
+  // Only mutate lastDeployedAt — every other field stays as-is so concurrent
+  // user edits (label / autoStartCodexMonitor / connectOnLaunch) survive.
+  const updatedProfile = { ...current, lastDeployedAt: deployedAt };
+  const newProfiles = next.profiles.slice();
+  newProfiles[idx] = updatedProfile;
+  return { status: "ok", commit: { remoteSsh: { profiles: newProfiles } } };
+}
+
+function remoteSshDeleteProfile(payload, deps) {
+  const id = typeof payload === "string"
+    ? payload
+    : (payload && typeof payload === "object" ? payload.id : null);
+  if (typeof id !== "string" || !id) {
+    return { status: "error", message: "remoteSsh.delete: id must be a non-empty string" };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === id);
+  if (idx === -1) {
+    // No-op rather than error — UI may have raced with a re-render.
+    return { status: "ok", noop: true };
+  }
+  next.profiles.splice(idx, 1);
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
+// Share a domain lock across all four remoteSsh.* commands so concurrent
+// invocations against the same prefs field serialize. Without this, the
+// controller assigns each command its own lock by name, and two commands
+// (e.g. remoteSsh.update and remoteSsh.markDeployed) can both read the same
+// snapshot, compute their own commit, and stomp each other's writes.
+//
+// Concrete races this guards:
+//   - update + markDeployed: stamp can clobber a label edit committed
+//     between the read and write of update.
+//   - delete + markDeployed: markDeployed can resurrect a profile after
+//     delete committed.
+//   - add + markDeployed: less likely (different ids) but kept for
+//     defense-in-depth.
+remoteSshAddProfile.lockKey = "remoteSsh";
+remoteSshUpdateProfile.lockKey = "remoteSsh";
+remoteSshDeleteProfile.lockKey = "remoteSsh";
+remoteSshMarkDeployed.lockKey = "remoteSsh";
+
 const repairDoctorIssue = createRepairDoctorIssue({
   repairAgentIntegration,
   setBubbleCategoryEnabled,
@@ -523,6 +713,10 @@ const commandRegistry = {
   importAnimationOverrides,
   setWideHitboxOverride,
   setThemeSelection,
+  "remoteSsh.add": remoteSshAddProfile,
+  "remoteSsh.update": remoteSshUpdateProfile,
+  "remoteSsh.delete": remoteSshDeleteProfile,
+  "remoteSsh.markDeployed": remoteSshMarkDeployed,
 };
 
 module.exports = {

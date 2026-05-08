@@ -25,6 +25,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 const listeners = new Set();
 const shortcutFailureListeners = new Set();
 const shortcutRecordKeyListeners = new Set();
+const remoteSshStatusListeners = new Set();
+const remoteSshProgressListeners = new Set();
 ipcRenderer.on("settings-changed", (_event, payload) => {
   for (const cb of listeners) {
     try { cb(payload); } catch (err) { console.warn("settings onChanged listener threw:", err); }
@@ -38,6 +40,16 @@ ipcRenderer.on("shortcut-failures-changed", (_event, payload) => {
 ipcRenderer.on("shortcut-record-key", (_event, payload) => {
   for (const cb of shortcutRecordKeyListeners) {
     try { cb(payload); } catch (err) { console.warn("shortcut record listener threw:", err); }
+  }
+});
+ipcRenderer.on("remoteSsh:status-changed", (_event, payload) => {
+  for (const cb of remoteSshStatusListeners) {
+    try { cb(payload); } catch (err) { console.warn("remoteSsh status listener threw:", err); }
+  }
+});
+ipcRenderer.on("remoteSsh:progress", (_event, payload) => {
+  for (const cb of remoteSshProgressListeners) {
+    try { cb(payload); } catch (err) { console.warn("remoteSsh progress listener threw:", err); }
   }
 });
 
@@ -101,4 +113,41 @@ contextBridge.exposeInMainWorld("doctor", {
   getReport: () => ipcRenderer.invoke("doctor:get-report"),
   testConnection: (durationMs) => ipcRenderer.invoke("doctor:test-connection", { durationMs }),
   openClawdLog: () => ipcRenderer.invoke("doctor:open-clawd-log"),
+});
+
+// ── Remote SSH (Phase 2) ──
+//
+// Surface: window.remoteSsh
+//
+//   listStatuses()                 Promise<{ status, statuses: Array<state> }>
+//   status(profileId)              Promise<{ status, state }>
+//   connect(profileId)             Promise<{ status, state? }>
+//   disconnect(profileId)          Promise<{ status, state? }>
+//   deploy(profileId)              Promise<{ status, message?, step? }>
+//   authenticate(profileId)        Promise<{ status, terminal?, message? }>
+//   openTerminal(profileId)        Promise<{ status, terminal?, message? }>
+//   onStatusChanged(cb)            cb({ profileId, status, ... })
+//   onProgress(cb)                 cb({ profileId, step, status, message? })
+//
+// Profile CRUD goes through the existing settingsAPI.command pathway
+// (action: "remoteSsh.add" | "remoteSsh.update" | "remoteSsh.delete") so all
+// writes flow through settings-controller as the single source of truth.
+contextBridge.exposeInMainWorld("remoteSsh", {
+  listStatuses: () => ipcRenderer.invoke("remoteSsh:list-statuses"),
+  status: (profileId) => ipcRenderer.invoke("remoteSsh:status", profileId),
+  connect: (profileId) => ipcRenderer.invoke("remoteSsh:connect", profileId),
+  disconnect: (profileId) => ipcRenderer.invoke("remoteSsh:disconnect", profileId),
+  deploy: (profileId) => ipcRenderer.invoke("remoteSsh:deploy", profileId),
+  authenticate: (profileId) => ipcRenderer.invoke("remoteSsh:authenticate", profileId),
+  openTerminal: (profileId) => ipcRenderer.invoke("remoteSsh:open-terminal", profileId),
+  onStatusChanged: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    remoteSshStatusListeners.add(cb);
+    return () => remoteSshStatusListeners.delete(cb);
+  },
+  onProgress: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    remoteSshProgressListeners.add(cb);
+    return () => remoteSshProgressListeners.delete(cb);
+  },
 });

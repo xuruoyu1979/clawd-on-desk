@@ -135,6 +135,12 @@
       const suffix = detail.supplementary.detail ? ` (${detail.supplementary.detail})` : "";
       lines.push(`${key}=${value}${suffix}`);
     }
+    if (detail.codexHookTrust && typeof detail.codexHookTrust === "object") {
+      const key = detail.codexHookTrust.key || "codex_hook_trust";
+      const value = detail.codexHookTrust.value || "unknown";
+      const suffix = detail.codexHookTrust.detail ? ` (${detail.codexHookTrust.detail})` : "";
+      lines.push(`${key}=${value}${suffix}`);
+    }
     pushIfValue(lines, "kiro", formatKiroScan(detail.kiroScan));
     pushIfValue(lines, "hook issue", detail.hookCommandIssue);
     pushIfValue(lines, "opencode issue", detail.opencodeEntryIssue);
@@ -433,7 +439,13 @@
       if (!result || result.status !== "ok") {
         throw new Error((result && result.message) || t(core, "doctorFixFailed"));
       }
-      const message = (result && result.message) || t(core, "doctorFixApplied");
+      let message = (result && result.message) || t(core, "doctorFixApplied");
+      // Codex hooks need an explicit user review pass in the codex TUI before
+      // they go live (sha256 trusted_hash gate). Append the reminder so users
+      // don't have to discover the dead zone themselves.
+      if (action && action.type === "agent-integration" && action.agentId === "codex") {
+        message = `${message} ${t(core, "codexHookReviewReminder")}`;
+      }
       state.repairFeedback[state.repairingKey] = { status: "ok", message };
       state.lastRepairFeedback = { status: "ok", message };
       showToast(core, message);

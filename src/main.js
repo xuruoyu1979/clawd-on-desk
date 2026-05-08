@@ -1313,6 +1313,27 @@ registerDoctorIpc({
   getLocale: () => _settingsController.get("lang") || "en",
 });
 
+// ── Remote SSH (Phase 2) ──
+//
+// Runtime owner of background SSH tunnels. Profile CRUD goes through
+// settings-controller (commands "remoteSsh.add" / .update / .delete);
+// runtime state (Connect / Disconnect / Deploy / Authenticate / Open
+// Terminal) goes through `remote-ssh-ipc.js`. Cleanup on app quit kills
+// any spawned ssh / scp children.
+const { createRemoteSshRuntime } = require("./remote-ssh-runtime");
+const { registerRemoteSshIpc } = require("./remote-ssh-ipc");
+const _remoteSshRuntime = createRemoteSshRuntime({
+  getHookServerPort: () => getHookServerPort(),
+  log: (...args) => console.warn("Clawd remote-ssh:", ...args),
+});
+const _remoteSshIpc = registerRemoteSshIpc({
+  ipcMain,
+  settingsController: _settingsController,
+  remoteSshRuntime: _remoteSshRuntime,
+  BrowserWindow,
+  isPackaged: app.isPackaged,
+});
+
 // ── Settings panel window ──
 //
 // Single-instance, non-modal, system-titlebar BrowserWindow that hosts the
@@ -1773,6 +1794,8 @@ if (!gotTheLock) {
     themeRuntime.cleanup();
     _focus.cleanup();
     if (animationOverridesMain) animationOverridesMain.cleanup();
+    try { _remoteSshIpc.dispose(); } catch {}
+    try { _remoteSshRuntime.cleanup(); } catch {}
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });
 

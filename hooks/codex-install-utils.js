@@ -21,6 +21,8 @@ const CODEX_HOOK_EVENTS = [
   "PostToolUse",
   "Stop",
 ];
+const CODEX_HOOKS_FEATURE_KEY = "hooks";
+const LEGACY_CODEX_HOOKS_FEATURE_KEY = "codex_hooks";
 
 function timeoutForCodexEvent(event) {
   return event === "PermissionRequest" ? 600 : 30;
@@ -123,17 +125,98 @@ function isFeaturesTableHeader(header) {
   return !!header && !header.array && header.name.replace(/\s+/g, "") === "features";
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchFeatureBoolean(line, key) {
+  const match = String(line || "").match(
+    new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(true|false)\\s*(?:#.*)?$`, "i")
+  );
+  if (!match) return null;
+  return match[1].toLowerCase() === "true";
+}
+
+function isFeatureAssignment(line, key) {
+  return new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`, "i").test(String(line || ""));
+}
+
+function replaceFeatureKey(line, fromKey, toKey) {
+  return String(line || "").replace(
+    new RegExp(`^(\\s*)${escapeRegExp(fromKey)}(\\s*=)`, "i"),
+    `$1${toKey}$2`
+  );
+}
+
+function setFeatureBoolean(line, key, value) {
+  if (isFeatureAssignment(line, key)) {
+    return String(line || "").replace(/=\s*(true|false)\b/i, `= ${value ? "true" : "false"}`);
+  }
+  return `${key} = ${value ? "true" : "false"}`;
+}
+
+function findFeatureAssignments(lines, start, end) {
+  const result = {
+    hooks: null,
+    hooksNonBoolean: null,
+    legacy: null,
+    legacyNonBoolean: null,
+    legacyIndices: [],
+  };
+
+  for (let i = start + 1; i < end; i++) {
+    const hooksValue = matchFeatureBoolean(lines[i], CODEX_HOOKS_FEATURE_KEY);
+    if (hooksValue !== null) {
+      if (!result.hooks) result.hooks = { index: i, value: hooksValue };
+      continue;
+    }
+    if (isFeatureAssignment(lines[i], CODEX_HOOKS_FEATURE_KEY)) {
+      if (!result.hooksNonBoolean) result.hooksNonBoolean = { index: i };
+      continue;
+    }
+
+    const legacyValue = matchFeatureBoolean(lines[i], LEGACY_CODEX_HOOKS_FEATURE_KEY);
+    if (legacyValue !== null) {
+      result.legacyIndices.push(i);
+      if (!result.legacy) result.legacy = { index: i, value: legacyValue };
+      continue;
+    }
+    if (isFeatureAssignment(lines[i], LEGACY_CODEX_HOOKS_FEATURE_KEY)) {
+      result.legacyIndices.push(i);
+      if (!result.legacyNonBoolean) result.legacyNonBoolean = { index: i };
+    }
+  }
+
+  return result;
+}
+
+function removeFeatureLines(lines, indices, keepIndex = -1) {
+  let changed = false;
+  const unique = [...new Set(indices)]
+    .filter((index) => index !== keepIndex)
+    .sort((a, b) => b - a);
+  for (const index of unique) {
+    lines.splice(index, 1);
+    changed = true;
+  }
+  return changed;
+}
+
+function writeCodexConfigToml(configPath, lines, newline) {
+  const nextText = `${lines.join(newline).replace(/\s*$/, "")}${newline}`;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, nextText, "utf-8");
+}
+
 function ensureCodexHooksFeature(configPath, options = {}) {
   const force = !!options.force;
   let text = "";
-  let existed = true;
   try {
     text = fs.readFileSync(configPath, "utf-8");
   } catch (err) {
     if (err.code !== "ENOENT") {
       return { changed: false, warning: `Failed to read config.toml: ${err.message}` };
     }
-    existed = false;
   }
 
   const newline = text.includes("\r\n") ? "\r\n" : "\n";
@@ -155,35 +238,62 @@ function ensureCodexHooksFeature(configPath, options = {}) {
   }
 
   if (featuresStart !== -1) {
-    for (let i = featuresStart + 1; i < featuresEnd; i++) {
-      const match = lines[i].match(/^\s*codex_hooks\s*=\s*(true|false)\s*(?:#.*)?$/i);
-      if (!match) continue;
-      if (match[1].toLowerCase() === "false") {
+    const found = findFeatureAssignments(lines, featuresStart, featuresEnd);
+    if (found.hooks) {
+      let changed = false;
+      let warning = null;
+      if (!found.hooks.value) {
         if (force) {
-          lines[i] = lines[i].replace(/=\s*false/i, "= true");
-          const nextText = `${lines.join(newline).replace(/\s*$/, "")}${newline}`;
-          fs.mkdirSync(path.dirname(configPath), { recursive: true });
-          fs.writeFileSync(configPath, nextText, "utf-8");
-          return { changed: true, warning: null };
+          lines[found.hooks.index] = setFeatureBoolean(lines[found.hooks.index], CODEX_HOOKS_FEATURE_KEY, true);
+          changed = true;
+        } else {
+          warning = "config.toml already has [features].hooks = false; leaving Codex hooks disabled.";
         }
-        return {
-          changed: false,
-          warning: "config.toml already has [features].codex_hooks = false; leaving it unchanged.",
-        };
       }
-      return { changed: false, warning: null };
+      changed = removeFeatureLines(lines, found.legacyIndices, found.hooks.index) || changed;
+      if (changed) writeCodexConfigToml(configPath, lines, newline);
+      return { changed, warning };
     }
 
-    lines.splice(featuresStart + 1, 0, "codex_hooks = true");
+    if (found.hooksNonBoolean) {
+      return {
+        changed: false,
+        warning: "config.toml already has [features].hooks, but it is not a boolean; leaving it unchanged.",
+      };
+    }
+
+    if (found.legacy) {
+      const targetValue = force ? true : found.legacy.value;
+      lines[found.legacy.index] = setFeatureBoolean(
+        replaceFeatureKey(lines[found.legacy.index], LEGACY_CODEX_HOOKS_FEATURE_KEY, CODEX_HOOKS_FEATURE_KEY),
+        CODEX_HOOKS_FEATURE_KEY,
+        targetValue
+      );
+      removeFeatureLines(lines, found.legacyIndices, found.legacy.index);
+      writeCodexConfigToml(configPath, lines, newline);
+      return {
+        changed: true,
+        warning: targetValue
+          ? null
+          : "config.toml already has [features].hooks = false; leaving Codex hooks disabled.",
+      };
+    }
+
+    if (found.legacyNonBoolean) {
+      return {
+        changed: false,
+        warning: "config.toml already has [features].codex_hooks, but it is not a boolean; leaving it unchanged.",
+      };
+    }
+
+    lines.splice(featuresStart + 1, 0, "hooks = true");
   } else {
     if (lines.length && lines[lines.length - 1] !== "") lines.push("");
-    lines.push("[features]", "codex_hooks = true");
+    lines.push("[features]", "hooks = true");
   }
 
-  const nextText = `${lines.join(newline).replace(/\s*$/, "")}${newline}`;
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, nextText, "utf-8");
-  return { changed: true, warning: existed ? null : null };
+  writeCodexConfigToml(configPath, lines, newline);
+  return { changed: true, warning: null };
 }
 
 function findCodexCommandHook(entry, marker) {
@@ -296,8 +406,18 @@ function registerCodexCommandHooks(options = {}) {
     const label = options.label || "Codex hooks";
     console.log(`Clawd ${label} -> ${hooksPath}`);
     console.log(`  Added: ${added}, updated: ${updated}, skipped: ${skipped}`);
-    if (feature.changed) console.log(`  Enabled [features].codex_hooks in ${configPath}`);
+    if (feature.changed) console.log(`  Updated [features].hooks in ${configPath}`);
     for (const warning of warnings) console.warn(`  Warning: ${warning}`);
+    // Codex requires the user to review each new/changed hook command in the
+    // TUI before it activates (sha256 trusted_hash gate written to
+    // [hooks.state] in config.toml). Surface this so users don't get the
+    // "tunnel connected, hooks installed, but desktop pet still silent"
+    // dead zone the first time they launch codex post-install.
+    if (added > 0 || updated > 0 || feature.changed) {
+      console.log("");
+      console.log("  Next step: open codex CLI and run /hooks to review and");
+      console.log("  activate the new/updated hooks (otherwise they stay inactive).");
+    }
   }
 
   return { added, skipped, updated, configChanged: feature.changed, warnings };
@@ -341,6 +461,8 @@ module.exports = {
   DEFAULT_CONFIG_PATH,
   DEFAULT_FEATURES_CONFIG,
   CODEX_HOOK_EVENTS,
+  CODEX_HOOKS_FEATURE_KEY,
+  LEGACY_CODEX_HOOKS_FEATURE_KEY,
   buildCodexHookCommand,
   ensureCodexHooksFeature,
   findCodexCommandHook,

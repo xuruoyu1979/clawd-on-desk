@@ -64,6 +64,43 @@ function geminiHooksConfig(commandForEvent = (event) => `"/node" "/app/hooks/gem
   return hooks;
 }
 
+function codexDescriptor() {
+  const root = makeTempDir();
+  const parentDir = path.join(root, ".codex");
+  return baseDescriptor({
+    agentId: "codex",
+    marker: "codex-hook.js",
+    parentDir,
+    configPath: path.join(parentDir, "hooks.json"),
+    nested: true,
+    supplementary: {
+      key: "hooks",
+      configPath: path.join(parentDir, "config.toml"),
+    },
+  });
+}
+
+function codexHooksConfig(events) {
+  const hooks = {};
+  for (const event of events) {
+    hooks[event] = [{ hooks: [{ command: `"/node" "/app/hooks/codex-hook.js" ${event}` }] }];
+  }
+  return { hooks };
+}
+
+function codexTrustState(descriptor, events) {
+  return [
+    "[features]",
+    "hooks = true",
+    "",
+    ...events.flatMap((event) => [
+      `[hooks.state.'${descriptor.configPath}:${event.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase()}:0:0']`,
+      `trusted_hash = "sha256:${"a".repeat(64)}"`,
+      "",
+    ]),
+  ].join("\n");
+}
+
 afterEach(() => {
   while (tempDirs.length) {
     fs.rmSync(tempDirs.pop(), { recursive: true, force: true });
@@ -337,26 +374,10 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.hookCommandIssue, "scriptPath-missing");
   });
 
-  it("turns Codex ok into warning when codex_hooks=false", () => {
-    const root = makeTempDir();
-    const parentDir = path.join(root, ".codex");
-    const descriptor = baseDescriptor({
-      agentId: "codex",
-      marker: "codex-hook.js",
-      parentDir,
-      configPath: path.join(parentDir, "hooks.json"),
-      nested: true,
-      supplementary: {
-        key: "codex_hooks",
-        configPath: path.join(parentDir, "config.toml"),
-      },
-    });
-    writeJson(descriptor.configPath, {
-      hooks: {
-        Stop: [{ hooks: [{ command: '"/node" "/app/hooks/codex-hook.js"' }] }],
-      },
-    });
-    fs.writeFileSync(descriptor.supplementary.configPath, "[features]\ncodex_hooks = false\n", "utf8");
+  it("turns Codex ok into warning when hooks=false", () => {
+    const descriptor = codexDescriptor();
+    writeJson(descriptor.configPath, codexHooksConfig(["Stop"]));
+    fs.writeFileSync(descriptor.supplementary.configPath, "[features]\nhooks = false\n", "utf8");
 
     const detail = runOne(descriptor);
     assert.strictEqual(detail.status, "not-connected");
@@ -366,6 +387,40 @@ describe("checkAgentIntegrations", () => {
       agentId: "codex",
       forceCodexHooksFeature: true,
     });
+  });
+
+  it("turns Codex ok into warning when hooks need Codex review", () => {
+    const descriptor = codexDescriptor();
+    writeJson(descriptor.configPath, codexHooksConfig(["PermissionRequest", "Stop"]));
+    fs.writeFileSync(descriptor.supplementary.configPath, "[features]\nhooks = true\n", "utf8");
+
+    const detail = runOne(descriptor);
+    assert.strictEqual(detail.status, "needs-review");
+    assert.strictEqual(detail.level, "warning");
+    assert.strictEqual(detail.fixAction, undefined);
+    assert.deepStrictEqual(detail.supplementary, {
+      key: "hooks",
+      value: "enabled",
+      detail: "hooks=true",
+    });
+    assert.strictEqual(detail.codexHookTrust.value, "needs-review");
+    assert.strictEqual(detail.codexHookTrust.totalCount, 2);
+    assert.deepStrictEqual(detail.codexHookTrust.missingEvents, ["PermissionRequest", "Stop"]);
+    assert.match(detail.codexHookTrust.detail, /Codex \/hooks review/);
+  });
+
+  it("keeps Codex ok when Codex hook trust state exists", () => {
+    const descriptor = codexDescriptor();
+    const events = ["PermissionRequest", "Stop"];
+    writeJson(descriptor.configPath, codexHooksConfig(events));
+    fs.writeFileSync(descriptor.supplementary.configPath, codexTrustState(descriptor, events), "utf8");
+
+    const detail = runOne(descriptor);
+    assert.strictEqual(detail.status, "ok");
+    assert.strictEqual(detail.level, null);
+    assert.strictEqual(detail.fixAction, undefined);
+    assert.strictEqual(detail.codexHookTrust.value, "trusted");
+    assert.strictEqual(detail.codexHookTrust.trustedCount, 2);
   });
 
   it("scans Kiro agent configs and reports fully-valid files", () => {

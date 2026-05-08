@@ -417,6 +417,58 @@ describe("applyCommand", () => {
     assert.deepStrictEqual(order, ["start:a", "end:a", "start:b", "end:b"]);
   });
 
+  it("serializes commands sharing a domain lockKey (cross-command race fix)", async () => {
+    // Codex review #9 high finding: remoteSsh.update / .markDeployed /
+    // .delete all write the same prefs field. Without a shared lockKey
+    // they execute concurrently — markDeployed can compute its commit
+    // from a stale snapshot taken before update committed, and stomp
+    // the user's edit. Domain lockKey forces serialization.
+    const order = [];
+    const slowFast = async (payload) => {
+      order.push(`start:${payload.tag}`);
+      await new Promise((r) => setTimeout(r, payload.tag === "a" ? 20 : 1));
+      order.push(`end:${payload.tag}`);
+      return { status: "ok" };
+    };
+    const cmdA = (payload) => slowFast(payload);
+    const cmdB = (payload) => slowFast(payload);
+    cmdA.lockKey = "shared";
+    cmdB.lockKey = "shared";
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      commands: { cmdA, cmdB },
+    });
+    const a = ctrl.applyCommand("cmdA", { tag: "a" });
+    const b = ctrl.applyCommand("cmdB", { tag: "b" });
+    await Promise.all([a, b]);
+    // Without shared lock they'd interleave start:a, start:b, end:b, end:a.
+    assert.deepStrictEqual(order, ["start:a", "end:a", "start:b", "end:b"],
+      "commands sharing a domain lockKey must serialize even across different names");
+  });
+
+  it("commands without shared lockKey can interleave (control: distinct lockKeys are independent)", async () => {
+    const order = [];
+    const slowFast = async (payload) => {
+      order.push(`start:${payload.tag}`);
+      await new Promise((r) => setTimeout(r, payload.tag === "a" ? 20 : 1));
+      order.push(`end:${payload.tag}`);
+      return { status: "ok" };
+    };
+    const cmdA = (payload) => slowFast(payload);
+    const cmdB = (payload) => slowFast(payload);
+    // No lockKey on either — controller defaults to per-name lock; different
+    // names → no cross-command serialization.
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      commands: { cmdA, cmdB },
+    });
+    const a = ctrl.applyCommand("cmdA", { tag: "a" });
+    const b = ctrl.applyCommand("cmdB", { tag: "b" });
+    await Promise.all([a, b]);
+    // b finishes first (1ms vs 20ms) without serialization.
+    assert.deepStrictEqual(order, ["start:a", "start:b", "end:b", "end:a"]);
+  });
+
   it("applies uninstallHooks commit without clearing latent autoStartWithClaude preference", async () => {
     const ctrl = createSettingsController({
       prefsPath: makeTempPath(),

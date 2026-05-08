@@ -45,7 +45,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     marker: "codex-hook.js",
     nested: true,
     supplementary: {
-      key: "codex_hooks",
+      key: "hooks",
       configPath: codex.DEFAULT_FEATURES_CONFIG,
     },
   }),
