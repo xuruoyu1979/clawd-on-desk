@@ -563,6 +563,153 @@ test("probe child error event clears probeInFlight (defensive against missing ex
   rt.cleanup();
 });
 
+// ── Stale-child identity gates ──
+//
+// Repro for codex review #7: a Disconnect → Connect cycle leaves the prior
+// child's exit/error event pending. Without identity gating, when that
+// stale event finally fires its closure mutates the runtime state that now
+// references the *new* child — orphaning the new tunnel, falsely flipping
+// status, or polluting probe lock/exit-code.
+
+test("stale main ssh exit (post Disconnect+Connect) is identity-gated", async () => {
+  const children = [];
+  const spawn = () => { const c = makeMockChild(); children.push(c); return c; };
+  const timers = makeFakeTimers();
+  const rt = createRemoteSshRuntime({
+    spawn,
+    getHookServerPort: () => 23333,
+    setTimeout: timers.setTimeoutFn,
+    clearTimeout: timers.clearTimeoutFn,
+  });
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  const childA = children[0];
+  // Disconnect kills A (queues A.exit microtask via the mock kill()).
+  // Then synchronously reconnect — spawns B before A.exit fires.
+  rt.disconnect("p1");
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  const childB = children[1];
+  assert.notEqual(childA, childB);
+  // Drain microtasks — A.exit fires NOW; identity gate must drop it.
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  // State must still reference B; status must be connecting (not reconnecting / idle).
+  assert.equal(rt.getProfileStatus("p1").status, "connecting",
+    "stale A.exit must not flip B's status");
+  // Sanity: B's own exit handler must still work.
+  childB._fakeStderr("ssh: connect to host pi port 22: Connection timed out");
+  await new Promise((r) => setImmediate(r));
+  childB._fakeExit(255);
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(rt.getProfileStatus("p1").status, "reconnecting",
+    "B's own exit must still be handled normally");
+  rt.cleanup();
+});
+
+test("stale main ssh error (post Disconnect+Connect) is identity-gated", async () => {
+  const children = [];
+  const spawn = () => { const c = makeMockChild(); children.push(c); return c; };
+  const timers = makeFakeTimers();
+  const rt = createRemoteSshRuntime({
+    spawn,
+    getHookServerPort: () => 23333,
+    setTimeout: timers.setTimeoutFn,
+    clearTimeout: timers.clearTimeoutFn,
+  });
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  const childA = children[0];
+  rt.disconnect("p1");
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  // A's error fires after we've already swapped to B.
+  childA.emit("error", Object.assign(new Error("late ENOENT"), { code: "ENOENT" }));
+  await new Promise((r) => setImmediate(r));
+  // Without identity gate, A's error would have called finishFailure → status=failed,
+  // which would also mark state.stopped=true and orphan B. Verify B stays alive.
+  assert.equal(rt.getProfileStatus("p1").status, "connecting",
+    "stale A.error must not flip B's status to failed");
+  rt.cleanup();
+});
+
+test("stale probe exitCode=0 (after probe rotation) does NOT falsely flip new connection to connected", async () => {
+  const children = [];
+  const spawn = () => { const c = makeMockChild(); children.push(c); return c; };
+  const timers = makeFakeTimers();
+  const rt = createRemoteSshRuntime({
+    spawn,
+    getHookServerPort: () => 23333,
+    setTimeout: timers.setTimeoutFn,
+    clearTimeout: timers.clearTimeoutFn,
+  });
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  // children[0] = main A; flush schedNextProbe timer to actually spawn probe1.
+  timers.flush();
+  await new Promise((r) => setImmediate(r));
+  const probe1 = children[1];
+  assert.ok(probe1, "probe1 should be spawned");
+  // Disconnect kills probe1 (queues exit) and main A. Reconnect spawns
+  // main B + (after timer flush) probe2.
+  rt.disconnect("p1");
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  timers.flush();
+  await new Promise((r) => setImmediate(r));
+  const probe2 = children[3];
+  assert.ok(probe2, "probe2 should be spawned");
+  assert.notEqual(probe1, probe2);
+
+  // Now stale probe1 emits exitCode 0 (would normally trigger onProbeSuccess).
+  // Identity gate must drop it — status stays connecting, NOT connected.
+  probe1.emit("exit", 0, null);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(rt.getProfileStatus("p1").status, "connecting",
+    "stale probe1 exit=0 must NOT mark new connection connected");
+
+  // probe2's own exitCode 0 should still flip to connected.
+  probe2.emit("exit", 0, null);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(rt.getProfileStatus("p1").status, "connected");
+  rt.cleanup();
+});
+
+test("stale probe error (after probe rotation) does NOT clear new probe's lock", async () => {
+  const children = [];
+  const spawn = () => { const c = makeMockChild(); children.push(c); return c; };
+  const timers = makeFakeTimers();
+  const rt = createRemoteSshRuntime({
+    spawn,
+    getHookServerPort: () => 23333,
+    setTimeout: timers.setTimeoutFn,
+    clearTimeout: timers.clearTimeoutFn,
+  });
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  timers.flush();
+  await new Promise((r) => setImmediate(r));
+  const probe1 = children[1];
+  rt.disconnect("p1");
+  rt.connect({ id: "p1", host: "pi", remoteForwardPort: 23333 });
+  timers.flush();
+  await new Promise((r) => setImmediate(r));
+  const probe2 = children[3];
+  assert.notEqual(probe1, probe2);
+
+  // Stale probe1.error must not touch probe2's state. We verify by then
+  // emitting probe2.exit(0) — if probe1's error had cleared probeChild
+  // and overwritten probeLastExitCode, the gate inside the runtime would
+  // still treat probe2.exit(0) as the live success. Either way the
+  // "stale event must not affect current state" property is what we
+  // assert: probe1.error first, then probe2.exit(0) should still flip
+  // status to connected (proving probe2 is still being tracked).
+  probe1.emit("error", new Error("synthetic late stdio error"));
+  await new Promise((r) => setImmediate(r));
+  // Status should still be connecting (probe1 error was dropped).
+  assert.equal(rt.getProfileStatus("p1").status, "connecting");
+  // Now probe2 succeeds for real.
+  probe2.emit("exit", 0, null);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(rt.getProfileStatus("p1").status, "connected",
+    "probe2 must still be tracked and able to flip status");
+  rt.cleanup();
+});
+
 test("cleanup() kills aux children registered via registerChild()", () => {
   // Deploy / Codex monitor spawn one-shot ssh / scp children that aren't
   // tracked in per-profile state. cleanup() must still reach them so

@@ -403,7 +403,15 @@ function createRemoteSshRuntime(deps = {}) {
     state.sshChild = child;
     state.stderrBuf = "";
 
+    // All handlers below identity-gate against `child` (closure-captured) so
+    // a stale exit/error from a previous Disconnect→Connect cycle can't
+    // corrupt the current child's state. Pattern: rapid Disconnect (kills A)
+    // immediately followed by Connect (spawns B) leaves A's exit pending;
+    // when it fires, the closure still references the runtime state which
+    // now points at B, so without identity check A's handler would null out
+    // sshChild → orphan B and trigger a reconnect using A's stderr.
     child.on("error", (err) => {
+      if (state.sshChild !== child) return;
       // ENOENT, EACCES, etc. before spawn completes.
       const reason = err && err.code === "ENOENT" ? "ssh_missing" : "spawn_failed";
       const hint = reason === "ssh_missing" ? "remoteSshErrSshMissing" : "remoteSshErrSpawnFailed";
@@ -417,6 +425,7 @@ function createRemoteSshRuntime(deps = {}) {
 
     if (child.stderr) {
       child.stderr.on("data", (chunk) => {
+        if (state.sshChild !== child) return;
         state.stderrBuf += chunk.toString();
         // Cap buffer at 8KB to avoid unbounded growth on noisy hosts.
         if (state.stderrBuf.length > 8192) {
@@ -426,16 +435,17 @@ function createRemoteSshRuntime(deps = {}) {
     }
 
     child.on("exit", (code, signal) => {
-      onSshExit(state, code, signal);
+      onSshExit(state, child, code, signal);
     });
 
     // Start probe loop immediately — don't wait for ConnectTimeout to elapse.
     startProbeLoop(state);
   }
 
-  function onSshExit(state, code, signal) {
-    // Only act if this child is still our current child.
-    if (state.sshChild === null) return;
+  function onSshExit(state, child, code, signal) {
+    // Identity-gate: if this child isn't the current sshChild anymore, the
+    // exit belongs to a stale process from a prior connect cycle — drop.
+    if (state.sshChild !== child) return;
     state.sshChild = null;
     cleanupProbeLoop(state);
 
@@ -547,14 +557,18 @@ function createRemoteSshRuntime(deps = {}) {
 
     state.probeChild = probe;
 
-    // Defensive: if Node only emits 'error' (e.g. stdio pipe failure) without
-    // 'exit', the exit handler never runs and probeInFlight stays true → all
-    // subsequent probes are blocked. Clear lock here too, mark this probe
-    // 'transient' (unknown exit), and let the window-deadline path classify.
+    // Identity-gate both handlers: if probeChild has rotated to a newer
+    // probe (or been cleared by cleanupProbeLoop / disconnect), this stale
+    // event must NOT touch probeInFlight, probeLastExitCode, or trigger a
+    // false connected status from the old probe's exitCode === 0.
+    //
+    // Also defensive against Node only emitting 'error' (e.g. stdio pipe
+    // failure) without 'exit' — the error handler does the same cleanup
+    // work the exit handler would have, so the lock can't deadlock.
     probe.on("error", (err) => {
-      if (!state.probeInFlight) return;
+      if (state.probeChild !== probe) return;
       state.probeInFlight = false;
-      if (state.probeChild === probe) state.probeChild = null;
+      state.probeChild = null;
       // Synthetic exit code so classifyProbeExit treats this as transient.
       state.probeLastExitCode = -1;
       log("remote-ssh probe child error:", err && err.message);
@@ -565,8 +579,9 @@ function createRemoteSshRuntime(deps = {}) {
     });
 
     probe.on("exit", (code, signal) => {
+      if (state.probeChild !== probe) return;
       state.probeInFlight = false;
-      if (state.probeChild === probe) state.probeChild = null;
+      state.probeChild = null;
       const exitCode = signalToExitCode(code, signal);
       state.probeLastExitCode = exitCode;
       if (state.stopped) return;
