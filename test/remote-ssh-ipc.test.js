@@ -264,7 +264,7 @@ test("remoteSsh:disconnect calls runtime.disconnect with id", async () => {
 
 // ── Deploy stamp ──
 
-test("remoteSsh:deploy stamps lastDeployedAt via remoteSsh.update on success", async () => {
+test("remoteSsh:deploy stamps via markDeployed (not full update) on success", async () => {
   const ipcMain = mockIpcMain();
   const { BrowserWindow } = mockBrowserWindow();
   const settingsController = mockSettingsController([baseProfile]);
@@ -281,16 +281,24 @@ test("remoteSsh:deploy stamps lastDeployedAt via remoteSsh.update on success", a
   });
   const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
   assert.equal(r.status, "ok");
-  // Exactly one update command fired.
+  // Exactly one command fired, and it must be markDeployed (NOT update,
+  // which would be the lost-update bug we just fixed).
   assert.equal(settingsController._commandCalls.length, 1);
-  assert.equal(settingsController._commandCalls[0].action, "remoteSsh.update");
-  // Timestamp is recent + the rest of the profile is intact.
-  const updated = settingsController._commandCalls[0].args;
-  assert.equal(updated.id, "p1");
-  assert.equal(updated.host, "user@pi");
-  assert.ok(Number.isFinite(updated.lastDeployedAt));
-  assert.ok(updated.lastDeployedAt >= before, "lastDeployedAt must be >= before-call time");
-  assert.ok(updated.lastDeployedAt <= Date.now(), "lastDeployedAt must be <= now");
+  assert.equal(settingsController._commandCalls[0].action, "remoteSsh.markDeployed",
+    "deploy stamp must use markDeployed, not full-profile update");
+  const args = settingsController._commandCalls[0].args;
+  assert.equal(args.id, "p1");
+  assert.ok(Number.isFinite(args.deployedAt));
+  assert.ok(args.deployedAt >= before);
+  assert.ok(args.deployedAt <= Date.now());
+  // expectedTarget fingerprint captured at deploy start.
+  assert.ok(args.expectedTarget, "must pass expectedTarget for drift detection");
+  assert.equal(args.expectedTarget.host, "user@pi");
+  assert.equal(args.expectedTarget.remoteForwardPort, 23333);
+  // The full profile snapshot must NOT be in the args — that would defeat
+  // the lost-update fix.
+  assert.equal(args.label, undefined,
+    "markDeployed args must not carry full profile fields like label");
   ipc.dispose();
 });
 

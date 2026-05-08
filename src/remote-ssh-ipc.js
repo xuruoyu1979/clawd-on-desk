@@ -149,14 +149,34 @@ function registerRemoteSshIpc(options = {}) {
         deps: { spawn, hooksDir, isPackaged },
       });
       if (result.ok) {
-        // Stamp profile with deploy timestamp so the UI can flag profiles
-        // that have never been deployed (Connect alone doesn't push hooks
-        // to the remote — users who only click Connect see a "connected"
-        // tunnel that never fires events because the remote codex / claude
-        // has no hook config).
-        const updated = { ...profile, lastDeployedAt: Date.now() };
+        // Stamp via remoteSsh.markDeployed (NOT remoteSsh.update with a full
+        // profile snapshot). Deploy can take 30+ seconds, during which the
+        // user might edit the profile via Settings — full-snapshot update
+        // would clobber those edits with the pre-deploy state (lost-update
+        // race). markDeployed reads the current profile by id and only
+        // mutates lastDeployedAt.
+        //
+        // expectedTarget is a fingerprint captured at deploy start. If the
+        // user changed host / port / identityFile / remoteForwardPort /
+        // hostPrefix mid-deploy, the deploy ran against the old target —
+        // markDeployed no-ops in that case so we don't falsely claim the
+        // new (drifted) configuration is "deployed".
+        const expectedTarget = {
+          host: profile.host,
+          port: profile.port,
+          identityFile: profile.identityFile,
+          remoteForwardPort: profile.remoteForwardPort,
+          hostPrefix: profile.hostPrefix,
+        };
         try {
-          await settingsController.applyCommand("remoteSsh.update", updated);
+          const stamp = await settingsController.applyCommand("remoteSsh.markDeployed", {
+            id: profile.id,
+            deployedAt: Date.now(),
+            expectedTarget,
+          });
+          if (stamp && stamp.noop && stamp.reason === "target_drift") {
+            log("remote-ssh: deploy stamp skipped due to target drift on", stamp.targetDrift);
+          }
         } catch (err) {
           log("remote-ssh: failed to stamp lastDeployedAt:", err && err.message);
         }

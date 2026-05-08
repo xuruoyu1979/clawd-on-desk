@@ -19,13 +19,19 @@
   let ops = null;
 
   // Local view state (tab-scoped — not persisted in core.state).
+  //
+  // progressLog is a Map<profileId, Array<event>> so concurrent deploys on
+  // multiple profiles each get their own log; the detail panel renders only
+  // the slice belonging to its profile. deployingProfileIds is a Set so the
+  // Deploy button on each card knows independently whether THAT profile is
+  // mid-deploy (one profile finishing must not unblock another's button).
   const view = {
     selectedProfileId: null,
     editing: null,        // profile snapshot for edit form, or null
     runtimeStatuses: new Map(), // profileId → status snapshot
-    progressLog: [],      // last N progress events
+    progressLog: new Map(),     // profileId → Array<event>
     listenerInstalled: false,
-    deployingProfileId: null,
+    deployingProfileIds: new Set(),
   };
 
   const PROGRESS_LOG_MAX = 50;
@@ -66,10 +72,15 @@
     }
     if (typeof window.remoteSsh.onProgress === "function") {
       window.remoteSsh.onProgress((p) => {
-        if (!p) return;
-        view.progressLog.push({ ...p, ts: Date.now() });
-        if (view.progressLog.length > PROGRESS_LOG_MAX) {
-          view.progressLog.splice(0, view.progressLog.length - PROGRESS_LOG_MAX);
+        if (!p || typeof p.profileId !== "string") return;
+        let log = view.progressLog.get(p.profileId);
+        if (!log) {
+          log = [];
+          view.progressLog.set(p.profileId, log);
+        }
+        log.push({ ...p, ts: Date.now() });
+        if (log.length > PROGRESS_LOG_MAX) {
+          log.splice(0, log.length - PROGRESS_LOG_MAX);
         }
         if (state.activeTab === "remote-ssh") ops.requestRender({ content: true });
       });
@@ -300,6 +311,10 @@
       callCommand("remoteSsh.delete", profile.id).then((r) => {
         if (r && r.status === "ok") {
           if (view.selectedProfileId === profile.id) view.selectedProfileId = null;
+          // Drop deleted profile's view-state buckets so a future profile
+          // reusing the id doesn't inherit stale logs / deploying flag.
+          view.progressLog.delete(profile.id);
+          view.deployingProfileIds.delete(profile.id);
           ops.requestRender({ content: true });
         }
       });
@@ -375,17 +390,17 @@
 
     const deployBtn = document.createElement("button");
     deployBtn.className = "soft-btn accent";
-    deployBtn.textContent = view.deployingProfileId === profile.id
-      ? t("remoteSshDeploying")
-      : t("remoteSshDeploy");
-    deployBtn.disabled = view.deployingProfileId === profile.id;
+    const isDeploying = view.deployingProfileIds.has(profile.id);
+    deployBtn.textContent = isDeploying ? t("remoteSshDeploying") : t("remoteSshDeploy");
+    deployBtn.disabled = isDeploying;
     deployBtn.addEventListener("click", () => {
       if (!window.remoteSsh) return;
-      view.deployingProfileId = profile.id;
-      view.progressLog = [];
+      view.deployingProfileIds.add(profile.id);
+      // Clear ONLY this profile's log; other profiles mid-deploy keep theirs.
+      view.progressLog.set(profile.id, []);
       ops.requestRender({ content: true });
       window.remoteSsh.deploy(profile.id).then((r) => {
-        view.deployingProfileId = null;
+        view.deployingProfileIds.delete(profile.id);
         if (r && r.status === "ok") {
           // Append codex /hooks reminder — Deploy installs the hooks but the
           // user still has to review them once in codex TUI before they go
@@ -401,11 +416,13 @@
     actions.appendChild(deployBtn);
     section.appendChild(actions);
 
-    // Progress log (only render when there's something to show)
-    if (view.progressLog.length > 0) {
+    // Progress log slice for this profile (multi-profile concurrent deploys
+    // each keep their own bucket; render only the current profile's events).
+    const profileLog = view.progressLog.get(profile.id) || [];
+    if (profileLog.length > 0) {
       const log = document.createElement("div");
       log.className = "remote-ssh-progress-log";
-      for (const ev of view.progressLog) {
+      for (const ev of profileLog) {
         const line = document.createElement("div");
         line.className = "remote-ssh-progress-line remote-ssh-progress-" + ev.status;
         const stepLabel = t("remoteSshStep_" + ev.step) || ev.step;

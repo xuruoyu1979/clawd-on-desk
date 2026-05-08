@@ -263,7 +263,15 @@ describe("Codex official hook installer", () => {
     assert.equal(captured.length, 0, "silent install must not log reminder (or anything else)");
   });
 
-  it("does NOT emit the reminder when nothing changed (re-install with same hooks)", () => {
+  it("does NOT emit the reminder line on no-op re-install (summary lines still emit)", () => {
+    // Semantics being asserted: "no-op re-install does not print the
+    // /hooks-review reminder line". This is intentionally narrower than
+    // "no-op re-install is fully silent on stdout" — `Clawd Codex hooks ->`
+    // and `Added: 0, updated: 0, skipped: N` summary lines are useful for
+    // CLI users who re-run the installer (they confirm the install is
+    // already in place). Only the reminder is gated on actual changes,
+    // so users don't get warning fatigue from re-running an idempotent
+    // install.
     const codexDir = makeTempCodexDir({});
     // First install: changes happen, reminder fires.
     registerCodexHooks({ silent: true, codexDir, nodeBin: "/usr/local/bin/node", platform: "linux" });
@@ -283,6 +291,10 @@ describe("Codex official hook installer", () => {
     }
     const joined = captured.join("\n");
     assert.equal(/Next step/i.test(joined), false,
-      "no-op re-install must NOT print the reminder");
+      "no-op re-install must NOT print the reminder line");
+    // Confirm summary lines DO still emit (this is the contract — keep
+    // CLI feedback for users who want to verify the install state).
+    assert.match(joined, /Clawd .* hooks/, "summary header should still print");
+    assert.match(joined, /Added: 0/, "Added/updated/skipped count should still print");
   });
 });

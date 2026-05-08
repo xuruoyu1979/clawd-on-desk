@@ -383,6 +383,157 @@ test("settings-actions: remoteSsh.add rejects invalid input", () => {
   assert.equal(r.status, "error");
 });
 
+// ── markDeployed: avoids deploy/edit lost-update race ──
+
+test("settings-actions: remoteSsh.markDeployed stamps lastDeployedAt without touching other fields", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const original = basicProfile({ label: "Pi" });
+  const r = cmd({ id: "p1", deployedAt: 12345 }, {
+    snapshot: { remoteSsh: { profiles: [original] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 12345);
+  // Other fields preserved.
+  assert.equal(r.commit.remoteSsh.profiles[0].label, "Pi");
+  assert.equal(r.commit.remoteSsh.profiles[0].host, "user@pi.local");
+});
+
+test("settings-actions: remoteSsh.markDeployed survives concurrent edit (lost-update fix)", () => {
+  // Caller captures pre-deploy snapshot at T=0 with label "Pi".
+  // T=10s: user edits label to "树莓派" via remoteSsh.update — settings-controller commits.
+  // T=30s: deploy IPC handler calls markDeployed with id only.
+  // markDeployed reads CURRENT profile (label="树莓派"), not the stale snapshot.
+  // Result: lastDeployedAt stamped, label edit survives.
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const editedProfile = basicProfile({ label: "树莓派" });  // post-edit state
+  const r = cmd({ id: "p1", deployedAt: 12345 }, {
+    snapshot: { remoteSsh: { profiles: [editedProfile] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.remoteSsh.profiles[0].label, "树莓派",
+    "label edit must survive — markDeployed must not write a stale snapshot");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 12345);
+});
+
+test("settings-actions: remoteSsh.markDeployed noop when profile deleted mid-deploy", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const r = cmd({ id: "p1", deployedAt: 12345 }, {
+    snapshot: { remoteSsh: { profiles: [] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.noop, true);
+  assert.equal(r.reason, "profile_deleted");
+  assert.equal(r.commit, undefined);
+});
+
+test("settings-actions: remoteSsh.markDeployed noop when expectedTarget host drifted", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const editedProfile = basicProfile({ host: "newpi.local" });  // user changed host mid-deploy
+  const r = cmd(
+    {
+      id: "p1",
+      deployedAt: 12345,
+      expectedTarget: {
+        host: "user@pi.local",  // pre-edit target — what we deployed to
+        port: undefined,
+        identityFile: undefined,
+        remoteForwardPort: 23333,
+        hostPrefix: undefined,
+      },
+    },
+    { snapshot: { remoteSsh: { profiles: [editedProfile] } } }
+  );
+  // No-op: deploy landed on old host, but profile now points to new host.
+  // Stamping would lie about the new host being deployed.
+  assert.equal(r.status, "ok");
+  assert.equal(r.noop, true);
+  assert.equal(r.reason, "target_drift");
+  assert.equal(r.targetDrift, "host");
+  assert.equal(r.commit, undefined);
+  assert.equal(editedProfile.lastDeployedAt, undefined,
+    "profile must remain un-stamped when target drifted");
+});
+
+test("settings-actions: remoteSsh.markDeployed allows expectedTarget that fully matches", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const profile = basicProfile({ remoteForwardPort: 23335, host: "pi" });
+  const r = cmd(
+    {
+      id: "p1",
+      deployedAt: 99999,
+      expectedTarget: {
+        host: "pi",
+        port: undefined,
+        identityFile: undefined,
+        remoteForwardPort: 23335,
+        hostPrefix: undefined,
+      },
+    },
+    { snapshot: { remoteSsh: { profiles: [profile] } } }
+  );
+  assert.equal(r.status, "ok");
+  assert.equal(r.noop, undefined);
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 99999);
+});
+
+test("settings-actions: remoteSsh.markDeployed validates inputs", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  assert.equal(cmd(null, { snapshot: {} }).status, "error");
+  assert.equal(cmd({ id: "" }, { snapshot: {} }).status, "error");
+  assert.equal(cmd({ id: "p1" }, { snapshot: {} }).status, "error", "deployedAt required");
+  assert.equal(cmd({ id: "p1", deployedAt: -1 }, { snapshot: {} }).status, "error");
+  assert.equal(cmd({ id: "p1", deployedAt: NaN }, { snapshot: {} }).status, "error");
+});
+
+// ── update: preserves lastDeployedAt on cosmetic edits ──
+
+test("settings-actions: remoteSsh.update preserves lastDeployedAt when only cosmetic fields change", () => {
+  const cmd = commandRegistry["remoteSsh.update"];
+  const stamped = basicProfile({ label: "Pi", lastDeployedAt: 12345 });
+  const cosmeticEdit = basicProfile({ label: "树莓派" });  // only label changed
+  const r = cmd(cosmeticEdit, {
+    snapshot: { remoteSsh: { profiles: [stamped] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.remoteSsh.profiles[0].label, "树莓派");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 12345,
+    "cosmetic edit must keep deploy stamp");
+});
+
+test("settings-actions: remoteSsh.update CLEARS lastDeployedAt when host changes (target drift)", () => {
+  const cmd = commandRegistry["remoteSsh.update"];
+  const stamped = basicProfile({ host: "pi", lastDeployedAt: 12345 });
+  const targetEdit = basicProfile({ host: "newpi" });  // host changed
+  const r = cmd(targetEdit, {
+    snapshot: { remoteSsh: { profiles: [stamped] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.remoteSsh.profiles[0].host, "newpi");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, undefined,
+    "host change must clear deploy stamp (UI re-warns 'never deployed')");
+});
+
+test("settings-actions: remoteSsh.update clears lastDeployedAt on remoteForwardPort change", () => {
+  const cmd = commandRegistry["remoteSsh.update"];
+  const stamped = basicProfile({ remoteForwardPort: 23333, lastDeployedAt: 12345 });
+  const portEdit = basicProfile({ remoteForwardPort: 23335 });
+  const r = cmd(portEdit, {
+    snapshot: { remoteSsh: { profiles: [stamped] } },
+  });
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, undefined);
+});
+
+test("settings-actions: remoteSsh.update preserves lastDeployedAt when toggling autoStartCodexMonitor", () => {
+  const cmd = commandRegistry["remoteSsh.update"];
+  const stamped = basicProfile({ autoStartCodexMonitor: false, lastDeployedAt: 12345 });
+  const toggle = basicProfile({ autoStartCodexMonitor: true });
+  const r = cmd(toggle, {
+    snapshot: { remoteSsh: { profiles: [stamped] } },
+  });
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 12345,
+    "agent toggle is not a deploy target change");
+});
+
 test("settings-actions: remoteSsh.update overwrites existing profile + preserves createdAt", () => {
   const cmd = commandRegistry["remoteSsh.update"];
   const original = basicProfile({ createdAt: 12345 });

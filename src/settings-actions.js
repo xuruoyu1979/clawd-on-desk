@@ -575,8 +575,71 @@ function remoteSshUpdateProfile(payload, deps) {
   if (Number.isFinite(prev.createdAt) && !Number.isFinite(payload.createdAt)) {
     profile.createdAt = prev.createdAt;
   }
+  // Preserve lastDeployedAt across cosmetic edits (label, autoStartCodexMonitor,
+  // connectOnLaunch). Only clear it when deploy target fields drifted — those
+  // changes mean the previous deploy is no longer valid for the new target,
+  // so the UI should re-warn "never deployed" until user runs Deploy again.
+  if (Number.isFinite(prev.lastDeployedAt) && !Number.isFinite(payload.lastDeployedAt)) {
+    const targetFields = ["host", "port", "identityFile", "remoteForwardPort", "hostPrefix"];
+    const targetUnchanged = targetFields.every((f) => prev[f] === profile[f]);
+    if (targetUnchanged) profile.lastDeployedAt = prev.lastDeployedAt;
+  }
   next.profiles[idx] = profile;
   return { status: "ok", commit: { remoteSsh: next } };
+}
+
+// Stamp deploy completion onto a profile WITHOUT touching any other field.
+// Use this from the deploy IPC handler instead of remoteSsh.update with a
+// pre-deploy profile snapshot — deploy can take 30+ seconds, during which
+// the user may have edited the profile. Re-writing the whole profile from
+// the snapshot would clobber those edits (lost-update race).
+//
+// expectedTarget is an optional fingerprint of {host, port, identityFile,
+// remoteForwardPort, hostPrefix} captured by the caller at deploy start.
+// If the current profile's target fields drifted away from that fingerprint,
+// the deploy ran against an old target — we no-op rather than falsely claim
+// the new (drifted) configuration is "deployed". Caller learns from the
+// noop+targetDrift response and can prompt the user to redeploy.
+function remoteSshMarkDeployed(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "remoteSsh.markDeployed: payload must be an object" };
+  }
+  const { id, deployedAt, expectedTarget } = payload;
+  if (typeof id !== "string" || !id) {
+    return { status: "error", message: "remoteSsh.markDeployed.id must be a non-empty string" };
+  }
+  if (!Number.isFinite(deployedAt) || deployedAt <= 0) {
+    return { status: "error", message: "remoteSsh.markDeployed.deployedAt must be a positive finite number" };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === id);
+  if (idx === -1) {
+    // Profile was deleted mid-deploy — silently skip rather than error.
+    return { status: "ok", noop: true, reason: "profile_deleted" };
+  }
+  const current = next.profiles[idx];
+  if (expectedTarget && typeof expectedTarget === "object") {
+    const targetFields = ["host", "port", "identityFile", "remoteForwardPort", "hostPrefix"];
+    let drift = null;
+    for (const f of targetFields) {
+      if (current[f] !== expectedTarget[f]) { drift = f; break; }
+    }
+    if (drift) {
+      return {
+        status: "ok",
+        noop: true,
+        reason: "target_drift",
+        targetDrift: drift,
+        message: `remoteSsh.markDeployed: profile ${id}.${drift} changed during deploy; not stamping`,
+      };
+    }
+  }
+  // Only mutate lastDeployedAt — every other field stays as-is so concurrent
+  // user edits (label / autoStartCodexMonitor / connectOnLaunch) survive.
+  const updatedProfile = { ...current, lastDeployedAt: deployedAt };
+  const newProfiles = next.profiles.slice();
+  newProfiles[idx] = updatedProfile;
+  return { status: "ok", commit: { remoteSsh: { profiles: newProfiles } } };
 }
 
 function remoteSshDeleteProfile(payload, deps) {
@@ -627,6 +690,7 @@ const commandRegistry = {
   "remoteSsh.add": remoteSshAddProfile,
   "remoteSsh.update": remoteSshUpdateProfile,
   "remoteSsh.delete": remoteSshDeleteProfile,
+  "remoteSsh.markDeployed": remoteSshMarkDeployed,
 };
 
 module.exports = {
