@@ -3300,12 +3300,16 @@ describe("settings renderer browser environment", () => {
     toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
     const resetChip = parent.querySelectorAll("button")
       .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    let resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
     assert.ok(toggle, "wide-hitbox checkbox should still exist after rerender");
     assert.strictEqual(toggle.checked, true, "pending wide-hitbox toggles should stay on across rerenders");
     assert.strictEqual(toggle.disabled, true, "pending wide-hitbox toggles should stay disabled across rerenders");
     assert.ok(resetChip, "wide-hitbox reset chip should still exist after rerender");
     assert.strictEqual(resetChip.hidden, false, "pending wide-hitbox rerenders should keep the reset chip visible");
     assert.strictEqual(resetChip.disabled, true, "pending wide-hitbox rerenders should keep the reset chip disabled");
+    assert.ok(resetButton, "pending wide-hitbox rerenders should keep the slot reset button mounted");
+    assert.strictEqual(resetButton.disabled, true, "slot reset should stay disabled while a wide-hitbox edit is pending");
 
     resolveCommand({ status: "ok" });
     await Promise.resolve();
@@ -3313,8 +3317,41 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
 
     toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
     assert.strictEqual(toggle.checked, true);
     assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(resetButton.disabled, false);
+  });
+
+  it("reconciles acknowledged pending wide hitbox edits during Animation Overrides render", () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    runtime.pendingWideHitboxOverrideEdits = new Map([[
+      card.id,
+      {
+        seq: 1,
+        currentFile: card.currentFile,
+        themeDefault: false,
+        effectiveEnabled: true,
+        commandEnabled: true,
+      },
+    ]]);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
+    assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
+    assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(resetButton.disabled, false);
   });
 
   it("treats hitbox-only overrides as overridden for summary badges and reset actions", () => {
@@ -3359,12 +3396,18 @@ describe("settings renderer browser environment", () => {
     const runtime = createAnimOverridesRuntime(card);
     const modalRoot = new FakeElement("div");
     const calls = [];
+    let resolveAnimationReset;
     const { core } = loadAnimOverridesTabForTest({
       runtime,
       modalRoot,
       settingsAPI: {
         command: (name, payload) => {
           calls.push({ name, payload });
+          if (name === "setAnimationOverride") {
+            return new Promise((resolve) => {
+              resolveAnimationReset = resolve;
+            });
+          }
           return Promise.resolve({ status: "ok" });
         },
       },
@@ -3387,6 +3430,17 @@ describe("settings renderer browser environment", () => {
     const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(resetButton, "expanded row should render a reset button");
     for (const listener of resetButton.eventListeners.click || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const toggleWhileResetPending = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetChipWhileResetPending = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.strictEqual(toggleWhileResetPending.disabled, true, "slot reset should block wide-hitbox toggles while pending");
+    assert.strictEqual(resetChipWhileResetPending.disabled, true, "slot reset should block wide-hitbox reset chips while pending");
+
+    resolveAnimationReset({ status: "ok" });
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();

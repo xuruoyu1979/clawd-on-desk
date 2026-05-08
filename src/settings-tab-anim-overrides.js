@@ -71,6 +71,13 @@
     return runtime.pendingWideHitboxOverrideEdits;
   }
 
+  function getPendingAnimationOverrideResets() {
+    if (!runtime.pendingAnimationOverrideResets || typeof runtime.pendingAnimationOverrideResets.has !== "function") {
+      runtime.pendingAnimationOverrideResets = new Set();
+    }
+    return runtime.pendingAnimationOverrideResets;
+  }
+
   function getMountedWideHitboxToggles() {
     if (!state.mountedControls || typeof state.mountedControls !== "object") {
       state.mountedControls = {};
@@ -315,8 +322,10 @@
       }
       const card = applyPendingAnimOverrideCard(getAnimOverrideCardById(cardId) || control.card);
       const overridden = isCardOverridden(card);
+      const hitboxPending = getPendingWideHitboxOverrideEdits().has(cardId);
+      const resetPending = getPendingAnimationOverrideResets().has(cardId);
       control.card = card || control.card;
-      if (control.resetBtn) control.resetBtn.disabled = !overridden;
+      if (control.resetBtn) control.resetBtn.disabled = !overridden || hitboxPending || resetPending;
       setSummaryOverrideBadge(control.summaryBadges, overridden);
     }
   }
@@ -324,6 +333,7 @@
   function syncMountedWideHitboxToggles() {
     const controls = getMountedWideHitboxToggles();
     const pendingEdits = getPendingWideHitboxOverrideEdits();
+    const pendingResets = getPendingAnimationOverrideResets();
     for (const [cardId, control] of controls) {
       if (!control || !control.row || !control.row.parentNode) {
         controls.delete(cardId);
@@ -331,12 +341,13 @@
       }
       const card = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(cardId) || control.card);
       const pending = pendingEdits.get(cardId);
+      const blocked = !!pending || pendingResets.has(cardId);
       control.card = card || control.card;
       control.input.checked = !!(card && card.wideHitboxEnabled);
-      control.input.disabled = !!pending;
+      control.input.disabled = blocked;
       control.badge.hidden = !wideHitboxResetVisible(card);
-      control.badge.disabled = !!pending || !wideHitboxResetVisible(card);
-      control.row.classList.toggle("pending", !!pending);
+      control.badge.disabled = blocked || !wideHitboxResetVisible(card);
+      control.row.classList.toggle("pending", blocked);
     }
   }
 
@@ -801,6 +812,7 @@
     }
 
     reconcilePendingAnimationOverrideEdits();
+    reconcilePendingWideHitboxOverrideEdits();
     const data = runtime.animationOverridesData;
 
     parent.appendChild(buildSubtabSwitcher());
@@ -1273,9 +1285,12 @@
     return summary;
   }
 
-  function runWideHitboxCommand(card, enabled) {
+  function runWideHitboxCommand(card, enabled, options = {}) {
     const themeId = getCurrentOverrideThemeId();
     if (!themeId || !card || !card.id || !card.currentFile) return Promise.resolve({ status: "noop" });
+    if (getPendingAnimationOverrideResets().has(card.id) && !options.allowDuringReset) {
+      return Promise.resolve({ status: "ok", noop: true });
+    }
     if (getPendingWideHitboxOverrideEdits().has(card.id)) return Promise.resolve({ status: "noop" });
     const pendingToken = recordPendingWideHitboxOverrideEdit(card, enabled);
     const pending = pendingToken && getPendingWideHitboxOverrideEdits().get(card.id);
@@ -1316,6 +1331,14 @@
   }
 
   function resetAnimationOverrideCard(card) {
+    if (!card || !card.id) return Promise.resolve({ status: "noop" });
+    const pendingResets = getPendingAnimationOverrideResets();
+    if (pendingResets.has(card.id) || getPendingWideHitboxOverrideEdits().has(card.id)) {
+      return Promise.resolve({ status: "ok", noop: true });
+    }
+    pendingResets.add(card.id);
+    syncMountedWideHitboxToggles();
+    syncMountedOverrideStatusControls();
     const patch = {
       file: null,
       transition: null,
@@ -1326,14 +1349,21 @@
       if (result && result.status === "error") return result;
       const currentCard = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(card.id) || card);
       if (currentCard.slotType === "reaction" || !currentCard.wideHitboxOverridden) return result;
-      return runWideHitboxCommand(currentCard, !!currentCard.wideHitboxThemeDefault);
+      return runWideHitboxCommand(currentCard, !!currentCard.wideHitboxThemeDefault, { allowDuringReset: true });
+    }).finally(() => {
+      pendingResets.delete(card.id);
+      syncMountedWideHitboxToggles();
+      syncMountedOverrideStatusControls();
     });
   }
 
   function buildAnimWideHitboxToggle(card) {
     const row = document.createElement("div");
     row.className = "anim-override-toggle-row";
-    const pending = !!(card && card.id && getPendingWideHitboxOverrideEdits().has(card.id));
+    const pending = !!(card && card.id && (
+      getPendingWideHitboxOverrideEdits().has(card.id)
+      || getPendingAnimationOverrideResets().has(card.id)
+    ));
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = !!card.wideHitboxEnabled;
@@ -1520,7 +1550,9 @@
     resetBtn.type = "button";
     resetBtn.className = "soft-btn";
     resetBtn.textContent = t("animOverridesReset");
-    resetBtn.disabled = !isCardOverridden(card);
+    resetBtn.disabled = !isCardOverridden(card)
+      || getPendingWideHitboxOverrideEdits().has(card.id)
+      || getPendingAnimationOverrideResets().has(card.id);
     helpers.attachActivation(resetBtn, () => resetAnimationOverrideCard(card));
     footer.appendChild(resetBtn);
     drawer.appendChild(footer);
