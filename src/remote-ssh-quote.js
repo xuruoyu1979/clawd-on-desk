@@ -22,20 +22,16 @@
 // Don't pull in shell-quote — it only covers POSIX shell and would mask
 // the gap on cmd / AppleScript layers.
 
-// Windows cmd.exe quoting:
-// - Empty → `""`
-// - Wrap in double quotes
-// - Escape backslashes preceding quotes (CommandLineToArgvW rules)
-// - Escape `"` as `\"`
-// - cmd.exe also re-interprets `&`, `|`, `<`, `>`, `^`, `%` after the
-//   double-quoted parser hands the string off, so we additionally caret-
-//   escape those. Quoting + caret keeps both `cmd /k <cmd>` and child
-//   process arg parsing safe.
+// Windows cmd.exe quoting for command strings passed to `cmd.exe /k`.
+// This is a two-stage escape:
+//   1. Quote for the child process argv parser (backslashes before `"`).
+//   2. Caret-escape cmd.exe's own parser chars, including `%` expansion.
+// Callers should run cmd.exe with `/v:off`; `!` is still caret-escaped here
+// so it stays literal when delayed expansion is disabled.
 function quoteForCmd(arg) {
   if (typeof arg !== "string") {
     throw new TypeError("quoteForCmd: arg must be a string");
   }
-  if (arg === "") return '""';
   let out = "";
   let backslashes = 0;
   for (const ch of arg) {
@@ -55,16 +51,17 @@ function quoteForCmd(arg) {
   }
   // Closing quote sees `backslashes` trailing backslashes; double them.
   const quoted = '"' + out + "\\".repeat(backslashes) + '"';
-  // Caret-escape cmd metacharacters outside the quotes won't help; cmd
-  // strips outer quotes before metacharacter parsing only in a few
-  // contexts. Caret-escaping inside quotes is harmless because cmd
-  // skips metacharacter expansion within quotes. To be safe with both
-  // `cmd /k` and `start cmd /k` invocations, prepend `^` to special
-  // chars only where they survived re-parsing — i.e., caret-escape
-  // before wrapping. We keep the simpler approach: rely on outer
-  // double quotes (cmd /k respects them) and let the consumer wrap
-  // the whole tail with appropriate cmd.exe semantics.
-  return quoted;
+  let escaped = "";
+  for (const ch of quoted) {
+    if (ch === '"') {
+      escaped += '^"';
+    } else if (ch === "^" || ch === "%" || ch === "!" || ch === "&" || ch === "|" || ch === "<" || ch === ">") {
+      escaped += "^" + ch;
+    } else {
+      escaped += ch;
+    }
+  }
+  return escaped;
 }
 
 // POSIX shell single-quote quoting: '...''...'...' style.

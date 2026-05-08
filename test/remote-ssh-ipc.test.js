@@ -491,6 +491,40 @@ test("Windows: wt.exe missing → fall back to cmd.exe (real fallback chain)", a
   ipc.dispose();
 });
 
+test("Windows: cmd.exe fallback disables delayed expansion and passes verbatim escaped args", async () => {
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const calls = [];
+  const spawn = (cmd, args, opts) => {
+    calls.push({ cmd, args, opts });
+    if (cmd === "wt.exe") {
+      return makeFakeSpawnChild({
+        error: Object.assign(new Error("spawn wt.exe ENOENT"), { code: "ENOENT" }),
+      });
+    }
+    return makeFakeSpawnChild();
+  };
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController: mockSettingsController([{
+      ...baseProfile,
+      identityFile: "C:\\Keys\\%CLAWD_QUOTE_TEST%\\id",
+    }]),
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    platform: "win32",
+    spawn,
+  });
+  const r = await ipcMain.invoke("remoteSsh:authenticate", "p1");
+  assert.equal(r.status, "ok");
+  assert.equal(calls[1].cmd, "cmd.exe");
+  assert.deepEqual(calls[1].args.slice(0, 4), ["/d", "/v:off", "/s", "/k"]);
+  assert.equal(calls[1].opts.windowsVerbatimArguments, true);
+  assert.match(calls[1].args[4], /\^%CLAWD_QUOTE_TEST\^%/);
+  assert.doesNotMatch(calls[1].args[4], /"%CLAWD_QUOTE_TEST%"/);
+  ipc.dispose();
+});
+
 test("Windows: both wt and cmd missing → returns error (no crash)", async () => {
   const ipcMain = mockIpcMain();
   const { BrowserWindow } = mockBrowserWindow();

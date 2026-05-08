@@ -292,7 +292,11 @@ function registerRemoteSshIpc(options = {}) {
     if (wt.ok) return { ok: true, terminal: "wt" };
 
     const quoted = sshArgs.map(quoteForCmd).join(" ");
-    const cmd = await tryLaunch("cmd.exe", ["/k", `ssh ${quoted}`], { ...opts, shell: false });
+    const cmd = await tryLaunch("cmd.exe", ["/d", "/v:off", "/s", "/k", `ssh ${quoted}`], {
+      ...opts,
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
     if (cmd.ok) return { ok: true, terminal: "cmd" };
     return { ok: false, message: (cmd.error && cmd.error.message) || "could not spawn terminal" };
   }

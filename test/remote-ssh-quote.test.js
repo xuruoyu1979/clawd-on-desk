@@ -2,6 +2,7 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { spawnSync } = require("child_process");
 
 const {
   quoteForCmd,
@@ -12,45 +13,79 @@ const {
 // ── quoteForCmd ──
 
 test("quoteForCmd wraps simple values in double quotes", () => {
-  assert.equal(quoteForCmd("foo"), '"foo"');
+  assert.equal(quoteForCmd("foo"), '^"foo^"');
 });
 
 test("quoteForCmd handles empty string", () => {
-  assert.equal(quoteForCmd(""), '""');
+  assert.equal(quoteForCmd(""), '^"^"');
 });
 
 test("quoteForCmd preserves spaces", () => {
-  assert.equal(quoteForCmd("foo bar"), '"foo bar"');
+  assert.equal(quoteForCmd("foo bar"), '^"foo bar^"');
 });
 
-test("quoteForCmd preserves cmd metacharacters inside quotes", () => {
-  assert.equal(quoteForCmd("a&b|c<d>e^f%g"), '"a&b|c<d>e^f%g"');
+test("quoteForCmd caret-escapes cmd metacharacters and percent expansion", () => {
+  assert.equal(quoteForCmd("a&b|c<d>e^f%g!h"), '^"a^&b^|c^<d^>e^^f^%g^!h^"');
 });
 
 test("quoteForCmd escapes embedded double quotes", () => {
-  assert.equal(quoteForCmd('he said "hi"'), '"he said \\"hi\\""');
+  assert.equal(quoteForCmd('he said "hi"'), '^"he said \\^"hi\\^"^"');
 });
 
 test("quoteForCmd doubles backslashes preceding embedded quote", () => {
-  assert.equal(quoteForCmd('a\\"b'), '"a\\\\\\"b"');
+  assert.equal(quoteForCmd('a\\"b'), '^"a\\\\\\^"b^"');
 });
 
 test("quoteForCmd doubles trailing backslashes before closing quote", () => {
-  assert.equal(quoteForCmd("path\\"), '"path\\\\"');
+  assert.equal(quoteForCmd("path\\"), '^"path\\\\^"');
 });
 
 test("quoteForCmd preserves Chinese characters", () => {
-  assert.equal(quoteForCmd("树莓派"), '"树莓派"');
+  assert.equal(quoteForCmd("树莓派"), '^"树莓派^"');
 });
 
 test("quoteForCmd preserves parentheses", () => {
-  assert.equal(quoteForCmd("a(b)c"), '"a(b)c"');
+  assert.equal(quoteForCmd("a(b)c"), '^"a(b)c^"');
 });
 
 test("quoteForCmd throws on non-string", () => {
   assert.throws(() => quoteForCmd(123), /must be a string/);
   assert.throws(() => quoteForCmd(null), /must be a string/);
   assert.throws(() => quoteForCmd(undefined), /must be a string/);
+});
+
+test("quoteForCmd round-trips through real cmd.exe without env expansion", { skip: process.platform !== "win32" }, () => {
+  const values = [
+    "foo bar",
+    'he said "hi"',
+    "a&b|c<d>e^f",
+    "%CLAWD_QUOTE_TEST%",
+    "!CLAWD_QUOTE_TEST!",
+    "path\\",
+    "树莓派",
+  ];
+  const js = "console.log(JSON.stringify(process.argv.slice(1)))";
+  const command = [
+    "node",
+    "-e",
+    quoteForCmd(js),
+    ...values.map(quoteForCmd),
+  ].join(" ");
+  const r = spawnSync("cmd.exe", ["/d", "/v:off", "/s", "/c", command], {
+    encoding: "utf8",
+    env: { ...process.env, CLAWD_QUOTE_TEST: 'bad"&echo injected' },
+    windowsVerbatimArguments: true,
+  });
+  const detail = JSON.stringify({
+    status: r.status,
+    signal: r.signal,
+    error: r.error && r.error.message,
+    stdout: r.stdout,
+    stderr: r.stderr,
+  });
+  assert.equal(r.status, 0, detail);
+  assert.ok(r.stdout && r.stdout.trim(), detail);
+  assert.deepEqual(JSON.parse(r.stdout.trim()), values);
 });
 
 // ── quoteForPosixShellArg ──
