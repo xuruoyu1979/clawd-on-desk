@@ -51,7 +51,7 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.sessionHudEnabled, true);
     assert.strictEqual(d.sessionHudShowElapsed, true);
     assert.strictEqual(d.sessionHudCleanupDetached, false);
-    assert.strictEqual(d.sessionHudAutoHide, false);
+    assert.strictEqual(d.sessionHudAutoHide, true);
     assert.strictEqual(d.sessionHudPinned, false);
     assert.strictEqual(d.savedPixelWidth, 0);
     assert.strictEqual(d.savedPixelHeight, 0);
