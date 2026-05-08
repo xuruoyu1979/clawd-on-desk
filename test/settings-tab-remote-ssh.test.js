@@ -147,6 +147,17 @@ test("settings.css defines remote-ssh-* layout rules used by the tab", () => {
   }
 });
 
+test("settings-i18n.js: codexHookReviewReminder defined in all 4 langs (B2 followup)", () => {
+  const code = fs.readFileSync(path.join(SRC_DIR, "settings-i18n.js"), "utf8");
+  const matches = code.match(/codexHookReviewReminder:\s*"[^"]+"/g) || [];
+  assert.equal(matches.length, 4,
+    `expected 4 codexHookReviewReminder defs (en/zh/ko/ja); got ${matches.length}`);
+  // Translations must differ — guards against copy-paste leaving English in 3 slots.
+  const values = matches.map((m) => m.match(/"([^"]+)"/)[1]);
+  assert.equal(new Set(values).size, 4,
+    `expected 4 distinct translations; got ${[...new Set(values)]}`);
+});
+
 test("settings-i18n.js: hooks deploy status keys present in all 4 langs", () => {
   const code = fs.readFileSync(path.join(SRC_DIR, "settings-i18n.js"), "utf8");
   const REQUIRED_KEYS = [

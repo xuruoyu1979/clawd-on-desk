@@ -408,6 +408,16 @@ function registerCodexCommandHooks(options = {}) {
     console.log(`  Added: ${added}, updated: ${updated}, skipped: ${skipped}`);
     if (feature.changed) console.log(`  Updated [features].hooks in ${configPath}`);
     for (const warning of warnings) console.warn(`  Warning: ${warning}`);
+    // Codex requires the user to review each new/changed hook command in the
+    // TUI before it activates (sha256 trusted_hash gate written to
+    // [hooks.state] in config.toml). Surface this so users don't get the
+    // "tunnel connected, hooks installed, but desktop pet still silent"
+    // dead zone the first time they launch codex post-install.
+    if (added > 0 || updated > 0 || feature.changed) {
+      console.log("");
+      console.log("  Next step: open codex CLI and run /hooks to review and");
+      console.log("  activate the new/updated hooks (otherwise they stay inactive).");
+    }
   }
 
   return { added, skipped, updated, configChanged: feature.changed, warnings };

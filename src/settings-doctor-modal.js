@@ -439,7 +439,13 @@
       if (!result || result.status !== "ok") {
         throw new Error((result && result.message) || t(core, "doctorFixFailed"));
       }
-      const message = (result && result.message) || t(core, "doctorFixApplied");
+      let message = (result && result.message) || t(core, "doctorFixApplied");
+      // Codex hooks need an explicit user review pass in the codex TUI before
+      // they go live (sha256 trusted_hash gate). Append the reminder so users
+      // don't have to discover the dead zone themselves.
+      if (action && action.type === "agent-integration" && action.agentId === "codex") {
+        message = `${message} ${t(core, "codexHookReviewReminder")}`;
+      }
       state.repairFeedback[state.repairingKey] = { status: "ok", message };
       state.lastRepairFeedback = { status: "ok", message };
       showToast(core, message);

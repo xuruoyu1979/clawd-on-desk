@@ -387,7 +387,11 @@
       window.remoteSsh.deploy(profile.id).then((r) => {
         view.deployingProfileId = null;
         if (r && r.status === "ok") {
-          ops.showToast(t("remoteSshDeploySuccess"));
+          // Append codex /hooks reminder — Deploy installs the hooks but the
+          // user still has to review them once in codex TUI before they go
+          // live (sha256 trusted_hash gate in ~/.codex/config.toml).
+          ops.showToast(`${t("remoteSshDeploySuccess")} ${t("codexHookReviewReminder")}`,
+            { ttl: 8000 });
         } else {
           ops.showToast((r && r.message) || "deploy failed", { error: true });
         }

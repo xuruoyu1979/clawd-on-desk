@@ -221,4 +221,68 @@ describe("Codex official hook installer", () => {
     assert.strictEqual(settings.hooks.PermissionRequest.length, 1);
     assert.strictEqual(CODEX_DEBUG_HOOK_EVENTS.includes("PermissionRequest"), true);
   });
+
+  // Verifies the v0.7.x follow-up that points users at codex's `/hooks` review
+  // step. Without this reminder, fresh installs leave hooks Active=0 and the
+  // desktop pet stays silent until the user randomly discovers the review UI.
+  it("emits a 'Next step: open codex CLI and run /hooks' reminder on non-silent install", () => {
+    const codexDir = makeTempCodexDir({});
+    const captured = [];
+    const originalLog = console.log;
+    console.log = (...args) => captured.push(args.join(" "));
+    try {
+      registerCodexHooks({
+        silent: false,
+        codexDir,
+        nodeBin: "/usr/local/bin/node",
+        platform: "linux",
+      });
+    } finally {
+      console.log = originalLog;
+    }
+    const joined = captured.join("\n");
+    assert.match(joined, /Next step:.*codex.*\/hooks/i,
+      "stdout must include the codex /hooks review reminder");
+  });
+
+  it("does NOT emit the reminder when silent: true (deploy / sync paths use silent)", () => {
+    const codexDir = makeTempCodexDir({});
+    const captured = [];
+    const originalLog = console.log;
+    console.log = (...args) => captured.push(args.join(" "));
+    try {
+      registerCodexHooks({
+        silent: true,
+        codexDir,
+        nodeBin: "/usr/local/bin/node",
+        platform: "linux",
+      });
+    } finally {
+      console.log = originalLog;
+    }
+    assert.equal(captured.length, 0, "silent install must not log reminder (or anything else)");
+  });
+
+  it("does NOT emit the reminder when nothing changed (re-install with same hooks)", () => {
+    const codexDir = makeTempCodexDir({});
+    // First install: changes happen, reminder fires.
+    registerCodexHooks({ silent: true, codexDir, nodeBin: "/usr/local/bin/node", platform: "linux" });
+    // Second install: idempotent, nothing added/updated/configChanged.
+    const captured = [];
+    const originalLog = console.log;
+    console.log = (...args) => captured.push(args.join(" "));
+    try {
+      registerCodexHooks({
+        silent: false,
+        codexDir,
+        nodeBin: "/usr/local/bin/node",
+        platform: "linux",
+      });
+    } finally {
+      console.log = originalLog;
+    }
+    const joined = captured.join("\n");
+    assert.equal(/Next step/i.test(joined), false,
+      "no-op re-install must NOT print the reminder");
+  });
 });
