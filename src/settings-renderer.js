@@ -9,6 +9,7 @@ const SIDEBAR_TABS = [
   { id: "animMap", icon: "\u{1F3AC}", labelKey: "sidebarAnimMap", available: true },
   { id: "animOverrides", icon: "\u{1F39E}", labelKey: "sidebarAnimOverrides", available: true },
   { id: "shortcuts", icon: "\u2328", labelKey: "sidebarShortcuts", available: true },
+  { id: "remote-ssh", icon: "\u{1F50C}", labelKey: "sidebarRemoteSsh", available: true },
   { id: "about", icon: "\u2139", labelKey: "sidebarAbout", available: true },
 ];
 
@@ -75,6 +76,7 @@ globalThis.ClawdSettingsTabAnimMap.init(core);
 globalThis.ClawdSettingsTabAnimOverrides.init(core);
 globalThis.ClawdSettingsTabShortcuts.init(core);
 globalThis.ClawdSettingsTabAbout.init(core);
+if (globalThis.ClawdSettingsTabRemoteSsh) globalThis.ClawdSettingsTabRemoteSsh.init(core);
 
 if (window.settingsAPI && typeof window.settingsAPI.onChanged === "function") {
   window.settingsAPI.onChanged((payload) => core.ops.applyChanges(payload));

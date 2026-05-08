@@ -21,6 +21,7 @@ const path = require("path");
 const { isPlainObject } = require("./theme-loader");
 const { normalizeShortcuts, getDefaultShortcuts } = require("./shortcut-actions");
 const { isValidDisplaySnapshot } = require("./work-area");
+const { normalizeRemoteSsh, getDefaults: getRemoteSshDefaults } = require("./remote-ssh-profile");
 const {
   NOTIFICATION_DEFAULT_SECONDS,
   UPDATE_DEFAULT_SECONDS,
@@ -152,6 +153,14 @@ const SCHEMA = {
     type: "object",
     defaultFactory: () => ({}),
     normalize: normalizeSessionAliases,
+  },
+  // Remote SSH (Phase 2 plan-remote-ssh-one-click v7). Stores user-defined
+  // SSH tunnel profiles. The runtime is owned by `remote-ssh-runtime.js` —
+  // this field is data only.
+  remoteSsh: {
+    type: "object",
+    defaultFactory: () => getRemoteSshDefaults(),
+    normalize: normalizeRemoteSsh,
   },
 };
 

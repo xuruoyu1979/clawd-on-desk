@@ -114,10 +114,25 @@ echo "  [OK] Files copied to ~/.claude/hooks/"
 
 # ── Write host prefix ──
 
+# Mirror the Node-side schema blacklist (src/remote-ssh-profile.js
+# HOST_PREFIX_FORBIDDEN_RE) so the CLI path can't write a prefix the UI would
+# refuse. Reject control chars + ' " ` $ \ ! before doing anything remote.
 if [ -n "$HOST_PREFIX" ]; then
+  if printf '%s' "$HOST_PREFIX" | LC_ALL=C grep -q $'[\x00-\x1f\x7f'\''"`$\\!]'; then
+    echo "ERROR: --prefix contains forbidden chars (control chars or any of: ' \" \` \$ \\ !)"
+    exit 1
+  fi
   echo "Writing host prefix: $HOST_PREFIX"
-  ssh "$SSH_TARGET" "echo '$HOST_PREFIX' > ~/.claude/hooks/clawd-host-prefix"
-  echo "  [OK] Prefix written to ~/.claude/hooks/clawd-host-prefix"
+  # Pipe via stdin so the prefix value never gets re-interpreted by the remote
+  # shell — same defense as the Node deploy path (plan v7 §3.11). bash expands
+  # $HOST_PREFIX once into printf's argument; printf %s writes the literal
+  # bytes; ssh forwards stdin to `cat > path` on the remote.
+  if printf '%s' "$HOST_PREFIX" | ssh "$SSH_TARGET" "cat > ~/.claude/hooks/clawd-host-prefix"; then
+    echo "  [OK] Prefix written to ~/.claude/hooks/clawd-host-prefix"
+  else
+    echo "ERROR: failed to write host prefix"
+    exit 1
+  fi
 fi
 
 # ── Register hooks ──

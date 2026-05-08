@@ -101,6 +101,10 @@ const {
   repairLocalServer,
   uninstallHooks,
 } = require("./settings-actions-system");
+const {
+  validateProfile: validateRemoteSshProfile,
+  sanitizeProfile: sanitizeRemoteSshProfile,
+} = require("./remote-ssh-profile");
 
 // ── updateRegistry ──
 // Maps prefs field name → validator. Controller looks up by key and runs.
@@ -245,6 +249,26 @@ const updateRegistry = {
   // Letting this field have an effect would double-activate when the UI
   // updates `theme` and `themeVariant` separately.
   themeVariant: requirePlainObject("themeVariant"),
+
+  // Remote SSH profile store. Plain validator — actual CRUD goes through
+  // commandRegistry below to keep id-uniqueness, default-fill, and
+  // monotonic createdAt logic in one place. The validator only ensures the
+  // top-level shape is sane so direct hydrate paths can't write garbage.
+  remoteSsh(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "remoteSsh must be a plain object" };
+    }
+    if (!Array.isArray(value.profiles)) {
+      return { status: "error", message: "remoteSsh.profiles must be an array" };
+    }
+    for (let i = 0; i < value.profiles.length; i++) {
+      const r = validateRemoteSshProfile(value.profiles[i]);
+      if (r.status !== "ok") {
+        return { status: "error", message: `remoteSsh.profiles[${i}]: ${r.message}` };
+      }
+    }
+    return { status: "ok" };
+  },
 
   shortcuts: {
     validate(value) {
@@ -495,6 +519,83 @@ function resizePet(payload, deps) {
   }
 }
 
+// ── Remote SSH profile commands ──
+//
+// Three commands route through the controller so the IPC layer never writes
+// prefs directly. Each returns `{ status, commit }` so the controller can
+// atomically validate + write the new `remoteSsh` field.
+//
+// id semantics: `add` requires the caller to supply an id (the renderer
+// generates a uuid). This keeps the renderer in charge of the id it'll later
+// reference for connect/disconnect, avoiding a roundtrip race.
+
+function _remoteSshSnapshot(deps) {
+  const snap = (deps && deps.snapshot) || {};
+  const cur = snap.remoteSsh && typeof snap.remoteSsh === "object" ? snap.remoteSsh : {};
+  const profiles = Array.isArray(cur.profiles) ? cur.profiles.slice() : [];
+  return { profiles };
+}
+
+function remoteSshAddProfile(payload, deps) {
+  const profile = sanitizeRemoteSshProfile(payload);
+  if (!profile) {
+    const detail = validateRemoteSshProfile(payload || {});
+    return {
+      status: "error",
+      message: detail.status === "error" ? detail.message : "remoteSsh.add: invalid profile",
+    };
+  }
+  const next = _remoteSshSnapshot(deps);
+  if (next.profiles.some((p) => p.id === profile.id)) {
+    return { status: "error", message: `remoteSsh.add: profile id "${profile.id}" already exists` };
+  }
+  next.profiles.push(profile);
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
+function remoteSshUpdateProfile(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "remoteSsh.update: payload must be an object" };
+  }
+  const profile = sanitizeRemoteSshProfile(payload);
+  if (!profile) {
+    const detail = validateRemoteSshProfile(payload || {});
+    return {
+      status: "error",
+      message: detail.status === "error" ? detail.message : "remoteSsh.update: invalid profile",
+    };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === profile.id);
+  if (idx === -1) {
+    return { status: "error", message: `remoteSsh.update: profile id "${profile.id}" not found` };
+  }
+  // Preserve original createdAt if caller didn't supply one new.
+  const prev = next.profiles[idx];
+  if (Number.isFinite(prev.createdAt) && !Number.isFinite(payload.createdAt)) {
+    profile.createdAt = prev.createdAt;
+  }
+  next.profiles[idx] = profile;
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
+function remoteSshDeleteProfile(payload, deps) {
+  const id = typeof payload === "string"
+    ? payload
+    : (payload && typeof payload === "object" ? payload.id : null);
+  if (typeof id !== "string" || !id) {
+    return { status: "error", message: "remoteSsh.delete: id must be a non-empty string" };
+  }
+  const next = _remoteSshSnapshot(deps);
+  const idx = next.profiles.findIndex((p) => p.id === id);
+  if (idx === -1) {
+    // No-op rather than error — UI may have raced with a re-render.
+    return { status: "ok", noop: true };
+  }
+  next.profiles.splice(idx, 1);
+  return { status: "ok", commit: { remoteSsh: next } };
+}
+
 const repairDoctorIssue = createRepairDoctorIssue({
   repairAgentIntegration,
   setBubbleCategoryEnabled,
@@ -523,6 +624,9 @@ const commandRegistry = {
   importAnimationOverrides,
   setWideHitboxOverride,
   setThemeSelection,
+  "remoteSsh.add": remoteSshAddProfile,
+  "remoteSsh.update": remoteSshUpdateProfile,
+  "remoteSsh.delete": remoteSshDeleteProfile,
 };
 
 module.exports = {
