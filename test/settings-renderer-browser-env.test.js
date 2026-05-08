@@ -780,6 +780,12 @@ function loadAnimOverridesTabForTest({
     runtime,
     helpers: {
       t: (key) => key,
+      createDisclosureChevron: (className) => {
+        const chevron = document.createElement("span");
+        chevron.className = className;
+        chevron.setAttribute("aria-hidden", "true");
+        return chevron;
+      },
       attachActivation: (el, invoke) => {
         if (typeof invoke === "function") el.addEventListener("click", () => invoke());
         return el;
@@ -1682,8 +1688,21 @@ describe("settings renderer browser environment", () => {
     assert.ok(coreSource.includes("defaultCollapsed = false"));
     assert.ok(coreSource.includes('header.setAttribute("aria-expanded"'));
     assert.ok(coreSource.includes("collapsibleSummary"));
-    assert.ok(css.includes(".collapsible-group-header"));
-    assert.ok(css.includes(".collapsible-group-chevron"));
+    assert.ok(coreSource.includes("function createDisclosureChevron("));
+    assert.ok(coreSource.includes('createDisclosureChevron("collapsible-group-chevron")'));
+    assert.ok(coreSource.includes('svg.setAttribute("viewBox", "0 0 20 20")'));
+    assert.ok(coreSource.includes('path.setAttribute("d", "M8 5l5 5-5 5")'));
+    assert.ok(!coreSource.includes('chevron.textContent = "\\u25B8";'));
+    assert.ok(!coreSource.includes("chevron.innerHTML"));
+    assert.ok(/\.collapsible-group-header\s*\{[\s\S]*gap:\s*4px;/.test(css));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(css));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(css));
+    assert.ok(/\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(css));
+    assert.ok(/\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(css));
+    assert.ok(/\.collapsible-group-header:hover\s+\.collapsible-group-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(css));
+    assert.ok(/\.collapsible-group\.collapsed\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);/.test(css));
+    assert.ok(/\.collapsible-group:not\(\.collapsed\)\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.collapsible-group-chevron,[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(css));
     assert.ok(i18nSource.includes("collapsibleExpand"));
     assert.ok(i18nSource.includes("collapsibleCollapse"));
   });
@@ -2170,6 +2189,25 @@ describe("settings renderer browser environment", () => {
       overridesSource.includes("resetBtn.disabled = !slot.hasStoredOverride;"),
       "sound override row reset must stay enabled when prefs still contain a stale sound override entry"
     );
+  });
+
+  it("uses the shared SVG chevron treatment for Animation Overrides rows", () => {
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
+    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
+
+    assert.ok(!overridesSource.includes('chevron.textContent = "\\u25B8";'));
+    assert.ok(!overridesSource.includes("chevron.innerHTML"));
+    assert.ok(overridesSource.includes('helpers.createDisclosureChevron("anim-override-chevron")'));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(css));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(css));
+    assert.ok(/\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(css));
+    assert.ok(/\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(css));
+    assert.ok(/\.anim-override-row > summary:hover \.anim-override-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(css));
+    assert.ok(/\.anim-override-row\[open\]\s*>\s*summary\s+\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(css));
+    assert.ok(/\.anim-override-thumb\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(css));
+    assert.ok(/\.anim-override-summary-text\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(css));
+    assert.ok(!/\.anim-override-summary-change\s*\{[\s\S]*translateX\(-3px\)/.test(css));
   });
 
   it("uses captured poster previews for trusted scripted animation override SVGs", () => {
