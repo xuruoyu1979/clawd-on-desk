@@ -170,7 +170,7 @@
 
   function wideHitboxResetVisible(card) {
     if (!card) return false;
-    return !!card.wideHitboxEnabled !== !!card.wideHitboxThemeDefault;
+    return !!card.wideHitboxOverridden || !!card.wideHitboxEnabled !== !!card.wideHitboxThemeDefault;
   }
 
   function recordPendingWideHitboxOverrideEdit(card, targetEnabled) {

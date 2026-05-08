@@ -3231,6 +3231,25 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(contentRenderCount, 1, "wide-hitbox toggle commits should not rebuild the content pane");
   });
 
+  it("shows the wide hitbox reset chip for stale overrides that already match the theme default", () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetChip = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.ok(resetChip, "wide-hitbox reset chip should render for stale no-op overrides");
+    assert.strictEqual(resetChip.hidden, false);
+    assert.strictEqual(resetChip.disabled, false);
+  });
+
   it("preserves pending wide hitbox state across full Animation Overrides rerenders", async () => {
     const card = createAnimOverrideCard({
       wideHitboxEnabled: false,
