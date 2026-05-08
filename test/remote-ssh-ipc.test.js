@@ -59,12 +59,13 @@ function mockBrowserWindow() {
   };
 }
 
-function mockSettingsController(profiles = []) {
+function mockSettingsController(profiles = [], applyCommandImpl = null) {
   const commandCalls = [];
   return {
     getSnapshot: () => ({ remoteSsh: { profiles } }),
     applyCommand: async (action, args) => {
       commandCalls.push({ action, args });
+      if (applyCommandImpl) return applyCommandImpl(action, args);
       return { status: "ok" };
     },
     _commandCalls: commandCalls,
@@ -299,6 +300,41 @@ test("remoteSsh:deploy stamps via markDeployed (not full update) on success", as
   // the lost-update fix.
   assert.equal(args.label, undefined,
     "markDeployed args must not carry full profile fields like label");
+  ipc.dispose();
+});
+
+test("remoteSsh:deploy returns target_drift warning when markDeployed sees drift", async () => {
+  // If the user edits host/port/identityFile/remoteForwardPort/hostPrefix
+  // mid-deploy, markDeployed no-ops with reason=target_drift. The IPC layer
+  // must surface this to the renderer as a warning so the UI can prompt the
+  // user to redeploy — otherwise deploy silently "succeeds" against the old
+  // config but the new config is left without hooks.
+  const ipcMain = mockIpcMain();
+  const { BrowserWindow } = mockBrowserWindow();
+  const settingsController = mockSettingsController([baseProfile], async (action) => {
+    if (action === "remoteSsh.markDeployed") {
+      return {
+        status: "ok",
+        noop: true,
+        reason: "target_drift",
+        targetDrift: "host",
+      };
+    }
+    return { status: "ok" };
+  });
+  const ipc = registerRemoteSshIpc({
+    ipcMain,
+    settingsController,
+    remoteSshRuntime: mockRuntime(),
+    BrowserWindow,
+    spawn: makeSucceedingSpawn().spawn,
+    deployFn: async () => ({ ok: true }),
+  });
+  const r = await ipcMain.invoke("remoteSsh:deploy", "p1");
+  assert.equal(r.status, "ok");
+  assert.equal(r.warning, "target_drift",
+    "drift must be surfaced as warning so UI can prompt redeploy");
+  assert.equal(r.driftedField, "host");
   ipc.dispose();
 });
 

@@ -383,6 +383,73 @@ test("settings-actions: remoteSsh.add rejects invalid input", () => {
   assert.equal(r.status, "error");
 });
 
+// ── deployTargetFingerprint / deployTargetDrift ──
+
+const {
+  deployTargetFingerprint,
+  deployTargetDrift,
+  DEPLOY_TARGET_FIELDS,
+} = require("../src/remote-ssh-profile");
+
+test("deployTargetFingerprint normalizes port 22 to undefined (matches UI omit-default)", () => {
+  const a = deployTargetFingerprint({ host: "pi", port: 22, remoteForwardPort: 23333 });
+  const b = deployTargetFingerprint({ host: "pi", remoteForwardPort: 23333 });
+  assert.equal(a.port, undefined);
+  assert.equal(b.port, undefined);
+  assert.equal(deployTargetDrift(a, b), null, "port 22 ≡ undefined must not drift");
+});
+
+test("deployTargetFingerprint preserves non-default port", () => {
+  const fp = deployTargetFingerprint({ host: "pi", port: 2222, remoteForwardPort: 23333 });
+  assert.equal(fp.port, 2222);
+});
+
+test("deployTargetFingerprint normalizes empty optional strings to undefined", () => {
+  const fp1 = deployTargetFingerprint({
+    host: "pi", remoteForwardPort: 23333,
+    identityFile: "", hostPrefix: "",
+  });
+  const fp2 = deployTargetFingerprint({
+    host: "pi", remoteForwardPort: 23333,
+  });
+  assert.equal(fp1.identityFile, undefined);
+  assert.equal(fp1.hostPrefix, undefined);
+  assert.equal(deployTargetDrift(fp1, fp2), null);
+});
+
+test("deployTargetDrift detects each field change deterministically", () => {
+  const base = { host: "pi", port: 22, remoteForwardPort: 23333 };
+  const baseFp = deployTargetFingerprint(base);
+  for (const f of DEPLOY_TARGET_FIELDS) {
+    const changed = { ...base };
+    if (f === "host") changed.host = "pi2";
+    else if (f === "port") changed.port = 2222;
+    else if (f === "identityFile") changed.identityFile = "/k";
+    else if (f === "remoteForwardPort") changed.remoteForwardPort = 23335;
+    else if (f === "hostPrefix") changed.hostPrefix = "pi-prefix";
+    const drift = deployTargetDrift(baseFp, deployTargetFingerprint(changed));
+    assert.equal(drift, f, `expected drift on ${f}`);
+  }
+});
+
+test("deployTargetDrift returns null when fingerprints match across normalization quirks", () => {
+  // Same target, different surface representation.
+  const a = deployTargetFingerprint({
+    host: "pi", port: 22, identityFile: "", hostPrefix: "",
+    remoteForwardPort: 23333,
+  });
+  const b = deployTargetFingerprint({
+    host: "pi", remoteForwardPort: 23333,
+  });
+  assert.equal(deployTargetDrift(a, b), null);
+});
+
+test("deployTargetFingerprint rejects nullish input", () => {
+  assert.equal(deployTargetFingerprint(null), null);
+  assert.equal(deployTargetFingerprint(undefined), null);
+  assert.equal(deployTargetFingerprint("nope"), null);
+});
+
 // ── markDeployed: avoids deploy/edit lost-update race ──
 
 test("settings-actions: remoteSsh.markDeployed stamps lastDeployedAt without touching other fields", () => {
@@ -523,6 +590,45 @@ test("settings-actions: remoteSsh.update clears lastDeployedAt on remoteForwardP
   assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, undefined);
 });
 
+test("settings-actions: remoteSsh.update preserves lastDeployedAt when prev had port:22 and edit omits port (UI default-omit case)", () => {
+  // Real bug from codex review #9: prev.port = 22, payload omits port (UI
+  // saveBtn skips port when value === 22). Naive prev[f] === profile[f] would
+  // see 22 vs undefined and false-flag drift, clearing lastDeployedAt on a
+  // pure label edit.
+  const cmd = commandRegistry["remoteSsh.update"];
+  const stamped = basicProfile({ port: 22, label: "Pi", lastDeployedAt: 12345 });
+  const cosmeticEditNoPort = basicProfile({ label: "树莓派" });  // port omitted entirely
+  delete cosmeticEditNoPort.port;
+  const r = cmd(cosmeticEditNoPort, {
+    snapshot: { remoteSsh: { profiles: [stamped] } },
+  });
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 12345,
+    "port 22 ≡ port undefined must not trip target drift");
+});
+
+test("settings-actions: remoteSsh.markDeployed treats expectedTarget.port=22 same as missing", () => {
+  const cmd = commandRegistry["remoteSsh.markDeployed"];
+  const profile = basicProfile({ host: "pi", remoteForwardPort: 23333 });
+  // Caller captured expectedTarget with explicit port:22; current profile has no port.
+  const r = cmd(
+    {
+      id: "p1",
+      deployedAt: 99999,
+      expectedTarget: {
+        host: "pi",
+        port: 22,
+        remoteForwardPort: 23333,
+      },
+    },
+    { snapshot: { remoteSsh: { profiles: [profile] } } }
+  );
+  assert.equal(r.status, "ok");
+  assert.equal(r.noop, undefined,
+    "port-22 vs undefined must not be considered drift");
+  assert.equal(r.commit.remoteSsh.profiles[0].lastDeployedAt, 99999);
+});
+
 test("settings-actions: remoteSsh.update preserves lastDeployedAt when toggling autoStartCodexMonitor", () => {
   const cmd = commandRegistry["remoteSsh.update"];
   const stamped = basicProfile({ autoStartCodexMonitor: false, lastDeployedAt: 12345 });
@@ -605,4 +711,91 @@ test("prefs.validate keeps valid remoteSsh profiles", () => {
   const out = validate({ remoteSsh: { profiles: [profile] } });
   assert.equal(out.remoteSsh.profiles.length, 1);
   assert.equal(out.remoteSsh.profiles[0].id, "p1");
+});
+
+// ── Integration: real controller serializes remoteSsh.* commands ──
+//
+// These tests run against the actual settings-controller (not just the
+// command registry as pure functions) to verify the .lockKey wiring
+// actually causes serialization at runtime. Without lockKey, update +
+// markDeployed can race and the later-committing one would stomp.
+
+test("real controller: update + markDeployed serialize via shared lockKey", async () => {
+  const { createSettingsController } = require("../src/settings-controller");
+  const path = require("path");
+  const fs = require("fs");
+  const os = require("os");
+  const tmp = path.join(os.tmpdir(), `clawd-prefs-race-${Date.now()}.json`);
+  try {
+    const startProfile = basicProfile({ label: "Pi" });
+    const ctrl = createSettingsController({
+      prefsPath: tmp,
+      loadResult: {
+        snapshot: {
+          ...require("../src/prefs").getDefaults(),
+          remoteSsh: { profiles: [startProfile] },
+        },
+        locked: false,
+      },
+    });
+    // T=0: kick off slow update (label change). Use a slow validator path
+    // by chaining an applyCommand that we make wait via setTimeout — but
+    // simpler: fire two commands back to back; lockKey serialization means
+    // the second sees the committed result of the first.
+    const updatePromise = ctrl.applyCommand("remoteSsh.update", basicProfile({ label: "树莓派" }));
+    const stampPromise = ctrl.applyCommand("remoteSsh.markDeployed", {
+      id: "p1",
+      deployedAt: 99999,
+    });
+    const [updateRes, stampRes] = await Promise.all([updatePromise, stampPromise]);
+    assert.equal(updateRes.status, "ok");
+    assert.equal(stampRes.status, "ok");
+    const finalProfiles = ctrl.getSnapshot().remoteSsh.profiles;
+    assert.equal(finalProfiles[0].label, "树莓派",
+      "update's label edit must survive — lockKey serialization makes markDeployed read post-update snapshot");
+    assert.equal(finalProfiles[0].lastDeployedAt, 99999,
+      "markDeployed must apply (since target didn't drift)");
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+});
+
+test("real controller: delete + markDeployed serialize (no resurrected profile)", async () => {
+  const { createSettingsController } = require("../src/settings-controller");
+  const path = require("path");
+  const fs = require("fs");
+  const os = require("os");
+  const tmp = path.join(os.tmpdir(), `clawd-prefs-race-del-${Date.now()}.json`);
+  try {
+    const startProfile = basicProfile();
+    const ctrl = createSettingsController({
+      prefsPath: tmp,
+      loadResult: {
+        snapshot: {
+          ...require("../src/prefs").getDefaults(),
+          remoteSsh: { profiles: [startProfile] },
+        },
+        locked: false,
+      },
+    });
+    // delete + concurrent markDeployed: without lockKey, markDeployed could
+    // read pre-delete snapshot, recompute newProfiles still containing p1,
+    // and commit — resurrecting the deleted profile.
+    const delPromise = ctrl.applyCommand("remoteSsh.delete", "p1");
+    const stampPromise = ctrl.applyCommand("remoteSsh.markDeployed", {
+      id: "p1",
+      deployedAt: 12345,
+    });
+    const [delRes, stampRes] = await Promise.all([delPromise, stampPromise]);
+    assert.equal(delRes.status, "ok");
+    assert.equal(stampRes.status, "ok");
+    // Stamp must have run AFTER delete (serialized) — sees no profile, no-ops.
+    assert.equal(stampRes.noop, true);
+    assert.equal(stampRes.reason, "profile_deleted");
+    const finalProfiles = ctrl.getSnapshot().remoteSsh.profiles;
+    assert.equal(finalProfiles.length, 0,
+      "delete must win — no resurrected profile");
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 });

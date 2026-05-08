@@ -104,6 +104,8 @@ const {
 const {
   validateProfile: validateRemoteSshProfile,
   sanitizeProfile: sanitizeRemoteSshProfile,
+  deployTargetFingerprint,
+  deployTargetDrift,
 } = require("./remote-ssh-profile");
 
 // ── updateRegistry ──
@@ -579,10 +581,13 @@ function remoteSshUpdateProfile(payload, deps) {
   // connectOnLaunch). Only clear it when deploy target fields drifted — those
   // changes mean the previous deploy is no longer valid for the new target,
   // so the UI should re-warn "never deployed" until user runs Deploy again.
+  // Use deployTargetFingerprint to normalize port-22-vs-undefined and empty
+  // optional strings before comparing — naive prev[f] === profile[f] would
+  // false-flag "port drift" when prev had port:22 and the UI saveBtn omitted
+  // the default 22 from the payload.
   if (Number.isFinite(prev.lastDeployedAt) && !Number.isFinite(payload.lastDeployedAt)) {
-    const targetFields = ["host", "port", "identityFile", "remoteForwardPort", "hostPrefix"];
-    const targetUnchanged = targetFields.every((f) => prev[f] === profile[f]);
-    if (targetUnchanged) profile.lastDeployedAt = prev.lastDeployedAt;
+    const drift = deployTargetDrift(deployTargetFingerprint(prev), deployTargetFingerprint(profile));
+    if (drift === null) profile.lastDeployedAt = prev.lastDeployedAt;
   }
   next.profiles[idx] = profile;
   return { status: "ok", commit: { remoteSsh: next } };
@@ -619,11 +624,14 @@ function remoteSshMarkDeployed(payload, deps) {
   }
   const current = next.profiles[idx];
   if (expectedTarget && typeof expectedTarget === "object") {
-    const targetFields = ["host", "port", "identityFile", "remoteForwardPort", "hostPrefix"];
-    let drift = null;
-    for (const f of targetFields) {
-      if (current[f] !== expectedTarget[f]) { drift = f; break; }
-    }
+    // Normalize both sides through deployTargetFingerprint so port-22 vs
+    // undefined / empty-string vs missing don't false-flag drift. This also
+    // means the IPC caller's expectedTarget can be a raw profile-shaped
+    // object — fingerprint normalizes it the same way.
+    const drift = deployTargetDrift(
+      deployTargetFingerprint(current),
+      deployTargetFingerprint(expectedTarget)
+    );
     if (drift) {
       return {
         status: "ok",
@@ -658,6 +666,24 @@ function remoteSshDeleteProfile(payload, deps) {
   next.profiles.splice(idx, 1);
   return { status: "ok", commit: { remoteSsh: next } };
 }
+
+// Share a domain lock across all four remoteSsh.* commands so concurrent
+// invocations against the same prefs field serialize. Without this, the
+// controller assigns each command its own lock by name, and two commands
+// (e.g. remoteSsh.update and remoteSsh.markDeployed) can both read the same
+// snapshot, compute their own commit, and stomp each other's writes.
+//
+// Concrete races this guards:
+//   - update + markDeployed: stamp can clobber a label edit committed
+//     between the read and write of update.
+//   - delete + markDeployed: markDeployed can resurrect a profile after
+//     delete committed.
+//   - add + markDeployed: less likely (different ids) but kept for
+//     defense-in-depth.
+remoteSshAddProfile.lockKey = "remoteSsh";
+remoteSshUpdateProfile.lockKey = "remoteSsh";
+remoteSshDeleteProfile.lockKey = "remoteSsh";
+remoteSshMarkDeployed.lockKey = "remoteSsh";
 
 const repairDoctorIssue = createRepairDoctorIssue({
   repairAgentIntegration,

@@ -402,11 +402,23 @@
       window.remoteSsh.deploy(profile.id).then((r) => {
         view.deployingProfileIds.delete(profile.id);
         if (r && r.status === "ok") {
-          // Append codex /hooks reminder — Deploy installs the hooks but the
-          // user still has to review them once in codex TUI before they go
-          // live (sha256 trusted_hash gate in ~/.codex/config.toml).
-          ops.showToast(`${t("remoteSshDeploySuccess")} ${t("codexHookReviewReminder")}`,
-            { ttl: 8000 });
+          if (r.warning === "target_drift") {
+            // The user edited host/port/identityFile/remoteForwardPort/
+            // hostPrefix while the 30s deploy was running. The deploy ran
+            // against the OLD target — markDeployed refused to stamp the
+            // new (drifted) profile as deployed. Tell the user to redeploy.
+            const driftedField = r.driftedField || "target";
+            ops.showToast(
+              `${t("remoteSshDeployDriftWarning")} (${driftedField})`,
+              { ttl: 10000, error: true }
+            );
+          } else {
+            // Append codex /hooks reminder — Deploy installs the hooks but the
+            // user still has to review them once in codex TUI before they go
+            // live (sha256 trusted_hash gate in ~/.codex/config.toml).
+            ops.showToast(`${t("remoteSshDeploySuccess")} ${t("codexHookReviewReminder")}`,
+              { ttl: 8000 });
+          }
         } else {
           ops.showToast((r && r.message) || "deploy failed", { error: true });
         }

@@ -195,8 +195,53 @@ function getDefaults() {
   return { profiles: [] };
 }
 
+// Build a normalized fingerprint of the deploy target fields. Used by both
+// remoteSsh.update (decide if cosmetic edit → preserve lastDeployedAt) and
+// remoteSsh.markDeployed (decide if mid-deploy drift → no-op stamp). Without
+// normalization, equality checks would falsely flag "drift" in cases like:
+//
+//   prev.port = 22  (default ssh port, kept by sanitize as a number)
+//   next.port = undefined  (UI saveBtn omits port when value === 22)
+//
+// Both represent the same deploy target — port 22 is ssh's default, present
+// or absent makes no functional difference. Same logic for empty optional
+// strings (identityFile, hostPrefix): "" and undefined are equivalent.
+function deployTargetFingerprint(profile) {
+  if (!profile || typeof profile !== "object") return null;
+  const port = Number.isInteger(profile.port) && profile.port !== 22
+    ? profile.port
+    : undefined;
+  const identityFile = typeof profile.identityFile === "string" && profile.identityFile.length > 0
+    ? profile.identityFile
+    : undefined;
+  const hostPrefix = typeof profile.hostPrefix === "string" && profile.hostPrefix.length > 0
+    ? profile.hostPrefix
+    : undefined;
+  return {
+    host: typeof profile.host === "string" && profile.host.length > 0 ? profile.host : undefined,
+    port,
+    identityFile,
+    remoteForwardPort: Number.isInteger(profile.remoteForwardPort) ? profile.remoteForwardPort : undefined,
+    hostPrefix,
+  };
+}
+
+// Compare two fingerprints. Returns null if equal, or the name of the first
+// drifted field. Stable field order so the diff is deterministic for UX
+// messages ("host changed during deploy").
+const DEPLOY_TARGET_FIELDS = ["host", "port", "identityFile", "remoteForwardPort", "hostPrefix"];
+
+function deployTargetDrift(a, b) {
+  if (!a || !b) return DEPLOY_TARGET_FIELDS[0];
+  for (const f of DEPLOY_TARGET_FIELDS) {
+    if (a[f] !== b[f]) return f;
+  }
+  return null;
+}
+
 module.exports = {
   REMOTE_FORWARD_PORTS,
+  DEPLOY_TARGET_FIELDS,
   isValidHost,
   isValidPort,
   isValidRemoteForwardPort,
@@ -208,4 +253,6 @@ module.exports = {
   sanitizeProfile,
   normalizeRemoteSsh,
   getDefaults,
+  deployTargetFingerprint,
+  deployTargetDrift,
 };

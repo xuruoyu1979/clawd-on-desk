@@ -176,6 +176,11 @@ function registerRemoteSshIpc(options = {}) {
           });
           if (stamp && stamp.noop && stamp.reason === "target_drift") {
             log("remote-ssh: deploy stamp skipped due to target drift on", stamp.targetDrift);
+            // Surface drift to caller so the UI can prompt the user to redeploy
+            // against the new target. We still return "ok" because the deploy
+            // itself succeeded — only the lastDeployedAt stamp was skipped to
+            // avoid mislabeling the new (drifted) config as "deployed".
+            return { status: "ok", warning: "target_drift", driftedField: stamp.targetDrift };
           }
         } catch (err) {
           log("remote-ssh: failed to stamp lastDeployedAt:", err && err.message);
