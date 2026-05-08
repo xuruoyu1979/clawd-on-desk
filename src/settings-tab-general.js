@@ -31,6 +31,12 @@
     "sessionHudCleanupDetached",
     "sessionHudAutoHide",
   ];
+  const SESSION_HUD_SUMMARY_KEYS = new Set([
+    "sessionHudEnabled",
+    "sessionHudShowElapsed",
+    "sessionHudAutoHide",
+    "sessionHudCleanupDetached",
+  ]);
   const CLAUDE_HOOK_MANAGEMENT_CHILD_SWITCH_KEYS = [
     "autoStartWithClaude",
   ];
@@ -58,33 +64,10 @@
     subtitle.textContent = t("settingsSubtitle");
     parent.appendChild(subtitle);
 
-    const sessionHudControlsEnabled = !!(state.snapshot && state.snapshot.sessionHudEnabled);
     parent.appendChild(helpers.buildSection(t("sectionAppearance"), [
       buildLanguageRow(),
       buildSizeSliderRow(),
-      helpers.buildSwitchRow({
-        key: "sessionHudEnabled",
-        labelKey: "rowSessionHud",
-        descKey: "rowSessionHudDesc",
-      }),
-      helpers.buildSwitchRow({
-        key: "sessionHudShowElapsed",
-        labelKey: "rowSessionHudElapsed",
-        descKey: "rowSessionHudElapsedDesc",
-        disabled: !sessionHudControlsEnabled,
-      }),
-      helpers.buildSwitchRow({
-        key: "sessionHudAutoHide",
-        labelKey: "rowSessionHudAutoHide",
-        descKey: "rowSessionHudAutoHideDesc",
-        disabled: !sessionHudControlsEnabled,
-      }),
-      helpers.buildSwitchRow({
-        key: "sessionHudCleanupDetached",
-        labelKey: "rowSessionHudCleanupDetached",
-        descKey: "rowSessionHudCleanupDetachedDesc",
-        disabled: !sessionHudControlsEnabled,
-      }),
+      buildSessionHudGroup(),
       buildDashboardRow(),
       helpers.buildSwitchRow({
         key: "soundMuted",
@@ -251,6 +234,95 @@
       });
     }
     return row;
+  }
+
+  function buildSessionHudGroup() {
+    const summaryControl = buildSessionHudSummary();
+    state.mountedControls.sessionHudSummary = summaryControl;
+    const sessionHudControlsEnabled = !!(state.snapshot && state.snapshot.sessionHudEnabled);
+    return helpers.buildCollapsibleGroup({
+      id: "general:session-hud",
+      title: t("rowSessionHud"),
+      desc: t("rowSessionHudDesc"),
+      summary: summaryControl.element,
+      defaultCollapsed: true,
+      className: "session-hud-collapsible",
+      children: [
+        helpers.buildSwitchRow({
+          key: "sessionHudEnabled",
+          labelKey: "rowSessionHudMaster",
+        }),
+        helpers.buildSwitchRow({
+          key: "sessionHudShowElapsed",
+          labelKey: "rowSessionHudElapsed",
+          descKey: "rowSessionHudElapsedDesc",
+          disabled: !sessionHudControlsEnabled,
+        }),
+        helpers.buildSwitchRow({
+          key: "sessionHudAutoHide",
+          labelKey: "rowSessionHudAutoHide",
+          descKey: "rowSessionHudAutoHideDesc",
+          disabled: !sessionHudControlsEnabled,
+        }),
+        helpers.buildSwitchRow({
+          key: "sessionHudCleanupDetached",
+          labelKey: "rowSessionHudCleanupDetached",
+          descKey: "rowSessionHudCleanupDetachedDesc",
+          disabled: !sessionHudControlsEnabled,
+        }),
+      ],
+    });
+  }
+
+  function buildSessionHudSummary() {
+    const wrap = document.createElement("div");
+
+    function syncFromSnapshot() {
+      wrap.innerHTML = "";
+      const snapshot = state.snapshot || {};
+      const enabled = snapshot.sessionHudEnabled !== false;
+      const onLabel = t("bubblePolicySummaryOn");
+      const offLabel = t("bubblePolicySummaryOff");
+      const items = [{
+        text: t("sessionHudSummaryEnabled").replace("{state}", enabled ? onLabel : offLabel),
+        accent: enabled,
+      }];
+      if (enabled) {
+        items.push({
+          text: t("sessionHudSummaryElapsed").replace(
+            "{state}",
+            snapshot.sessionHudShowElapsed !== false ? onLabel : offLabel
+          ),
+          accent: snapshot.sessionHudShowElapsed !== false,
+        });
+        items.push({
+          text: t("sessionHudSummaryAutoHide").replace(
+            "{state}",
+            snapshot.sessionHudAutoHide === true ? onLabel : offLabel
+          ),
+          accent: snapshot.sessionHudAutoHide === true,
+        });
+        items.push({
+          text: t("sessionHudSummaryCleanup").replace(
+            "{state}",
+            snapshot.sessionHudCleanupDetached === true ? onLabel : offLabel
+          ),
+          accent: snapshot.sessionHudCleanupDetached === true,
+        });
+      }
+      for (const item of items) {
+        const chip = document.createElement("span");
+        chip.className = "collapsible-summary-chip" + (item.accent ? " accent" : "");
+        chip.textContent = item.text;
+        wrap.appendChild(chip);
+      }
+    }
+
+    syncFromSnapshot();
+    return {
+      element: wrap,
+      syncFromSnapshot,
+    };
   }
 
   function buildBubblePolicyRow() {
@@ -1035,6 +1107,10 @@
       }
     }
     if (keys.includes("sessionHudEnabled") && !syncSessionHudChildSwitchesDisabled()) return false;
+    if (keys.some((key) => SESSION_HUD_SUMMARY_KEYS.has(key))) {
+      const summary = state.mountedControls.sessionHudSummary;
+      if (summary && document.body.contains(summary.element)) summary.syncFromSnapshot();
+    }
     if (keys.includes("manageClaudeHooksAutomatically")
       && !syncClaudeHookManagementChildSwitchesDisabled()) return false;
     if ((keys.includes("hideBubbles") || keys.some((key) => BUBBLE_POLICY_KEYS.has(key)))
