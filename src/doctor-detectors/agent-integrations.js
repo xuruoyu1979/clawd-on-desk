@@ -9,7 +9,7 @@ const { GEMINI_HOOK_EVENTS } = require("../../hooks/gemini-install");
 const { findKimiHookCommands } = require("../../hooks/kimi-install");
 const { getAgentDescriptors } = require("./agent-descriptors");
 const { validateHookCommand } = require("./agent-node-bin-parser");
-const { checkCodexHooksFeature } = require("./codex-features-check");
+const { checkCodexHookTrust, checkCodexHooksFeature } = require("./codex-features-check");
 const { validateOpencodeEntry } = require("./opencode-entry-validator");
 
 const INFO_ONLY_STATUSES = new Set([
@@ -88,7 +88,12 @@ function makeDetail(descriptor, status, fields = {}) {
 }
 
 function statusLevel(status) {
-  if (status === "not-connected" || status === "broken-path" || status === "config-corrupt") {
+  if (
+    status === "not-connected"
+    || status === "broken-path"
+    || status === "config-corrupt"
+    || status === "needs-review"
+  ) {
     return "warning";
   }
   return status === "ok" ? null : "info";
@@ -213,7 +218,7 @@ function validateGeminiHookEvents(descriptor, settings, options) {
   });
 }
 
-function applyCodexSupplementary(detail, descriptor, options) {
+function applyCodexSupplementary(detail, descriptor, options, settings) {
   if (!descriptor.supplementary || descriptor.supplementary.key !== "hooks") return detail;
   if (detail.status !== "ok") return detail;
 
@@ -231,14 +236,34 @@ function applyCodexSupplementary(detail, descriptor, options) {
       detail: "Codex hooks feature is disabled",
     };
   }
-  return {
+  const codexHookTrust = checkCodexHookTrust(
+    descriptor.supplementary.configPath,
+    settings,
+    descriptor.configPath,
+    {
+      fs: options.fs,
+      marker: descriptor.marker,
+      platform: options.platform,
+    }
+  );
+  const next = {
     ...detail,
     supplementary: {
       key: "hooks",
       value: supplementary.value,
       detail: supplementary.detail,
     },
+    codexHookTrust,
   };
+  if (codexHookTrust.value === "needs-review") {
+    return {
+      ...next,
+      status: "needs-review",
+      level: "warning",
+      detail: "Codex hooks are installed but need review in Codex /hooks before they can run",
+    };
+  }
+  return next;
 }
 
 function getGeminiHooksSupplementary(settings, descriptor) {
@@ -335,7 +360,7 @@ function checkFileMode(descriptor, options) {
     configFileExists: true,
     configPath: descriptor.configPath,
   };
-  detail = applyCodexSupplementary(detail, descriptor, options);
+  detail = applyCodexSupplementary(detail, descriptor, options, settings);
   return applyGeminiSupplementary(detail, descriptor, settings);
 }
 

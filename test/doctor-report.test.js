@@ -106,6 +106,11 @@ describe("formatDiagnosticReport", () => {
         value: "uncertain",
         detail: "config missing",
       },
+      codexHookTrust: {
+        key: "codex_hook_trust",
+        value: "needs-review",
+        detail: "2/2 Clawd Codex hook(s) need Codex /hooks review: PermissionRequest, Stop",
+      },
       kiroScan: {
         fullyValidFiles: ["clawd.json"],
         brokenFiles: ["custom.json"],
@@ -118,6 +123,8 @@ describe("formatDiagnosticReport", () => {
 
     assert.match(detail, /permission bubbles disabled/);
     assert.match(detail, /hooks=uncertain/);
+    assert.match(detail, /codex_hook_trust=needs-review/);
+    assert.match(detail, /PermissionRequest, Stop/);
     assert.match(detail, /valid=clawd\.json/);
     assert.match(detail, /broken=custom\.json/);
     assert.match(detail, /corrupt=bad\.json/);

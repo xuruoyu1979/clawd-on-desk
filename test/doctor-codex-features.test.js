@@ -1,6 +1,10 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { checkCodexHooksFeatureText } = require("../src/doctor-detectors/codex-features-check");
+const {
+  checkCodexHookTrustText,
+  checkCodexHooksFeatureText,
+  collectTrustedCodexHookIds,
+} = require("../src/doctor-detectors/codex-features-check");
 
 describe("Codex hooks feature check", () => {
   it("returns enabled when [features].hooks is true", () => {
@@ -57,5 +61,44 @@ describe("Codex hooks feature check", () => {
       checkCodexHooksFeatureText("# top\n[features] # table\nhooks = true # enabled\n"),
       { value: "enabled", detail: "hooks=true" }
     );
+  });
+
+  it("collects Codex trusted hook ids without treating comments in strings as comments", () => {
+    const ids = collectTrustedCodexHookIds([
+      "[features]",
+      "hooks = true",
+      "[hooks.state.'C:\\\\Users\\\\Alice\\\\.codex\\\\hooks.json:stop:0:0'] # trailing comment",
+      'trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"',
+      '[hooks.state."C:\\\\Users\\\\Alice\\\\#codex\\\\hooks.json:permission_request:0:0"]',
+      'trusted_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"',
+    ].join("\n"));
+
+    assert.ok(ids.has("C:\\\\Users\\\\Alice\\\\.codex\\\\hooks.json:stop:0:0"));
+    assert.ok(ids.has("C:\\Users\\Alice\\#codex\\hooks.json:permission_request:0:0"));
+  });
+
+  it("reports missing Codex hook trust entries by event", () => {
+    const settings = {
+      hooks: {
+        PermissionRequest: [{ hooks: [{ command: '"/node" "/app/hooks/codex-hook.js"' }] }],
+        Stop: [{ hooks: [{ command: '"/node" "/app/hooks/codex-hook.js"' }] }],
+      },
+    };
+    const trust = checkCodexHookTrustText(
+      [
+        "[features]",
+        "hooks = true",
+        "[hooks.state.'/home/alice/.codex/hooks.json:stop:0:0']",
+        'trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"',
+      ].join("\n"),
+      settings,
+      "/home/alice/.codex/hooks.json",
+      { platform: "linux" }
+    );
+
+    assert.strictEqual(trust.value, "needs-review");
+    assert.deepStrictEqual(trust.missingEvents, ["PermissionRequest"]);
+    assert.strictEqual(trust.trustedCount, 1);
+    assert.strictEqual(trust.totalCount, 2);
   });
 });
