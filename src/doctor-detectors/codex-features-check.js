@@ -29,6 +29,7 @@ function checkCodexHooksFeatureText(text) {
   }
 
   let inFeatures = false;
+  let legacyResult = null;
   for (const rawLine of text.split(/\r?\n/)) {
     const line = stripTomlComment(rawLine).trim();
     if (!line) continue;
@@ -40,19 +41,31 @@ function checkCodexHooksFeatureText(text) {
     }
 
     if (!inFeatures) continue;
-    const featureMatch = line.match(/^codex_hooks\s*=\s*(true|false)\b/i);
+    const featureMatch = line.match(/^hooks\s*=\s*(true|false)\b/i);
     if (featureMatch) {
       return {
         value: featureMatch[1].toLowerCase() === "true" ? "enabled" : "disabled",
-        detail: `codex_hooks=${featureMatch[1].toLowerCase()}`,
+        detail: `hooks=${featureMatch[1].toLowerCase()}`,
       };
     }
-    if (/^codex_hooks\s*=/.test(line)) {
-      return { value: "uncertain", detail: "codex_hooks is not a boolean" };
+    if (/^hooks\s*=/i.test(line)) {
+      return { value: "uncertain", detail: "hooks is not a boolean" };
+    }
+
+    const legacyMatch = line.match(/^codex_hooks\s*=\s*(true|false)\b/i);
+    if (legacyMatch && !legacyResult) {
+      legacyResult = {
+        value: legacyMatch[1].toLowerCase() === "true" ? "enabled" : "disabled",
+        detail: `codex_hooks=${legacyMatch[1].toLowerCase()} (deprecated)`,
+      };
+      continue;
+    }
+    if (/^codex_hooks\s*=/i.test(line) && !legacyResult) {
+      legacyResult = { value: "uncertain", detail: "codex_hooks is not a boolean" };
     }
   }
 
-  return { value: "uncertain", detail: "codex_hooks not found" };
+  return legacyResult || { value: "uncertain", detail: "hooks not found" };
 }
 
 function checkCodexHooksFeature(configPath, options = {}) {

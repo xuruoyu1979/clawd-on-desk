@@ -337,7 +337,7 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.hookCommandIssue, "scriptPath-missing");
   });
 
-  it("turns Codex ok into warning when codex_hooks=false", () => {
+  it("turns Codex ok into warning when hooks=false", () => {
     const root = makeTempDir();
     const parentDir = path.join(root, ".codex");
     const descriptor = baseDescriptor({
@@ -347,7 +347,7 @@ describe("checkAgentIntegrations", () => {
       configPath: path.join(parentDir, "hooks.json"),
       nested: true,
       supplementary: {
-        key: "codex_hooks",
+        key: "hooks",
         configPath: path.join(parentDir, "config.toml"),
       },
     });
@@ -356,7 +356,7 @@ describe("checkAgentIntegrations", () => {
         Stop: [{ hooks: [{ command: '"/node" "/app/hooks/codex-hook.js"' }] }],
       },
     });
-    fs.writeFileSync(descriptor.supplementary.configPath, "[features]\ncodex_hooks = false\n", "utf8");
+    fs.writeFileSync(descriptor.supplementary.configPath, "[features]\nhooks = false\n", "utf8");
 
     const detail = runOne(descriptor);
     assert.strictEqual(detail.status, "not-connected");

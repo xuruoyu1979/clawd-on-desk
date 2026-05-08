@@ -534,12 +534,12 @@ describe("doctor repair commands", () => {
       snapshot: prefs.getDefaults(),
       repairIntegrationForAgent: (agentId, options) => {
         calls.push({ agentId, options });
-        return { status: "error", message: "codex_hooks is still false" };
+        return { status: "error", message: "hooks is still false" };
       },
     });
 
     assert.strictEqual(r.status, "error");
-    assert.match(r.message, /codex_hooks/);
+    assert.match(r.message, /hooks/);
     assert.deepStrictEqual(calls, [{ agentId: "codex", options: { forceCodexHooksFeature: true } }]);
   });
 

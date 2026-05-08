@@ -102,7 +102,7 @@ describe("formatDiagnosticReport", () => {
       detail: "hook registered",
       permissionBubbleDetail: "permission bubbles disabled for this agent",
       supplementary: {
-        key: "codex_hooks",
+        key: "hooks",
         value: "uncertain",
         detail: "config missing",
       },
@@ -117,7 +117,7 @@ describe("formatDiagnosticReport", () => {
     });
 
     assert.match(detail, /permission bubbles disabled/);
-    assert.match(detail, /codex_hooks=uncertain/);
+    assert.match(detail, /hooks=uncertain/);
     assert.match(detail, /valid=clawd\.json/);
     assert.match(detail, /broken=custom\.json/);
     assert.match(detail, /corrupt=bad\.json/);
@@ -160,7 +160,7 @@ describe("formatDiagnosticReport", () => {
               detail: "C:\\Users\\Alice\\.cursor\\hooks.json missing",
               permissionBubbleDetail: "permission bubbles disabled for this agent",
               supplementary: {
-                key: "codex_hooks",
+                key: "hooks",
                 value: "uncertain",
                 detail: "config missing",
               },
@@ -205,7 +205,7 @@ describe("formatDiagnosticReport", () => {
     assert.match(report, /Overall: WARNING/);
     assert.match(report, /Cursor Agent/);
     assert.match(report, /permission bubbles disabled/);
-    assert.match(report, /codex_hooks=uncertain/);
+    assert.match(report, /hooks=uncertain/);
     assert.match(report, /valid=clawd\.json/);
     assert.match(report, /opencode issue: directory-missing/);
     assert.match(report, /\[APP\]\/hooks\/opencode-plugin/);

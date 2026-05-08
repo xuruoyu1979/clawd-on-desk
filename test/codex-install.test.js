@@ -104,8 +104,8 @@ describe("Codex official hook installer", () => {
     assert.ok(settings.hooks.PermissionRequest[0].hooks[0].command.includes(DEBUG_MARKER));
   });
 
-  it("does not flip an explicit codex_hooks=false", () => {
-    const codexDir = makeTempCodexDir({}, "[features]\ncodex_hooks = false\n");
+  it("does not flip an explicit hooks=false", () => {
+    const codexDir = makeTempCodexDir({}, "[features]\nhooks = false\n");
     const result = registerCodexHooks({
       silent: true,
       codexDir,
@@ -114,15 +114,32 @@ describe("Codex official hook installer", () => {
     });
 
     assert.strictEqual(result.configChanged, false);
-    assert.match(result.warnings[0], /codex_hooks = false/);
+    assert.match(result.warnings[0], /hooks = false/);
     assert.strictEqual(
       fs.readFileSync(path.join(codexDir, "config.toml"), "utf8"),
-      "[features]\ncodex_hooks = false\n"
+      "[features]\nhooks = false\n"
     );
   });
 
-  it("can force codex_hooks=true during an explicit repair", () => {
+  it("migrates legacy codex_hooks=false without enabling it", () => {
     const codexDir = makeTempCodexDir({}, "[features]\ncodex_hooks = false\n");
+    const result = registerCodexHooks({
+      silent: true,
+      codexDir,
+      nodeBin: "/usr/local/bin/node",
+      platform: "linux",
+    });
+
+    assert.strictEqual(result.configChanged, true);
+    assert.match(result.warnings[0], /hooks = false/);
+    assert.strictEqual(
+      fs.readFileSync(path.join(codexDir, "config.toml"), "utf8"),
+      "[features]\nhooks = false\n"
+    );
+  });
+
+  it("can force hooks=true during an explicit repair", () => {
+    const codexDir = makeTempCodexDir({}, "[features]\nhooks = false\n");
     const result = registerCodexHooks({
       silent: true,
       codexDir,
@@ -135,7 +152,7 @@ describe("Codex official hook installer", () => {
     assert.deepStrictEqual(result.warnings, []);
     assert.strictEqual(
       fs.readFileSync(path.join(codexDir, "config.toml"), "utf8"),
-      "[features]\ncodex_hooks = true\n"
+      "[features]\nhooks = true\n"
     );
   });
 

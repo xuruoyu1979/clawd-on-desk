@@ -6,7 +6,7 @@
 
 **Claude Code** — works out of the box. Hooks are auto-registered on launch. Versioned hooks (`PreCompact`, `PostCompact`, `StopFailure`) are registered only when Clawd can positively detect a compatible Claude Code version; if detection fails (common for packaged macOS launches), Clawd falls back to core hooks and removes stale incompatible versioned hooks automatically.
 
-**Codex CLI** — works out of the box. Clawd auto-registers official Codex hooks in `~/.codex/hooks.json` when Codex is installed, and enables `[features].codex_hooks = true` unless the user explicitly set it to `false`. The official hook path gives live state updates plus real Allow/Deny permission bubbles. JSONL polling of `~/.codex/sessions/` remains as a fallback for hook-disabled sessions and events Codex hooks do not cover.
+**Codex CLI** — works out of the box. Clawd auto-registers official Codex hooks in `~/.codex/hooks.json` when Codex is installed, and enables `[features].hooks = true` unless the user explicitly set hooks to `false`. The installer migrates the deprecated `[features].codex_hooks` key to `hooks` while preserving an explicit false value. The official hook path gives live state updates plus real Allow/Deny permission bubbles. JSONL polling of `~/.codex/sessions/` remains as a fallback for hook-disabled sessions and events Codex hooks do not cover.
 
 **Copilot CLI** — the one supported agent that still requires manual hook setup. See [copilot-setup.md](copilot-setup.md) for instructions.
 

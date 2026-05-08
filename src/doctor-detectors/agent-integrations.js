@@ -66,7 +66,7 @@ function withAgentFixAction(detail, descriptor) {
   if (
     descriptor.agentId === "codex"
     && detail.supplementary
-    && detail.supplementary.key === "codex_hooks"
+    && detail.supplementary.key === "hooks"
     && detail.supplementary.value === "disabled"
   ) {
     fixAction.forceCodexHooksFeature = true;
@@ -214,7 +214,7 @@ function validateGeminiHookEvents(descriptor, settings, options) {
 }
 
 function applyCodexSupplementary(detail, descriptor, options) {
-  if (!descriptor.supplementary || descriptor.supplementary.key !== "codex_hooks") return detail;
+  if (!descriptor.supplementary || descriptor.supplementary.key !== "hooks") return detail;
   if (detail.status !== "ok") return detail;
 
   const supplementary = checkCodexHooksFeature(descriptor.supplementary.configPath, { fs: options.fs });
@@ -224,17 +224,17 @@ function applyCodexSupplementary(detail, descriptor, options) {
       status: "not-connected",
       level: "warning",
       supplementary: {
-        key: "codex_hooks",
+        key: "hooks",
         value: supplementary.value,
         detail: supplementary.detail,
       },
-      detail: "[features].codex_hooks is disabled",
+      detail: "Codex hooks feature is disabled",
     };
   }
   return {
     ...detail,
     supplementary: {
-      key: "codex_hooks",
+      key: "hooks",
       value: supplementary.value,
       detail: supplementary.detail,
     },
