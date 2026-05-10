@@ -68,7 +68,9 @@
       animMapReset: null,
       animOverrideTimingSliders: new Map(),
       bubblePolicySummary: null,
+      sessionHudSummary: null,
       size: null,
+      soundSummary: null,
       soundVolume: null,
     },
     shortcutRecordingActionId: null,
@@ -638,7 +640,9 @@
     state.mountedControls.animMapReset = null;
     state.mountedControls.animOverrideTimingSliders.clear();
     state.mountedControls.bubblePolicySummary = null;
+    state.mountedControls.sessionHudSummary = null;
     state.mountedControls.size = null;
+    state.mountedControls.soundSummary = null;
     state.mountedControls.soundVolume = null;
   }
 

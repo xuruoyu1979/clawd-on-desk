@@ -1150,6 +1150,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("state.mountedControls.bubblePolicyControls"));
     assert.ok(generalSource.includes("state.mountedControls.bubblePolicySummary"));
     assert.ok(generalSource.includes("confirmDisableUpdateBubbles"));
+    assert.ok(generalSource.indexOf("buildBubblePolicyRow()") < generalSource.indexOf('key: "bubbleFollowPet"'));
     assert.ok(generalSource.includes("category === \"update\" && next === 0"));
     assert.ok(generalSource.includes("notificationBubbleAutoCloseSeconds"));
     assert.ok(generalSource.includes("updateBubbleAutoCloseSeconds"));
@@ -1166,6 +1167,43 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("rowBubblePolicy"));
     assert.ok(i18nSource.includes("bubbleUpdateWarning"));
     assert.ok(i18nSource.includes("bubbleSecondsPrefix"));
+  });
+
+  it("uses collapsible option lists for Session HUD and sound controls", () => {
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
+    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
+    const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
+    assert.ok(generalSource.includes("function buildSessionHudOptionsList("));
+    assert.ok(generalSource.includes("session-hud-option-list"));
+    assert.ok(generalSource.includes("function buildSoundGroup("));
+    assert.ok(generalSource.includes('id: "general:sound"'));
+    assert.ok(generalSource.includes("sound-option-list"));
+    assert.ok(generalSource.includes("state.mountedControls.soundSummary"));
+    assert.ok(generalSource.includes("sessionHudSummaryAutoHide"));
+    assert.ok(generalSource.includes("session-hud-summary-control"));
+    assert.ok(/\.settings-option-list\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*8px;/.test(css));
+    assert.ok(/\.settings-option-list \.settings-option-item\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--panel-bg\) 78%,\s*transparent\);/.test(css));
+    assert.ok(/\.session-hud-collapsible \.collapsible-summary-chip,[\s\S]*\.sound-collapsible \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*min\(280px,\s*100%\);/.test(css));
+    assert.ok(/\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.sound-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*max-content\);/.test(css));
+    assert.ok(/\.session-hud-summary-control\.compact\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*width:\s*auto;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*width:\s*min\(238px,\s*42vw\);/.test(css));
+    assert.ok(/\.collapsible-group-text \.row-label\s*\{[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/.test(css));
+    assert.ok(/\.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(css));
+    assert.ok(/\.sound-summary-control\s*\{[\s\S]*display:\s*inline-flex;/.test(css));
+    assert.ok(/\.sound-summary-control\s*\{[\s\S]*min-width:\s*max-content;/.test(css));
+    assert.ok(/\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*flex:\s*0 0 auto;/.test(css));
+    assert.ok(/\.sound-collapsible \.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(css));
+    assert.ok(i18nSource.includes("rowSoundEnabled"));
+  });
+
+  it("adds hover affordance to General size and volume sliders", () => {
+    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
+    assert.ok(/\.size-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));
+    assert.ok(/\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.size-slider:hover::-webkit-slider-thumb,[\s\S]*\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*none;/.test(css));
   });
 
   it("describes notification bubble seconds as an auto-close upper bound instead of a guaranteed visible duration", () => {
@@ -1306,9 +1344,16 @@ describe("settings renderer browser environment", () => {
     const master = harness.getSwitch("sessionHudEnabled");
     const elapsed = harness.getSwitch("sessionHudShowElapsed");
     const cleanup = harness.getSwitch("sessionHudCleanupDetached");
+    const summary = harness.core.state.mountedControls.sessionHudSummary.element;
+    const optionList = harness.content.querySelector(".session-hud-option-list");
     assert.ok(master);
     assert.ok(elapsed);
     assert.ok(cleanup);
+    assert.ok(optionList);
+    assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(summary.children.length, 1);
+    assert.strictEqual(summary.children[0].textContent, "HUD: off");
+    assert.strictEqual(summary.classList.contains("compact"), true);
     assert.strictEqual(elapsed.classList.contains("disabled"), true);
     assert.strictEqual(elapsed.attributes["aria-disabled"], "true");
     assert.strictEqual(elapsed.tabIndex, -1);
@@ -1334,6 +1379,12 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(elapsed.tabIndex, 0);
     assert.strictEqual(cleanup.classList.contains("disabled"), false);
     assert.strictEqual(cleanup.tabIndex, 0);
+    assert.strictEqual(summary.children.length, 4);
+    assert.strictEqual(summary.classList.contains("compact"), false);
+    assert.strictEqual(summary.children[0].textContent, "HUD: on");
+    assert.strictEqual(summary.children[1].textContent, "Time: on");
+    assert.strictEqual(summary.children[2].textContent, "Auto-hide: off");
+    assert.strictEqual(summary.children[3].textContent, "Auto-clear: on");
 
     assert.ok(
       elapsed.eventListeners.click && elapsed.eventListeners.click.length > 0,
@@ -1343,6 +1394,95 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     await Promise.resolve();
     assert.deepStrictEqual(updateCalls, [{ key: "sessionHudShowElapsed", value: false }]);
+  });
+
+  it("groups sound and volume into one collapsible control with in-place summary updates", () => {
+    const initialSnapshot = makeGeneralSnapshot({
+      soundMuted: false,
+      soundVolume: 0.5,
+    });
+    const harness = loadGeneralTabForTest({ snapshot: initialSnapshot });
+    harness.renderContent();
+
+    const soundSwitch = harness.getSwitch("soundMuted");
+    const summary = harness.core.state.mountedControls.soundSummary.element;
+    const volumeControl = harness.core.state.mountedControls.soundVolume;
+    const volumeSlider = volumeControl.row.querySelector(".volume-slider");
+    const optionList = harness.content.querySelector(".sound-option-list");
+    assert.ok(soundSwitch);
+    assert.ok(summary);
+    assert.ok(volumeControl);
+    assert.ok(volumeSlider);
+    assert.ok(optionList);
+    assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(summary.children.length, 2);
+    assert.strictEqual(summary.children[0].textContent, "on · 50%");
+    assert.ok(summary.children[1].classList.contains("sound-header-switch"));
+
+    const beforeRenderCount = harness.getContentRenderCount();
+    harness.core.ops.applyChanges({
+      changes: { soundVolume: 0.25 },
+      snapshot: { ...initialSnapshot, soundVolume: 0.25 },
+    });
+
+    assert.strictEqual(harness.getContentRenderCount(), beforeRenderCount);
+    assert.strictEqual(harness.core.state.mountedControls.soundSummary.element, summary);
+    assert.strictEqual(volumeSlider.value, "25");
+    assert.strictEqual(volumeSlider.style.getPropertyValue("--volume-fill"), "25%");
+    assert.strictEqual(summary.children[0].textContent, "on · 25%");
+
+    harness.core.ops.applyChanges({
+      changes: { soundMuted: true },
+      snapshot: { ...initialSnapshot, soundMuted: true, soundVolume: 0.25 },
+    });
+
+    assert.strictEqual(harness.getContentRenderCount(), beforeRenderCount);
+    assert.strictEqual(harness.getSwitch("soundMuted"), soundSwitch);
+    assert.strictEqual(soundSwitch.classList.contains("on"), false);
+    assert.strictEqual(summary.children[1].classList.contains("on"), false);
+    assert.strictEqual(volumeSlider.disabled, true);
+    assert.strictEqual(summary.children[0].textContent, "off · 25%");
+  });
+
+  it("lets the sound summary switch toggle sound without opening the collapsible group", async () => {
+    const updateCalls = [];
+    const initialSnapshot = makeGeneralSnapshot({
+      soundMuted: false,
+      soundVolume: 1,
+    });
+    const harness = loadGeneralTabForTest({
+      snapshot: initialSnapshot,
+      settingsAPI: {
+        update: (key, value) => {
+          updateCalls.push({ key, value });
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    harness.renderContent();
+
+    const summary = harness.core.state.mountedControls.soundSummary;
+    const headerSwitch = summary.headerSwitch;
+    const soundGroup = harness.content.querySelector(".sound-collapsible");
+    assert.ok(headerSwitch);
+    assert.ok(soundGroup.classList.contains("collapsed"));
+
+    let stopped = false;
+    let prevented = false;
+    headerSwitch.eventListeners.click[0]({
+      stopPropagation: () => { stopped = true; },
+      preventDefault: () => { prevented = true; },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(updateCalls, [{ key: "soundMuted", value: true }]);
+    assert.strictEqual(stopped, true);
+    assert.strictEqual(prevented, true);
+    assert.ok(soundGroup.classList.contains("collapsed"));
+    assert.strictEqual(headerSwitch.classList.contains("on"), false);
+    assert.strictEqual(headerSwitch.classList.contains("pending"), false);
+    assert.strictEqual(summary.element.children[0].textContent, "off · 100%");
   });
 
   it("patches Claude hook management child switch state without rebuilding General content", async () => {
