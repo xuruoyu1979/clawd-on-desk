@@ -276,6 +276,7 @@
 
   function buildSessionHudSummary() {
     const wrap = document.createElement("div");
+    wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
       wrap.innerHTML = "";
@@ -350,6 +351,7 @@
 
   function buildBubblePolicySummary() {
     const wrap = document.createElement("div");
+    wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
       wrap.innerHTML = "";

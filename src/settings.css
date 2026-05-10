@@ -299,6 +299,10 @@ html, body {
   border-bottom: none;
   background: transparent;
 }
+.collapsible-summary-wrap {
+  display: contents;
+}
+
 .collapsible-group-summary {
   flex: 0 0 auto;
   display: flex;
