@@ -1737,6 +1737,10 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("themeImportPetZip"));
     assert.ok(i18nSource.includes("toastCodexPetZipImportOk"));
     assert.ok(i18nSource.includes("toastCodexPetRemoveOk"));
+
+    const strings = loadSettingsI18nForTest();
+    assert.strictEqual(strings.en.themeImportPetZip, "Import Codex Pet (.zip)");
+    assert.strictEqual(strings.zh.themeImportPetZip, "导入 Codex Pet（.zip）");
   });
 
   it("animates collapsible Settings groups with measured height instead of instant hidden jumps", () => {
@@ -2716,10 +2720,10 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(strings.zh.animOverridesExport, "导出配置…");
     assert.strictEqual(strings.ko.animOverridesExport, "설정 내보내기…");
     assert.strictEqual(strings.ja.animOverridesExport, "設定をエクスポート…");
-    assert.strictEqual(strings.en.animOverridesResetAll, "Clear all overrides");
-    assert.strictEqual(strings.zh.animOverridesResetAll, "清除全部覆盖");
-    assert.strictEqual(strings.ko.animOverridesResetAll, "모든 덮어쓰기 지우기");
-    assert.strictEqual(strings.ja.animOverridesResetAll, "すべての上書きを解除");
+    assert.strictEqual(strings.en.animOverridesResetAll, "Restore theme defaults");
+    assert.strictEqual(strings.zh.animOverridesResetAll, "恢复主题默认");
+    assert.strictEqual(strings.ko.animOverridesResetAll, "테마 기본값으로 복원");
+    assert.strictEqual(strings.ja.animOverridesResetAll, "テーマのデフォルトに戻す");
     assert.match(
       css,
       /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/
