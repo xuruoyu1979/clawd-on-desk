@@ -279,7 +279,7 @@
     wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
-      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      wrap.innerHTML = "";
       const snapshot = state.snapshot || {};
       const enabled = snapshot.sessionHudEnabled !== false;
       const onLabel = t("bubblePolicySummaryOn");
@@ -354,7 +354,7 @@
     wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
-      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      wrap.innerHTML = "";
       const snapshot = readBubblePolicySnapshot();
       const items = [
       {
