@@ -1756,13 +1756,13 @@ describe("settings renderer browser environment", () => {
     const strings = loadSettingsI18nForTest();
     assert.strictEqual(strings.en.themeActionGroupCodexPets, "Codex Pet packages");
     assert.strictEqual(strings.en.themeActionGroupUserThemes, "User themes");
-    assert.strictEqual(strings.en.themeImportPetZip, "Import Codex Pet (.zip)");
-    assert.strictEqual(strings.en.themeImportUserThemeZip, "Import theme (.zip)");
+    assert.strictEqual(strings.en.themeImportPetZip, "Import Codex Pet package (.zip)");
+    assert.strictEqual(strings.en.themeImportUserThemeZip, "Import Clawd theme package (.zip)");
     assert.ok(strings.en.themeImportUserThemeZipHint.includes("theme.json"));
     assert.strictEqual(strings.en.themeOpenUserThemesFolder, "Open themes folder");
     assert.strictEqual(strings.en.themeRefreshThemes, "Refresh themes");
-    assert.strictEqual(strings.zh.themeImportPetZip, "导入 Codex Pet（.zip）");
-    assert.strictEqual(strings.zh.themeImportUserThemeZip, "导入主题（.zip）");
+    assert.strictEqual(strings.zh.themeImportPetZip, "导入 Codex Pet 包（.zip）");
+    assert.strictEqual(strings.zh.themeImportUserThemeZip, "导入 Clawd 主题包（.zip）");
     assert.ok(strings.zh.themeImportUserThemeZipHint.includes("theme.json"));
     assert.strictEqual(strings.zh.themeOpenUserThemesFolder, "打开主题文件夹");
   });
