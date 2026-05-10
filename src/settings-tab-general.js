@@ -275,10 +275,11 @@
   }
 
   function buildSessionHudSummary() {
-    const fragment = document.createDocumentFragment();
+    const wrap = document.createElement("div");
+    wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
-      while (fragment.firstChild) fragment.removeChild(fragment.firstChild);
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
       const snapshot = state.snapshot || {};
       const enabled = snapshot.sessionHudEnabled !== false;
       const onLabel = t("bubblePolicySummaryOn");
@@ -314,13 +315,13 @@
         const chip = document.createElement("span");
         chip.className = "collapsible-summary-chip" + (item.accent ? " accent" : "");
         chip.textContent = item.text;
-        fragment.appendChild(chip);
+        wrap.appendChild(chip);
       }
     }
 
     syncFromSnapshot();
     return {
-      element: fragment,
+      element: wrap,
       syncFromSnapshot,
     };
   }
@@ -349,10 +350,11 @@
   }
 
   function buildBubblePolicySummary() {
-    const fragment = document.createDocumentFragment();
+    const wrap = document.createElement("div");
+    wrap.className = "collapsible-summary-wrap";
 
     function syncFromSnapshot() {
-      while (fragment.firstChild) fragment.removeChild(fragment.firstChild);
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
       const snapshot = readBubblePolicySnapshot();
       const items = [
       {
@@ -375,13 +377,13 @@
         const chip = document.createElement("span");
         chip.className = "collapsible-summary-chip" + (item.accent ? " accent" : "");
         chip.textContent = item.text;
-        fragment.appendChild(chip);
+        wrap.appendChild(chip);
       }
     }
 
     syncFromSnapshot();
     return {
-      element: fragment,
+      element: wrap,
       syncFromSnapshot,
     };
   }
