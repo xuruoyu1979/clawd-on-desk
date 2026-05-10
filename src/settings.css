@@ -889,12 +889,29 @@ html, body {
 
 /* ── Theme grid ── */
 .theme-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+  gap: 12px;
+  margin: -2px 0 14px;
+}
+.theme-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.theme-action-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.theme-action-buttons {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
   gap: 8px;
-  margin: -2px 0 14px;
 }
 .theme-grid {
   display: grid;
@@ -1467,8 +1484,6 @@ html, body {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  cursor: pointer;
-  user-select: none;
 }
 .anim-override-toggle-row input[type="checkbox"] {
   margin: 3px 0 0 0;
@@ -1500,6 +1515,9 @@ html, body {
   border-radius: 999px;
   padding: 2px 8px;
   cursor: pointer;
+}
+.anim-override-reset-chip[hidden] {
+  display: none;
 }
 .anim-override-reset-chip:hover {
   color: var(--text-primary);

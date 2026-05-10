@@ -843,6 +843,7 @@ function createAnimOverrideCard(overrides = {}) {
     fallbackTargetState: null,
     wideHitboxEnabled: false,
     wideHitboxOverridden: false,
+    wideHitboxThemeDefault: false,
     aspectRatioWarning: null,
     ...overrides,
   };
@@ -1707,7 +1708,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("collapsibleCollapse"));
   });
 
-  it("groups Theme cards and exposes Codex Pet import actions in Settings", () => {
+  it("groups Theme cards and exposes theme import actions in Settings", () => {
     const tabSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8");
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const settingsIpcSource = fs.readFileSync(SETTINGS_IPC, "utf8");
@@ -1720,22 +1721,51 @@ describe("settings renderer browser environment", () => {
     assert.ok(tabSource.includes("themeGroupImportedCodexPets"));
     assert.ok(tabSource.includes("themeGroupUserThemes"));
     assert.ok(tabSource.includes("handleImportCodexPetZip"));
-    assert.ok(tabSource.includes("handleOpenCodexPetsFolder"));
+    assert.ok(tabSource.includes("handleImportUserThemeZip"));
+    assert.ok(!tabSource.includes("themeOpenCodexPetsFolder"));
+    assert.ok(!tabSource.includes("handleOpenCodexPetsFolder"));
+    assert.ok(tabSource.includes("handleOpenUserThemesFolder"));
+    assert.ok(tabSource.includes("handleRefreshThemes"));
     assert.ok(tabSource.includes("handleRemoveCodexPet"));
     assert.ok(tabSource.includes("themeUninstallPetLabel"));
     assert.ok(coreSource.includes("codexPetZipImportPending"));
+    assert.ok(coreSource.includes("userThemeZipImportPending"));
     assert.ok(coreSource.includes("codexPetRemovalPendingThemeId"));
+    assert.ok(preloadSource.includes("openUserThemesDir"));
+    assert.ok(preloadSource.includes("importUserThemeZip"));
     assert.ok(preloadSource.includes("openCodexPetsDir"));
     assert.ok(preloadSource.includes("importCodexPetZip"));
     assert.ok(preloadSource.includes("removeCodexPet"));
+    assert.ok(settingsIpcSource.includes('handle("settings:open-user-themes-dir"'));
+    assert.ok(settingsIpcSource.includes('handle("settings:import-user-theme-zip"'));
     assert.ok(settingsIpcSource.includes('handle("settings:open-codex-pets-dir"'));
     assert.ok(settingsIpcSource.includes('handle("settings:import-codex-pet-zip"'));
     assert.ok(settingsIpcSource.includes('handle("settings:remove-codex-pet"'));
     assert.ok(css.includes(".theme-section-title"));
+    assert.ok(css.includes(".theme-action-group"));
+    assert.ok(css.includes(".theme-action-buttons"));
     assert.ok(css.includes(".theme-uninstall-btn"));
     assert.ok(i18nSource.includes("themeImportPetZip"));
+    assert.ok(i18nSource.includes("themeImportUserThemeZip"));
+    assert.ok(i18nSource.includes("themeImportUserThemeZipHint"));
+    assert.ok(i18nSource.includes("themeOpenUserThemesFolder"));
+    assert.ok(i18nSource.includes("toastUserThemeZipImportOk"));
     assert.ok(i18nSource.includes("toastCodexPetZipImportOk"));
     assert.ok(i18nSource.includes("toastCodexPetRemoveOk"));
+
+    const strings = loadSettingsI18nForTest();
+    assert.strictEqual(strings.en.themeActionGroupCodexPets, "Codex Pets");
+    assert.strictEqual(strings.en.themeActionGroupUserThemes, "User themes");
+    assert.strictEqual(strings.en.themeImportPetZip, "Import Codex Pet package (.zip)");
+    assert.strictEqual(strings.en.themeImportUserThemeZip, "Import Clawd theme package (.zip)");
+    assert.ok(strings.en.themeImportUserThemeZipHint.includes("theme.json"));
+    assert.strictEqual(strings.en.themeOpenUserThemesFolder, "Open themes folder");
+    assert.strictEqual(strings.en.themeRefreshThemes, "Refresh themes");
+    assert.strictEqual(strings.zh.themeImportPetZip, "导入 Codex Pet 包（.zip）");
+    assert.strictEqual(strings.zh.themeActionGroupCodexPets, "Codex Pets");
+    assert.strictEqual(strings.zh.themeImportUserThemeZip, "导入 Clawd 主题包（.zip）");
+    assert.ok(strings.zh.themeImportUserThemeZipHint.includes("theme.json"));
+    assert.strictEqual(strings.zh.themeOpenUserThemesFolder, "打开主题文件夹");
   });
 
   it("animates collapsible Settings groups with measured height instead of instant hidden jumps", () => {
@@ -2523,6 +2553,24 @@ describe("settings renderer browser environment", () => {
     );
   });
 
+  it("does not treat an empty hitbox override group as a reset-all override", () => {
+    const core = loadSettingsCoreForTest({});
+    core.state.snapshot = {
+      themeOverrides: {
+        cloudling: {
+          hitbox: {
+            wide: {},
+          },
+        },
+      },
+    };
+
+    assert.strictEqual(core.readers.hasAnyThemeOverride("cloudling"), false);
+
+    core.state.snapshot.themeOverrides.cloudling.hitbox.wide["cloudling-thinking.svg"] = true;
+    assert.strictEqual(core.readers.hasAnyThemeOverride("cloudling"), true);
+  });
+
   it("keeps current Animation Overrides data visible while theme override refresh is pending", () => {
     const deferred = createDeferred();
     const core = loadSettingsCoreForTest({
@@ -2697,10 +2745,10 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(strings.zh.animOverridesExport, "导出配置…");
     assert.strictEqual(strings.ko.animOverridesExport, "설정 내보내기…");
     assert.strictEqual(strings.ja.animOverridesExport, "設定をエクスポート…");
-    assert.strictEqual(strings.en.animOverridesResetAll, "Clear all overrides");
-    assert.strictEqual(strings.zh.animOverridesResetAll, "清除全部覆盖");
-    assert.strictEqual(strings.ko.animOverridesResetAll, "모든 덮어쓰기 지우기");
-    assert.strictEqual(strings.ja.animOverridesResetAll, "すべての上書きを解除");
+    assert.strictEqual(strings.en.animOverridesResetAll, "Restore theme defaults");
+    assert.strictEqual(strings.zh.animOverridesResetAll, "恢复主题默认");
+    assert.strictEqual(strings.ko.animOverridesResetAll, "테마 기본값으로 복원");
+    assert.strictEqual(strings.ja.animOverridesResetAll, "テーマのデフォルトに戻す");
     assert.match(
       css,
       /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/
@@ -2869,6 +2917,134 @@ describe("settings renderer browser environment", () => {
     );
   });
 
+  it("updates Animation Overrides reset affordances after the first timing commit", async () => {
+    const card = createAnimOverrideCard({
+      transition: { in: 150, out: 150 },
+      transitionThemeDefault: { in: 150, out: 150 },
+      hasTransitionOverride: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const payloads = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (_name, payload) => {
+          payloads.push(payload);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          Object.assign(runtime.animationOverridesData.cards[0], {
+            transition: { in: 160, out: 150 },
+            transitionThemeDefault: { in: 150, out: 150 },
+            hasTransitionOverride: true,
+          });
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    let contentRenderCount = 0;
+    const renderContent = () => {
+      contentRenderCount++;
+      parent.innerHTML = "";
+      core.tabs.animOverrides.render(parent, core);
+    };
+    core.ops.requestRender = ({ content = false, modal = false } = {}) => {
+      if (content) renderContent();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
+    };
+    renderContent();
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(range);
+    assert.ok(resetButton);
+    assert.strictEqual(resetButton.disabled, true);
+    assert.strictEqual(parent.querySelector(".anim-override-badge-dot"), null);
+
+    range.value = "160";
+    for (const listener of range.eventListeners.input || []) listener();
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(payloads.length, 1);
+    assert.strictEqual(payloads[0].transitionThemeDefault.in, 150);
+    assert.strictEqual(payloads[0].transitionThemeDefault.out, 150);
+    assert.strictEqual(contentRenderCount, 1, "timing-only commits should keep the content DOM mounted");
+    assert.strictEqual(resetButton.disabled, false, "first timing commit should enable the slot reset button");
+    assert.ok(parent.querySelector(".anim-override-badge-dot"), "first timing commit should show the changed badge");
+  });
+
+  it("clears Animation Overrides reset affordances when timing returns to the theme default", async () => {
+    const card = createAnimOverrideCard({
+      transition: { in: 160, out: 150 },
+      transitionThemeDefault: { in: 150, out: 150 },
+      hasTransitionOverride: true,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const payloads = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (_name, payload) => {
+          payloads.push(payload);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          Object.assign(runtime.animationOverridesData.cards[0], {
+            transition: { in: 150, out: 150 },
+            transitionThemeDefault: { in: 150, out: 150 },
+            hasTransitionOverride: false,
+          });
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          states: {
+            thinking: {
+              transition: { in: 160, out: 150 },
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(range);
+    assert.ok(resetButton);
+    assert.strictEqual(resetButton.disabled, false);
+    assert.ok(parent.querySelector(".anim-override-badge-dot"));
+
+    range.value = "150";
+    for (const listener of range.eventListeners.input || []) listener();
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(payloads.length, 1);
+    assert.strictEqual(payloads[0].transition.in, 150);
+    assert.strictEqual(payloads[0].transition.out, 150);
+    assert.strictEqual(payloads[0].transitionThemeDefault.in, 150);
+    assert.strictEqual(payloads[0].transitionThemeDefault.out, 150);
+    assert.strictEqual(resetButton.disabled, true, "returning to default timing should disable slot reset");
+    assert.strictEqual(parent.querySelector(".anim-override-badge-dot"), null);
+  });
+
   it("keeps sequential fade timing commits from reverting the previous side", async () => {
     const card = createAnimOverrideCard();
     const runtime = createAnimOverridesRuntime(card);
@@ -2990,6 +3166,611 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
 
     assert.strictEqual(commandCount, 1);
+  });
+
+  it("renders the wide hitbox control as a scoped toggle instead of a full-row label", () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const row = parent.querySelector(".anim-override-toggle-row");
+    const input = parent.querySelectorAll("input").find((candidate) => candidate.type === "checkbox");
+    const title = parent.querySelector(".anim-override-toggle-title");
+
+    assert.ok(row, "expanded animation override row should render a wide-hitbox toggle row");
+    assert.strictEqual(row.tagName, "DIV");
+    assert.strictEqual(input.getAttribute("aria-label"), "animOverridesWideHitboxToggle");
+    assert.ok(title);
+    assert.strictEqual((title.eventListeners.click || []).length, 0);
+  });
+
+  it("uses null to clear wide hitbox overrides that match the theme default and avoids rebuilding content", async () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: false,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const payloads = [];
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (_name, payload) => {
+          payloads.push(payload);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          Object.assign(runtime.animationOverridesData.cards[0], fetchCount === 1
+            ? {
+                wideHitboxEnabled: true,
+                wideHitboxOverridden: true,
+                wideHitboxThemeDefault: false,
+              }
+            : {
+                wideHitboxEnabled: false,
+                wideHitboxOverridden: false,
+                wideHitboxThemeDefault: false,
+              });
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    let contentRenderCount = 0;
+    const renderContent = () => {
+      contentRenderCount++;
+      parent.innerHTML = "";
+      core.tabs.animOverrides.render(parent, core);
+    };
+    core.ops.requestRender = ({ content = false, modal = false } = {}) => {
+      if (content) renderContent();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
+    };
+    renderContent();
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.ok(toggle, "expanded animation override row should render a wide-hitbox checkbox");
+
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+    let resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(parent.querySelector(".anim-override-badge-dot"), "wide-hitbox commit should update the summary changed badge in place");
+    assert.strictEqual(resetButton.disabled, false, "wide-hitbox commit should enable reset affordance in place");
+
+    toggle.checked = false;
+    for (const listener of toggle.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+    resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.strictEqual(parent.querySelector(".anim-override-badge-dot"), null, "theme-default hitbox commit should clear the changed badge in place");
+    assert.strictEqual(resetButton.disabled, true, "theme-default hitbox commit should disable reset affordance in place");
+
+    assert.strictEqual(payloads.length, 2);
+    assert.strictEqual(payloads[0].enabled, true);
+    assert.strictEqual(payloads[1].enabled, null);
+    assert.strictEqual(contentRenderCount, 1, "wide-hitbox toggle commits should not rebuild the content pane");
+  });
+
+  it("shows the wide hitbox reset chip for stale overrides that already match the theme default", () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetChip = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.ok(resetChip, "wide-hitbox reset chip should render for stale no-op overrides");
+    assert.strictEqual(resetChip.hidden, false);
+    assert.strictEqual(resetChip.disabled, false);
+  });
+
+  it("shows a fallback error detail when wide hitbox saves fail without a message", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const toasts = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => Promise.resolve({ status: "error" }),
+      },
+      opsOverrides: {
+        showToast: (message) => toasts.push(message),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.ok(toasts.some((message) => String(message).includes("unknown error")));
+  });
+
+  it("preserves pending wide hitbox state across full Animation Overrides rerenders", async () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: false,
+      wideHitboxOverridden: false,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    let resolveCommand;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          Object.assign(runtime.animationOverridesData.cards[0], {
+            wideHitboxEnabled: true,
+            wideHitboxOverridden: true,
+            wideHitboxThemeDefault: false,
+          });
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    const renderContent = () => {
+      parent.innerHTML = "";
+      core.tabs.animOverrides.render(parent, core);
+    };
+    core.ops.requestRender = ({ content = false, modal = false } = {}) => {
+      if (content) renderContent();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
+    };
+    renderContent();
+
+    let toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.ok(toggle, "expanded animation override row should render a wide-hitbox checkbox");
+
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+
+    renderContent();
+
+    toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetChip = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    let resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
+    assert.ok(toggle, "wide-hitbox checkbox should still exist after rerender");
+    assert.strictEqual(toggle.checked, true, "pending wide-hitbox toggles should stay on across rerenders");
+    assert.strictEqual(toggle.disabled, true, "pending wide-hitbox toggles should stay disabled across rerenders");
+    assert.ok(resetChip, "wide-hitbox reset chip should still exist after rerender");
+    assert.strictEqual(resetChip.hidden, false, "pending wide-hitbox rerenders should keep the reset chip visible");
+    assert.strictEqual(resetChip.disabled, true, "pending wide-hitbox rerenders should keep the reset chip disabled");
+    assert.ok(resetButton, "pending wide-hitbox rerenders should keep the slot reset button mounted");
+    assert.strictEqual(resetButton.disabled, true, "slot reset should stay disabled while a wide-hitbox edit is pending");
+
+    resolveCommand({ status: "ok" });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
+    assert.strictEqual(toggle.checked, true);
+    assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(resetButton.disabled, false);
+  });
+
+  it("blocks wide hitbox edits while a same-card timing edit is pending", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          return new Promise(() => {});
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+
+    assert.strictEqual(toggle.disabled, true, "wide-hitbox toggle should be blocked while timing is pending");
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride"],
+      "blocked wide-hitbox changes should not enqueue a second override command"
+    );
+  });
+
+  it("blocks slot reset while a same-card timing edit is pending", async () => {
+    const card = createAnimOverrideCard({
+      hasTransitionOverride: true,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          return new Promise(() => {});
+        },
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          states: {
+            thinking: {
+              transition: { in: 120, out: 180 },
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+
+    assert.strictEqual(resetButton.disabled, true, "slot reset should be blocked while timing is pending");
+    for (const listener of resetButton.eventListeners.click || []) listener();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride"],
+      "blocked slot reset should not enqueue a reset command"
+    );
+  });
+
+  it("blocks timing edits while a same-card wide hitbox edit is pending", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          return new Promise(() => {});
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+
+    assert.strictEqual(range.disabled, true, "timing slider should be blocked while wide-hitbox is pending");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setWideHitboxOverride"],
+      "blocked timing changes should not enqueue a second override command"
+    );
+  });
+
+  it("reconciles acknowledged pending wide hitbox edits during Animation Overrides render", () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    runtime.pendingWideHitboxOverrideEdits = new Map([[
+      card.id,
+      {
+        seq: 1,
+        currentFile: card.currentFile,
+        themeDefault: false,
+        effectiveEnabled: true,
+        commandEnabled: true,
+      },
+    ]]);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetButton = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesReset");
+    assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
+    assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(resetButton.disabled, false);
+  });
+
+  it("treats hitbox-only overrides as overridden for summary badges and reset actions", () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      readersOverrides: {
+        hasAnyThemeOverride: () => true,
+        readThemeOverrideMap: () => ({
+          hitbox: {
+            wide: {
+              "cloudling-thinking.svg": true,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const summaryDot = parent.querySelector(".anim-override-badge-dot");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+
+    assert.ok(summaryDot, "hitbox-only overrides should still show the overridden summary badge");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    assert.strictEqual(resetButton.disabled, false, "hitbox-only overrides should enable the reset button");
+  });
+
+  it("clears hitbox-only overrides when resetting an animation override slot", async () => {
+    const card = createAnimOverrideCard({
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    let resolveAnimationReset;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          if (name === "setAnimationOverride") {
+            return new Promise((resolve) => {
+              resolveAnimationReset = resolve;
+            });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          hitbox: {
+            wide: {
+              "cloudling-thinking.svg": true,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    const resetPromises = (resetButton.eventListeners.click || []).map((listener) => listener());
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const toggleWhileResetPending = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetChipWhileResetPending = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.strictEqual(toggleWhileResetPending.disabled, true, "slot reset should block wide-hitbox toggles while pending");
+    assert.strictEqual(resetChipWhileResetPending.disabled, true, "slot reset should block wide-hitbox reset chips while pending");
+
+    resolveAnimationReset({ status: "ok" });
+    await Promise.all(resetPromises);
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride", "setWideHitboxOverride"]
+    );
+    assert.strictEqual(calls[1].payload.enabled, null);
+    assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
+    assert.strictEqual(runtime.pendingAnimationOverrideResets.size, 0);
+  });
+
+  it("clears hitbox overrides for the pre-reset replacement file when resetting a slot", async () => {
+    const replacementFile = "replacement-thinking.svg";
+    const baseFile = "cloudling-thinking.svg";
+    const card = createAnimOverrideCard({
+      currentFile: replacementFile,
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    let resolveAnimationReset;
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          if (name === "setAnimationOverride") {
+            return new Promise((resolve) => {
+              resolveAnimationReset = resolve;
+            });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          if (fetchCount === 1) {
+            Object.assign(runtime.animationOverridesData.cards[0], {
+              currentFile: baseFile,
+              wideHitboxEnabled: true,
+              wideHitboxOverridden: false,
+              wideHitboxThemeDefault: true,
+            });
+          }
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          states: {
+            thinking: {
+              file: replacementFile,
+            },
+          },
+          hitbox: {
+            wide: {
+              [replacementFile]: true,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    const resetPromises = (resetButton.eventListeners.click || []).map((listener) => listener());
+    await Promise.resolve();
+    await Promise.resolve();
+
+    resolveAnimationReset({ status: "ok" });
+    await Promise.all(resetPromises);
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride", "setWideHitboxOverride"]
+    );
+    assert.strictEqual(calls[1].payload.file, replacementFile);
+    assert.strictEqual(calls[1].payload.enabled, null);
+    assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
+    assert.strictEqual(runtime.pendingAnimationOverrideResets.size, 0);
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.strictEqual(toggle.checked, true, "base file wide-hitbox default should be restored after reset");
+    assert.strictEqual(toggle.disabled, false);
+  });
+
+  it("clears pending timing edits when animation override commands reject", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const toasts = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: () => Promise.reject(new Error("ipc failed")),
+      },
+      opsOverrides: {
+        showToast: (message) => toasts.push(message),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.strictEqual(runtime.pendingAnimationOverrideEdits.size, 0);
+    assert.strictEqual(toggle.disabled, false, "wide-hitbox toggle should unlock after a rejected timing command");
+    assert.ok(toasts.some((message) => String(message).includes("ipc failed")));
+  });
+
+  it("treats reaction-only overrides as overridden for summary badges and reset actions", () => {
+    const card = createAnimOverrideCard({
+      id: "reaction:clickLeft",
+      slotType: "reaction",
+      reactionKey: "clickLeft",
+      stateKey: undefined,
+      supportsDuration: true,
+      durationMs: 1600,
+      hasDurationOverride: true,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      readersOverrides: {
+        hasAnyThemeOverride: () => true,
+        readThemeOverrideMap: () => ({
+          reactions: {
+            clickLeft: {
+              durationMs: 1600,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const summaryDot = parent.querySelector(".anim-override-badge-dot");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+
+    assert.ok(summaryDot, "reaction-only overrides should show the overridden summary badge");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    assert.strictEqual(resetButton.disabled, false, "reaction-only overrides should enable the reset button");
   });
 
   it("does not keep reset-slot null timing values as pending slider edits", async () => {
@@ -3187,6 +3968,81 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(modalRenderCount, 0, "modal render happens after the async fetch settles");
   });
 
+  it("routes default-matching timing broadcasts through applyChanges in place", () => {
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [],
+        cards: [{
+          id: "state:thinking",
+          slotType: "state",
+          stateKey: "thinking",
+          transition: { in: 150, out: 150 },
+          transitionThemeDefault: { in: 150, out: 150 },
+          hasTransitionOverride: false,
+        }],
+        sounds: [],
+      }),
+    });
+    core.state.activeTab = "animOverrides";
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 160, out: 150 },
+            },
+          },
+        },
+      },
+    };
+    core.runtime.animationOverridesData = {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [],
+      cards: [{
+        id: "state:thinking",
+        slotType: "state",
+        stateKey: "thinking",
+        transition: { in: 160, out: 150 },
+        transitionThemeDefault: { in: 150, out: 150 },
+        hasTransitionOverride: true,
+      }],
+      sounds: [],
+    };
+    core.runtime.animOverridesSubtab = "animations";
+    core.runtime.assetPicker.state = null;
+    core.runtime.pendingAnimationOverrideEdits.set("state:thinking", {
+      seq: 1,
+      slotType: "state",
+      stateKey: "thinking",
+      transition: { in: 150, out: 150 },
+      transitionThemeDefault: { in: 150, out: 150 },
+    });
+
+    let contentRenderCount = 0;
+    core.ops.installRenderHooks({
+      sidebar: () => {},
+      content: () => {
+        contentRenderCount++;
+      },
+      modal: () => {},
+    });
+
+    const nextSnapshot = {
+      theme: "cloudling",
+      themeOverrides: {},
+    };
+    core.ops.applyChanges({
+      changes: { themeOverrides: nextSnapshot.themeOverrides },
+      snapshot: nextSnapshot,
+    });
+
+    assert.strictEqual(contentRenderCount, 0, "default timing ack should avoid rebuilding content");
+  });
+
   it("does not patch mixed-key Animation Overrides broadcasts in place", () => {
     const card = createAnimOverrideCard();
     const runtime = createAnimOverridesRuntime(card);
@@ -3252,6 +4108,7 @@ describe("settings renderer browser environment", () => {
       seq: 1,
     });
     core.state.mountedControls.animOverrideTimingSliders.set("state:thinking:transition.in", { row: {} });
+    core.runtime.pendingAnimationOverrideResets = new Set(["state:thinking"]);
 
     core.ops.applyChanges({
       changes: { theme: "calico" },
@@ -3263,6 +4120,7 @@ describe("settings renderer browser environment", () => {
     });
 
     assert.strictEqual(core.runtime.pendingAnimationOverrideEdits.size, 0);
+    assert.strictEqual(core.runtime.pendingAnimationOverrideResets.size, 0);
     assert.strictEqual(core.state.mountedControls.animOverrideTimingSliders.size, 0);
   });
 

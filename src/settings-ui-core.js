@@ -82,6 +82,7 @@
     themeList: null,
     codexPetsRefreshPending: false,
     codexPetZipImportPending: false,
+    userThemeZipImportPending: false,
     codexPetRemovalPendingThemeId: null,
     animationOverridesData: null,
     animationOverridesFetchSeq: 0,
@@ -181,6 +182,12 @@
     const all = state.snapshot && state.snapshot.themeOverrides;
     const map = all && all[themeId];
     if (!map || typeof map !== "object") return false;
+    const hitboxKeys = [];
+    if (map.hitbox && typeof map.hitbox === "object") {
+      for (const group of Object.values(map.hitbox)) {
+        if (group && typeof group === "object") hitboxKeys.push(...Object.keys(group));
+      }
+    }
     const keys = [
       ...(map.states ? Object.keys(map.states) : []),
       ...(map.tiers && map.tiers.workingTiers ? Object.keys(map.tiers.workingTiers) : []),
@@ -188,7 +195,7 @@
       ...(map.timings && map.timings.autoReturn ? Object.keys(map.timings.autoReturn) : []),
       ...(map.idleAnimations ? Object.keys(map.idleAnimations) : []),
       ...(map.reactions ? Object.keys(map.reactions) : []),
-      ...(map.hitbox ? Object.keys(map.hitbox) : []),
+      ...hitboxKeys,
       ...(map.sounds ? Object.keys(map.sounds) : []),
     ];
     return keys.length > 0;
@@ -918,9 +925,23 @@
       if (runtime.pendingAnimationOverrideEdits && typeof runtime.pendingAnimationOverrideEdits.clear === "function") {
         runtime.pendingAnimationOverrideEdits.clear();
       }
+      if (runtime.pendingWideHitboxOverrideEdits && typeof runtime.pendingWideHitboxOverrideEdits.clear === "function") {
+        runtime.pendingWideHitboxOverrideEdits.clear();
+      }
+      if (runtime.pendingAnimationOverrideResets && typeof runtime.pendingAnimationOverrideResets.clear === "function") {
+        runtime.pendingAnimationOverrideResets.clear();
+      }
       if (state.mountedControls.animOverrideTimingSliders
         && typeof state.mountedControls.animOverrideTimingSliders.clear === "function") {
         state.mountedControls.animOverrideTimingSliders.clear();
+      }
+      if (state.mountedControls.animOverrideWideHitboxToggles
+        && typeof state.mountedControls.animOverrideWideHitboxToggles.clear === "function") {
+        state.mountedControls.animOverrideWideHitboxToggles.clear();
+      }
+      if (state.mountedControls.animOverrideStatusControls
+        && typeof state.mountedControls.animOverrideStatusControls.clear === "function") {
+        state.mountedControls.animOverrideStatusControls.clear();
       }
     }
     const shouldPreserveAnimOverridesData = !!(

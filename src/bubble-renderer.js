@@ -591,6 +591,10 @@ function renderElicitationTerminalFallback() {
   btn.addEventListener("click", () => {
     btn.textContent = "...";
     disableAll();
+    // Use plain "deny" — permission.js's elicitation branch already calls
+    // focusTerminalForSession after sending the Elicitation deny response.
+    // "deny-and-focus" hides the bubble without writing to perm.res, which
+    // would leave the blocking Elicitation HTTP hook open.
     window.bubbleAPI.decide("deny");
   });
   suggestionsContainer.appendChild(btn);
