@@ -549,7 +549,9 @@
       `<div class="row-control"><div class="switch" role="switch" tabindex="0"></div></div>`;
     row.querySelector(".row-label").textContent = t(labelKey);
     const text = row.querySelector(".row-text");
-    row.querySelector(".row-desc").textContent = t(descKey);
+    const desc = row.querySelector(".row-desc");
+    if (descKey) desc.textContent = t(descKey);
+    else desc.remove();
     let extraElement = null;
     if (descExtraKey) {
       const extra = document.createElement("span");

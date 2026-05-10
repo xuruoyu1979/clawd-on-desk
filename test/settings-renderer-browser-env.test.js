@@ -1181,6 +1181,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("state.mountedControls.soundSummary"));
     assert.ok(generalSource.includes('sw.setAttribute("aria-label", t("rowSoundEnabled"));'));
     assert.ok(!/key:\s*"soundMuted",[\s\S]{0,120}descKey:\s*"rowSoundDesc"/.test(generalSource));
+    assert.ok(generalSource.includes('state.transientUiState.generalSwitches.set("soundMuted"'));
+    assert.ok(generalSource.includes("if (!result || result.status !== \"ok\" || result.noop)"));
     assert.ok(generalSource.includes("sessionHudSummaryAutoHide"));
     assert.ok(generalSource.includes("session-hud-summary-control"));
     assert.ok(/\.settings-option-list\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*8px;/.test(css));
@@ -1353,6 +1355,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(cleanup);
     assert.ok(optionList);
     assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(harness.getSwitchMeta("sessionHudEnabled").row.querySelector(".row-desc"), null);
     assert.strictEqual(summary.children.length, 1);
     assert.strictEqual(summary.children[0].textContent, "HUD: off");
     assert.strictEqual(summary.classList.contains("compact"), true);
@@ -1417,6 +1420,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(volumeSlider);
     assert.ok(optionList);
     assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(harness.getSwitchMeta("soundMuted").row.querySelector(".row-desc"), null);
     assert.strictEqual(summary.children.length, 2);
     assert.strictEqual(summary.children[0].textContent, "on · 50%");
     assert.ok(summary.children[1].classList.contains("sound-header-switch"));
@@ -1476,6 +1480,13 @@ describe("settings renderer browser environment", () => {
       stopPropagation: () => { stopped = true; },
       preventDefault: () => { prevented = true; },
     });
+    assert.strictEqual(headerSwitch.classList.contains("pending"), true);
+    assert.strictEqual(harness.getSwitch("soundMuted").classList.contains("pending"), true);
+    assert.strictEqual(summary.element.children[0].textContent, "off · 100%");
+    headerSwitch.eventListeners.click[0]({
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -1486,6 +1497,42 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(headerSwitch.classList.contains("on"), false);
     assert.strictEqual(headerSwitch.classList.contains("pending"), false);
     assert.strictEqual(summary.element.children[0].textContent, "off · 100%");
+  });
+
+  it("restores the sound summary switch when a toggle is a noop", async () => {
+    const updateCalls = [];
+    const initialSnapshot = makeGeneralSnapshot({
+      soundMuted: false,
+      soundVolume: 1,
+    });
+    const harness = loadGeneralTabForTest({
+      snapshot: initialSnapshot,
+      settingsAPI: {
+        update: (key, value) => {
+          updateCalls.push({ key, value });
+          return Promise.resolve({ status: "ok", noop: true });
+        },
+      },
+    });
+    harness.renderContent();
+
+    const summary = harness.core.state.mountedControls.soundSummary;
+    const headerSwitch = summary.headerSwitch;
+    const childSwitch = harness.getSwitch("soundMuted");
+    headerSwitch.eventListeners.click[0]({
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(updateCalls, [{ key: "soundMuted", value: true }]);
+    assert.strictEqual(headerSwitch.classList.contains("on"), true);
+    assert.strictEqual(headerSwitch.classList.contains("pending"), false);
+    assert.strictEqual(childSwitch.classList.contains("on"), true);
+    assert.strictEqual(childSwitch.classList.contains("pending"), false);
+    assert.strictEqual(summary.element.children[0].textContent, "on · 100%");
+    assert.strictEqual(harness.core.state.transientUiState.generalSwitches.has("soundMuted"), false);
   });
 
   it("patches Claude hook management child switch state without rebuilding General content", async () => {

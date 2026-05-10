@@ -368,15 +368,37 @@
     wrap.appendChild(chip);
     wrap.appendChild(sw);
 
-    let pending = false;
-
     function getSnapshotVolumePct() {
       const v = state.snapshot && typeof state.snapshot.soundVolume === "number"
         ? state.snapshot.soundVolume : 1;
       return Math.round(Math.max(0, Math.min(1, v)) * 100);
     }
 
-    function applySoundSummaryVisual(enabled, pendingVisual = pending) {
+    function getSoundTransientState() {
+      return state.transientUiState.generalSwitches.get("soundMuted") || null;
+    }
+
+    function getCommittedSoundVisual() {
+      return readers.readGeneralSwitchVisual("soundMuted", true);
+    }
+
+    function getDisplaySoundVisual() {
+      const transient = getSoundTransientState();
+      return transient ? transient.visualOn : getCommittedSoundVisual();
+    }
+
+    function getDisplaySoundPending() {
+      const transient = getSoundTransientState();
+      return transient ? transient.pending : false;
+    }
+
+    function setSoundChildSwitchVisual(visualOn, pendingVisual) {
+      const meta = getMountedGeneralSwitch("soundMuted");
+      if (!meta) return;
+      helpers.setSwitchVisual(meta.element, visualOn, { pending: pendingVisual });
+    }
+
+    function applySoundSummaryVisual(enabled, pendingVisual = false) {
       const stateLabel = enabled ? t("bubblePolicySummaryOn") : t("bubblePolicySummaryOff");
       chip.className = "collapsible-summary-chip" + (enabled ? " accent" : "");
       chip.textContent = `${stateLabel} · ${getSnapshotVolumePct()}%`;
@@ -384,13 +406,7 @@
     }
 
     function syncFromSnapshot() {
-      const snapshot = state.snapshot || {};
-      applySoundSummaryVisual(snapshot.soundMuted !== true);
-    }
-
-    function setPendingVisual(nextEnabled, nextPending) {
-      pending = !!nextPending;
-      applySoundSummaryVisual(nextEnabled, pending);
+      applySoundSummaryVisual(getDisplaySoundVisual(), getDisplaySoundPending());
     }
 
     function toggleSound(ev) {
@@ -398,23 +414,39 @@
         ev.preventDefault();
         ev.stopPropagation();
       }
-      if (pending) return;
-      const currentMuted = !!(state.snapshot && state.snapshot.soundMuted);
-      const nextMuted = !currentMuted;
-      setPendingVisual(!nextMuted, true);
+      const activeTransient = getSoundTransientState();
+      if (activeTransient && activeTransient.pending) return;
+      const currentRaw = readers.readGeneralSwitchRaw("soundMuted");
+      const currentVisual = !currentRaw;
+      const nextVisual = !currentVisual;
+      const nextMuted = !nextVisual;
+      const seq = state.nextTransientUiSeq++;
+      state.transientUiState.generalSwitches.set("soundMuted", { visualOn: nextVisual, pending: true, seq });
+      applySoundSummaryVisual(nextVisual, true);
+      setSoundChildSwitchVisual(nextVisual, true);
       window.settingsAPI.update("soundMuted", nextMuted).then((result) => {
-        pending = false;
-        if (!result || result.status !== "ok") {
+        const currentTransient = getSoundTransientState();
+        if (!currentTransient || currentTransient.seq !== seq) return;
+        state.transientUiState.generalSwitches.delete("soundMuted");
+        if (!result || result.status !== "ok" || result.noop) {
+          const committedVisual = getCommittedSoundVisual();
+          applySoundSummaryVisual(committedVisual, false);
+          setSoundChildSwitchVisual(committedVisual, false);
+          if (result && result.noop) return;
           const msg = (result && result.message) || "unknown error";
           ops.showToast(t("toastSaveFailed") + msg, { error: true });
-          syncFromSnapshot();
           return;
         }
-        applySoundSummaryVisual(!nextMuted, false);
+        applySoundSummaryVisual(nextVisual, false);
+        setSoundChildSwitchVisual(nextVisual, false);
       }).catch((err) => {
-        pending = false;
+        const currentTransient = getSoundTransientState();
+        if (!currentTransient || currentTransient.seq !== seq) return;
+        state.transientUiState.generalSwitches.delete("soundMuted");
+        const committedVisual = getCommittedSoundVisual();
+        applySoundSummaryVisual(committedVisual, false);
+        setSoundChildSwitchVisual(committedVisual, false);
         ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-        syncFromSnapshot();
       });
     }
 
