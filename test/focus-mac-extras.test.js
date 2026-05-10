@@ -7,6 +7,31 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+// Hermetic HOME so scheduleSupersetFocus's internal findSupersetDataDirs()
+// (which scans `~/.superset*/local.db`) sees a controlled fixture instead
+// of the host's real Superset install (or its absence on CI). Must be paired
+// with restoreHome() in the test's cleanup.
+function setupHermeticSupersetHome({ withDb = true } = {}) {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "focus-test-home-"));
+  if (withDb) {
+    fs.mkdirSync(path.join(tmpHome, ".superset"), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, ".superset", "local.db"), "");
+  }
+  const originalHome = process.env.HOME;
+  process.env.HOME = tmpHome;
+  return {
+    tmpHome,
+    restoreHome() {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}
+    },
+  };
+}
 
 // focus.js destructures { execFile, spawn } at require-time, so we patch
 // child_process and process.platform BEFORE requiring focus.js. This mirrors
@@ -48,6 +73,7 @@ function commLine(name) {
 
 describe("Superset deep-link focus (macOS)", () => {
   it("opens superset://workspace/<id> with -b bundle id when source is Superset", (t, done) => {
+    const { restoreHome } = setupHermeticSupersetHome();
     const calls = [];
     const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
       if (typeof opts === "function") { cb = opts; opts = {}; }
@@ -69,6 +95,7 @@ describe("Superset deep-link focus (macOS)", () => {
 
     setTimeout(() => {
       cleanup();
+      restoreHome();
 
       const openCall = calls.find((c) =>
         c.cmd === "/usr/bin/open" &&
@@ -86,6 +113,9 @@ describe("Superset deep-link focus (macOS)", () => {
   });
 
   it("does not open superset://… when source process is not Superset", (t, done) => {
+    // Empty tmp HOME (no .superset/local.db) so even if the comm gate broke
+    // the host's real Superset install would not be exercised.
+    const { restoreHome } = setupHermeticSupersetHome({ withDb: false });
     const calls = [];
     const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
       if (typeof opts === "function") { cb = opts; opts = {}; }
@@ -107,6 +137,7 @@ describe("Superset deep-link focus (macOS)", () => {
 
     setTimeout(() => {
       cleanup();
+      restoreHome();
 
       const openCall = calls.find((c) =>
         c.cmd === "/usr/bin/open" &&
@@ -122,6 +153,7 @@ describe("Superset deep-link focus (macOS)", () => {
   });
 
   it("does not run the Superset path when cwd is empty", (t, done) => {
+    const { restoreHome } = setupHermeticSupersetHome({ withDb: false });
     const calls = [];
     const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
       if (typeof opts === "function") { cb = opts; opts = {}; }
@@ -134,6 +166,7 @@ describe("Superset deep-link focus (macOS)", () => {
 
     setTimeout(() => {
       cleanup();
+      restoreHome();
       const sqliteCall = calls.find((c) => c.cmd === "sqlite3");
       assert.ok(!sqliteCall, "Should not query Superset DB when cwd is empty");
       const openCall = calls.find((c) =>
