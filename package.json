@@ -108,6 +108,7 @@
       "installerHeaderIcon": "assets/icon.ico"
     },
     "files": [
+      "NOTICE.md",
       "src/**/*",
       "assets/icon.ico",
       "assets/icons/**/*",

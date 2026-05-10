@@ -1,3 +1,8 @@
+<!--
+  Adapted from OpenClaw docs/assets/pixel-lobster.svg.
+  OpenClaw is MIT licensed: Copyright (c) 2025 Peter Steinberger.
+  See NOTICE.md for the full OpenClaw MIT license notice.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 16 16" role="img" aria-label="OpenClaw">
   <rect width="16" height="16" fill="none"/>
   <g fill="#3a0a0d">
