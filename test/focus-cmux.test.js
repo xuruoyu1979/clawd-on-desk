@@ -19,7 +19,7 @@ function writeMockSessionFile(workspaces, bundleId = "com.cmuxterm.app") {
     }]
   };
   fs.writeFileSync(sessionPath, JSON.stringify(sessionData));
-  return { tmpDir, sessionPath, cleanup: () => fs.rmSync(tmpDir, { recursive: true, force: true }) };
+  return { tmpDir, cmuxDir, sessionPath, cleanup: () => fs.rmSync(tmpDir, { recursive: true, force: true }) };
 }
 
 function mockExecFileForCmux(opts = {}) {
@@ -98,6 +98,9 @@ describe("cmux panel focus (macOS)", () => {
       const panelArgIdx = panelCall.args.indexOf("--panel");
       assert.ok(panelArgIdx >= 0, "Should have --panel flag");
       assert.strictEqual(panelCall.args[panelArgIdx + 1], panelId, "Should focus exact panel UUID");
+      const workspaceArgIdx = panelCall.args.indexOf("--workspace");
+      assert.ok(workspaceArgIdx >= 0, "Should pass --workspace so cmux does not rely on Clawd's environment");
+      assert.strictEqual(panelCall.args[workspaceArgIdx + 1], "ws-uuid-1", "Should focus inside the matched workspace");
 
       done();
     }, 2500);
@@ -203,6 +206,53 @@ describe("cmux panel focus (macOS)", () => {
 
       const panelArgIdx = panelCall.args.indexOf("--panel");
       assert.strictEqual(panelCall.args[panelArgIdx + 1], panel2Id, "Should focus the matched panel (ttys003), not the first one");
+      const workspaceArgIdx = panelCall.args.indexOf("--workspace");
+      assert.strictEqual(panelCall.args[workspaceArgIdx + 1], "ws-split", "Should pass the matched workspace for split panel focus");
+
+      done();
+    }, 2500);
+  });
+
+  it("should search later cmux session files when the newest file has no matching TTY", (t, done) => {
+    const panelId = "panel-in-older-session";
+    const { tmpDir, cmuxDir, cleanup: cleanupFile } = writeMockSessionFile([{
+      id: "newer-wrong-workspace",
+      panels: [{ id: "wrong-panel", ttyName: "ttys001", type: "terminal" }]
+    }], "newer");
+    const olderSessionPath = path.join(cmuxDir, "session-older.json");
+    fs.writeFileSync(olderSessionPath, JSON.stringify({
+      windows: [{
+        tabManager: {
+          selectedWorkspaceIndex: 0,
+          workspaces: [{
+            id: "older-matched-workspace",
+            panels: [{ id: panelId, ttyName: "ttys007", type: "terminal" }]
+          }]
+        }
+      }]
+    }));
+    const now = Date.now() / 1000;
+    fs.utimesSync(path.join(cmuxDir, "session-newer.json"), now, now);
+    fs.utimesSync(olderSessionPath, now - 60, now - 60);
+
+    const origHome = process.env.HOME;
+    process.env.HOME = tmpDir;
+
+    const { calls, mock } = mockExecFileForCmux({ ttyOutput: "501 ttys007\n" });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
+
+    const { focusTerminalWindow } = initFocus({});
+    focusTerminalWindow(501, "/test/cwd", null, [501, 502]);
+
+    setTimeout(() => {
+      cleanup();
+      cleanupFile();
+      process.env.HOME = origHome;
+
+      const panelCall = calls.find(c => c.cmd === CMUX_BIN && c.args.includes("focus-panel"));
+      assert.ok(panelCall, "Should call focus-panel after checking more than one session file");
+      assert.strictEqual(panelCall.args[panelCall.args.indexOf("--panel") + 1], panelId);
+      assert.strictEqual(panelCall.args[panelCall.args.indexOf("--workspace") + 1], "older-matched-workspace");
 
       done();
     }, 2500);

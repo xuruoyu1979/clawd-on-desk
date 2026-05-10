@@ -384,6 +384,57 @@ function findFirstValidTty(psOutput) {
   return null;
 }
 
+function buildCmuxBinPath(appPath) {
+  // This path is macOS-only even when unit tests simulate darwin on Windows.
+  return path.posix.join(String(appPath || "/Applications/cmux.app").replace(/\\/g, "/"), "Contents/Resources/bin/cmux");
+}
+
+function listCmuxSessionFiles(cmuxDir) {
+  return fs.readdirSync(cmuxDir, { withFileTypes: true })
+    .filter(e => e.isFile() && e.name.startsWith("session-") && e.name.endsWith(".json") && !e.name.includes("-previous"))
+    .map((e) => {
+      const filePath = path.join(cmuxDir, e.name);
+      let mtimeMs = 0;
+      try { mtimeMs = fs.statSync(filePath).mtimeMs; } catch {}
+      return { filePath, mtimeMs, name: e.name };
+    })
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || b.name.localeCompare(a.name))
+    .map(e => e.filePath);
+}
+
+function findCmuxPanelMatch(sessionData, ttyName) {
+  for (const win of sessionData?.windows ?? []) {
+    const tm = win?.tabManager;
+    if (!tm) continue;
+    for (const ws of tm.workspaces ?? []) {
+      const workspaceId = typeof ws?.id === "string" ? ws.id : null;
+      if (!workspaceId) continue;
+      for (const p of ws.panels ?? []) {
+        if (p?.ttyName === ttyName && typeof p.id === "string" && p.id) {
+          return { workspaceId, panelId: p.id, ttyName: p.ttyName };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function findCmuxPanelMatchInSessionFiles(cmuxDir, ttyName) {
+  const sessionFiles = listCmuxSessionFiles(cmuxDir);
+  if (!sessionFiles.length) return { readAny: false, match: null };
+
+  let readAny = false;
+  for (const sessionFile of sessionFiles) {
+    try {
+      const sessionData = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+      readAny = true;
+      const match = findCmuxPanelMatch(sessionData, ttyName);
+      if (match) return { readAny, match };
+    } catch {}
+  }
+  return { readAny, match: null };
+}
+
 function scheduleITermTabFocus(sourcePid, pidChain) {
   if (!isMac || !sourcePid || !Array.isArray(pidChain) || !pidChain.length) return;
   execFile("ps", ["-o", "comm=", "-p", String(sourcePid)], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
@@ -442,7 +493,7 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
     const cmuxAppPath = "/Applications/cmux.app";
     execFile("mdfind", ["kMDItemCFBundleIdentifier=com.cmuxterm.app"], { timeout: 2000 }, (mdfindErr, appPath) => {
       const resolvedAppPath = (!mdfindErr && appPath.trim()) ? appPath.trim().split("\n")[0] : cmuxAppPath;
-      const cmuxBin = path.join(resolvedAppPath, "Contents/Resources/bin/cmux");
+      const cmuxBin = buildCmuxBinPath(resolvedAppPath);
 
       execFile("ps", ["-o", "pid=,tty=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
         if (psErr || !psOut) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
@@ -450,39 +501,21 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
         if (!ttyName) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
 
         // Read cmux session file, match TTY to workspace+panel, focus by panel id
-        const cmuxDir = path.join(process.env.HOME, "Library/Application Support/cmux");
+        const cmuxDir = path.join(process.env.HOME || os.homedir(), "Library/Application Support/cmux");
         try {
-          const sessionFile = fs.readdirSync(cmuxDir)
-            .filter(f => f.startsWith("session-") && f.endsWith(".json") && !f.includes("-previous"))
-            .sort()[0];
-          if (!sessionFile) { logFocusResult("branch=cmux reason=cmux-session-read-failed"); return; }
-          const sessionData = JSON.parse(fs.readFileSync(path.join(cmuxDir, sessionFile), "utf8"));
-          // Find matching panel across ALL windows (multiple cmux instances may be open)
-          let match = null;
-          for (const win of sessionData.windows ?? []) {
-            const tm = win?.tabManager;
-            if (!tm) continue;
-            for (const ws of tm.workspaces ?? []) {
-              for (const p of ws.panels ?? []) {
-                if (p.ttyName === ttyName) {
-                  match = { workspaceId: ws.id ?? ws, panelId: p.id, ttyName: p.ttyName };
-                  break;
-                }
-              }
-              if (match) break;
-            }
-            if (match) break;
-          }
+          const { readAny, match } = findCmuxPanelMatchInSessionFiles(cmuxDir, ttyName);
+          if (!readAny) { logFocusResult("branch=cmux reason=cmux-session-read-failed"); return; }
           if (!match) { logFocusResult("branch=cmux reason=cmux-workspace-not-found"); return; }
 
           const focusWithPanelId = (panelId) => {
-            execFile(cmuxBin, ["focus-panel", "--panel", panelId], { timeout: 1500 }, (panelErr) => {
+            execFile(cmuxBin, ["focus-panel", "--workspace", match.workspaceId, "--panel", panelId], { timeout: 1500 }, (panelErr) => {
               if (panelErr) {
                 // Fallback 1: select-workspace
                 execFile(cmuxBin, ["select-workspace", "--workspace", match.workspaceId], { timeout: 1500 }, (wsErr) => {
                   if (wsErr) {
                     // Fallback 2: AppleScript
-                    const script = `tell application "cmux" to focus terminal id "${panelId}"`;
+                    const escapedPanelId = String(panelId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+                    const script = `tell application "cmux" to focus terminal id "${escapedPanelId}"`;
                     execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (osaErr) => {
                       if (osaErr) { logFocusResult("branch=cmux reason=cmux-all-fallbacks-failed"); return; }
                       logFocusResult("branch=cmux reason=cmux-workspace-selected");
@@ -556,7 +589,7 @@ function executeMacFocusRequest(request) {
   focusTerminalWindowLegacy(request, finalize);
   scheduleTerminalTabFocus(request.editor, request.pidChain);
   scheduleITermTabFocus(request.sourcePid, request.pidChain);
-scheduleCmuxWorkspaceSwitch(request.pidChain);
+  scheduleCmuxWorkspaceSwitch(request.pidChain);
   scheduleSupersetFocus(request.sourcePid, request.cwd);
   scheduleGhosttyFocus(request.sourcePid, request.cwd);
 }
