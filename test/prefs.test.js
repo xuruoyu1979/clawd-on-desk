@@ -68,9 +68,9 @@ describe("prefs.getDefaults", () => {
     }
   });
 
-  it("seeds non-Pi agents with permissionsEnabled=true", () => {
+  it("seeds bubble-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,
@@ -79,10 +79,10 @@ describe("prefs.getDefaults", () => {
     }
   });
 
-  it("defaults Pi permission bubbles off until the user opts in", () => {
+  it("defaults Pi permission bubbles on", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(d.agents.pi.enabled, true);
-    assert.strictEqual(d.agents.pi.permissionsEnabled, false);
+    assert.strictEqual(d.agents.pi.permissionsEnabled, true);
     assert.strictEqual(d.agents.pi.notificationHookEnabled, true);
   });
 
@@ -159,7 +159,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.updateBubbleAutoCloseSeconds, 8);
   });
 
-  it("migrates existing state-only Pi prefs to permission opt-in", () => {
+  it("preserves existing Pi permission prefs during v2 migration", () => {
     const v = prefs.validate(prefs.migrate({
       version: 1,
       agents: {
@@ -169,8 +169,20 @@ describe("prefs.validate", () => {
 
     assert.strictEqual(v.version, prefs.CURRENT_VERSION);
     assert.strictEqual(v.agents.pi.enabled, true);
-    assert.strictEqual(v.agents.pi.permissionsEnabled, false);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
     assert.strictEqual(v.agents.pi.notificationHookEnabled, true);
+  });
+
+  it("defaults missing Pi permission prefs on during v2 migration", () => {
+    const v = prefs.validate(prefs.migrate({
+      version: 1,
+      agents: {
+        pi: { enabled: true, notificationHookEnabled: true },
+      },
+    }));
+
+    assert.strictEqual(v.version, prefs.CURRENT_VERSION);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
   });
 
   it("keeps valid fields verbatim", () => {

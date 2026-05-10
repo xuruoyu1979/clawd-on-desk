@@ -135,7 +135,7 @@ const SCHEMA = {
       "kiro-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "kimi-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "opencode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "pi": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
+      "pi": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },
@@ -253,16 +253,18 @@ function migrate(raw) {
       out.updateBubbleAutoCloseSeconds = out.hideBubbles ? 0 : UPDATE_DEFAULT_SECONDS;
     }
   }
-  // v1 -> v2: Pi originally shipped as a state-only integration, while the
-  // generic defaults still seeded permissionsEnabled=true. When Pi permission
-  // bubbles become available, keep them opt-in for existing users.
+  // v1 -> v2: Pi originally shipped as a state-only integration. When Pi
+  // permission bubbles become available, preserve any explicit stored value;
+  // otherwise default the new subgate to enabled like the other bubble agents.
   if (out.version < 2) {
     if (!out.agents || typeof out.agents !== "object") out.agents = {};
     const currentPi = out.agents.pi && typeof out.agents.pi === "object" ? out.agents.pi : {};
     out.agents.pi = {
       ...currentPi,
       enabled: typeof currentPi.enabled === "boolean" ? currentPi.enabled : true,
-      permissionsEnabled: false,
+      permissionsEnabled: typeof currentPi.permissionsEnabled === "boolean"
+        ? currentPi.permissionsEnabled
+        : true,
       notificationHookEnabled: typeof currentPi.notificationHookEnabled === "boolean"
         ? currentPi.notificationHookEnabled
         : true,

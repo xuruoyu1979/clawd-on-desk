@@ -22,7 +22,7 @@
 
 **opencode** — uses a plugin entry in `~/.config/opencode/opencode.json`. Clawd auto-registers it on launch when opencode is installed, or you can run `node hooks/opencode-install.js` manually.
 
-**Pi** — uses a global extension directory at `~/.pi/agent/extensions/clawd-on-desk`. Clawd auto-registers it on launch when Pi is installed, or you can run `npm run install:pi-extension` manually. Interactive Pi sessions report lifecycle state to Clawd. Pi permission bubbles are available for `bash`, `write`, and `edit` tool calls, but the per-agent permission toggle defaults off for existing and new users; when Clawd bubbles are unavailable, disabled, or hidden by DND, the extension falls back to Pi's terminal confirmation instead of allowing the tool silently.
+**Pi** — uses a global extension directory at `~/.pi/agent/extensions/clawd-on-desk`. Clawd auto-registers it on launch when Pi is installed, or you can run `npm run install:pi-extension` manually. Interactive Pi sessions report lifecycle state to Clawd. Pi permission bubbles are enabled by default for `bash`, `write`, and `edit` tool calls; when Clawd bubbles are unavailable, disabled, or hidden by DND, the extension falls back to Pi's terminal confirmation instead of allowing the tool silently.
 
 ## Remote SSH (Claude Code & Codex CLI)
 
