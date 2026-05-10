@@ -11,6 +11,7 @@ const AGENT_LABELS = {
   opencode: "opencode",
   codebuddy: "CodeBuddy",
   pi: "Pi",
+  openclaw: "OpenClaw",
 };
 
 let snapshot = { sessions: [], groups: [], orderedIds: [] };

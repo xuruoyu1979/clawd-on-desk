@@ -11,6 +11,8 @@ const { getAgentDescriptors } = require("./agent-descriptors");
 const { validateHookCommand } = require("./agent-node-bin-parser");
 const { checkCodexHookTrust, checkCodexHooksFeature } = require("./codex-features-check");
 const { validateOpencodeEntry } = require("./opencode-entry-validator");
+const { validateOpenClawEntry } = require("./openclaw-entry-validator");
+const { hasIncludeDirective } = require("../../hooks/openclaw-install");
 
 const INFO_ONLY_STATUSES = new Set([
   "disabled",
@@ -514,6 +516,17 @@ function findOpencodePluginEntry(pluginEntries, marker) {
   return null;
 }
 
+function findOpenClawPluginEntry(pluginPaths, marker) {
+  if (!Array.isArray(pluginPaths)) return null;
+  for (const entry of pluginPaths) {
+    if (typeof entry !== "string") continue;
+    const normalized = entry.replace(/\\/g, "/");
+    const isAbsolute = path.posix.isAbsolute(normalized) || path.win32.isAbsolute(normalized);
+    if (isAbsolute && path.posix.basename(normalized) === marker) return entry;
+  }
+  return null;
+}
+
 function checkOpencodeSettings(descriptor, settings, options) {
   const entry = findOpencodePluginEntry(settings && settings.plugin, descriptor.marker);
   if (!entry) {
@@ -546,6 +559,93 @@ function checkOpencodeSettings(descriptor, settings, options) {
     configPath: descriptor.configPath,
     detail: `${descriptor.configPath} plugin entry verified`,
     opencodeEntry: entry,
+  });
+}
+
+function checkOpenClawPluginMode(descriptor, options) {
+  if (!fileExists(options.fs, descriptor.configPath)) {
+    return makeDetail(descriptor, "not-connected", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: false,
+      configPath: descriptor.configPath,
+      detail: `${descriptor.configPath} missing`,
+    });
+  }
+
+  let settings;
+  try {
+    settings = readJson(options.fs, descriptor.configPath);
+  } catch (err) {
+    return makeDetail(descriptor, "needs-review", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: true,
+      configPath: descriptor.configPath,
+      detail: `OpenClaw config is not strict JSON; Clawd startup sync will skip direct edits (${err && err.message ? err.message : "parse failed"})`,
+    });
+  }
+
+  if (hasIncludeDirective(settings)) {
+    return makeDetail(descriptor, "needs-review", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: true,
+      configPath: descriptor.configPath,
+      detail: "OpenClaw config uses include directives; Clawd startup sync will not edit it directly",
+    });
+  }
+
+  const pluginPaths = settings
+    && settings.plugins
+    && settings.plugins.load
+    && settings.plugins.load.paths;
+  const entry = findOpenClawPluginEntry(pluginPaths, descriptor.marker);
+  if (!entry) {
+    return makeDetail(descriptor, "not-connected", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: true,
+      configPath: descriptor.configPath,
+      detail: `${descriptor.configPath} has no ${descriptor.marker} plugin path`,
+    });
+  }
+
+  const pluginConfig = settings
+    && settings.plugins
+    && settings.plugins.entries
+    && settings.plugins.entries[descriptor.pluginId || "clawd-on-desk"];
+  if (pluginConfig && pluginConfig.enabled === false) {
+    return makeDetail(descriptor, "not-connected", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: true,
+      configPath: descriptor.configPath,
+      detail: "OpenClaw Clawd plugin is registered but disabled",
+      openclawEntry: entry,
+    });
+  }
+
+  const validation = validateOpenClawEntry(entry, { fs: options.fs });
+  if (!validation.ok) {
+    return makeDetail(descriptor, "broken-path", {
+      level: "warning",
+      parentDirExists: true,
+      configFileExists: true,
+      configPath: descriptor.configPath,
+      detail: `OpenClaw plugin path is invalid: ${validation.reason}`,
+      openclawEntryIssue: validation.reason,
+      openclawEntry: entry,
+    });
+  }
+
+  return makeDetail(descriptor, "ok", {
+    level: null,
+    parentDirExists: true,
+    configFileExists: true,
+    configPath: descriptor.configPath,
+    detail: `${descriptor.configPath} OpenClaw plugin entry verified`,
+    openclawEntry: entry,
   });
 }
 
@@ -673,6 +773,8 @@ function checkAgent(descriptor, options) {
     detail = checkKiroDirMode(descriptor, options);
   } else if (descriptor.configMode === "pi-extension") {
     detail = checkPiExtensionMode(descriptor, options);
+  } else if (descriptor.configMode === "openclaw-plugin") {
+    detail = checkOpenClawPluginMode(descriptor, options);
   } else {
     detail = makeDetail(descriptor, "manual-only", {
       level: "info",
@@ -722,11 +824,13 @@ function checkAgentIntegrations(options = {}) {
 module.exports = {
   checkAgentIntegrations,
   checkAgent,
+  findOpenClawPluginEntry,
   findOpencodePluginEntry,
   summarize,
   __test: {
     checkFileMode,
     checkKiroDirMode,
+    checkOpenClawPluginMode,
     checkPiExtensionMode,
     checkTomlTextMode,
     validateCommandList,

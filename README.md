@@ -22,14 +22,14 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd on Desk — a pixel desktop pet that reacts to your AI coding agent in real time. Animated demo: the crab cycles through sleeping, thinking while the model reads the codebase, typing as edit/bash tools run, juggling 3 parallel subagents, raising a permission bubble, and celebrating when 14 files / 312 tests are complete. Works with Claude Code, Codex, Cursor, Copilot, Gemini, Pi and more.">
+  <img src="assets/hero.gif" alt="Clawd on Desk — a pixel desktop pet that reacts to your AI coding agent in real time. Animated demo: the crab cycles through sleeping, thinking while the model reads the codebase, typing as edit/bash tools run, juggling 3 parallel subagents, raising a permission bubble, and celebrating when 14 files / 312 tests are complete. Works with Claude Code, Codex, Cursor, Copilot, Gemini, Pi, OpenClaw and more.">
 </p>
 
 Clawd lives on your desktop and reacts to what your AI coding agent is doing — in real time. Start a long task, walk away, come back when the crab tells you it's done.
 
 Thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, sleeping when you step away. Ships with three built-in themes: **Clawd** (pixel crab), **Calico** (三花猫), and **Cloudling** (云宝), with full support for custom themes and imported Codex Pet animation packs.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, and **Pi**.
+> Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, **Pi**, and **OpenClaw**.
 
 ## Features
 
@@ -44,6 +44,7 @@ Thinking when you prompt, typing when tools run, juggling subagents, reviewing p
 - **Kimi Code CLI (Kimi-CLI)** — command hooks via `~/.kimi/config.toml` (`[[hooks]]` entries) (registered automatically when Clawd starts, or run `npm run install:kimi-hooks`)
 - **opencode** — [plugin integration](https://opencode.ai/docs/plugins) via `~/.config/opencode/opencode.json` (registered automatically when Clawd starts); zero-latency event streaming, permission bubbles with Allow/Always/Deny, and building animations when parallel subagents are spawned via the `task` tool
 - **Pi** — global extension via `~/.pi/agent/extensions/clawd-on-desk` (registered automatically when Clawd starts, or run `npm run install:pi-extension`); interactive lifecycle updates plus permission bubbles for `bash` / `write` / `edit` tool calls, with Pi terminal confirmation fallback
+- **OpenClaw** — state-only plugin integration via `~/.openclaw/openclaw.json` (registered automatically when an OpenClaw config already exists, or run `npm run install:openclaw-plugin`); local `openclaw tui --local` sessions drive Clawd animations, without permission bubbles or terminal focus in Phase 1
 - **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
 
 ### Animations & Interaction
@@ -152,7 +153,7 @@ npm install
 npm start
 ```
 
-**Claude Code** and **Codex CLI** work out of the box with auto-registered hooks. **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, and **Pi** auto-register when Clawd launches (if they're installed). **Copilot CLI** still needs one-time hook setup. Also covers remote SSH, WSL, and platform-specific notes (macOS / Linux): **[docs/guides/setup-guide.md](docs/guides/setup-guide.md)**
+**Claude Code** and **Codex CLI** work out of the box with auto-registered hooks. **Gemini CLI**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **opencode**, **Pi**, and **OpenClaw** auto-register when Clawd launches (if they're installed and already initialized). **Copilot CLI** still needs one-time hook setup. Also covers remote SSH, WSL, and platform-specific notes (macOS / Linux): **[docs/guides/setup-guide.md](docs/guides/setup-guide.md)**
 
 For the official `Codex + WSL` status, Clawd's current implementation boundary, and why this is easy to misread, see: **[docs/guides/codex-wsl-clarification.md](docs/guides/codex-wsl-clarification.md)**
 

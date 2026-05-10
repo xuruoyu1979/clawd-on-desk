@@ -15,6 +15,7 @@ function buildSettingsAgentOrderExports() {
     "cursor-agent",
     "copilot-cli",
     "kiro-cli",
+    "openclaw",
   ];
 
   const COLLAPSIBLE_AGENT_PRIORITY_MAP = new Map(

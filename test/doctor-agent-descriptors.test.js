@@ -22,6 +22,7 @@ describe("doctor agent descriptors", () => {
         "kimi-cli",
         "opencode",
         "pi",
+        "openclaw",
       ]
     );
   });
@@ -36,6 +37,7 @@ describe("doctor agent descriptors", () => {
     const kimi = require("../hooks/kimi-install");
     const opencode = require("../hooks/opencode-install");
     const pi = require("../hooks/pi-install");
+    const openclaw = require("../hooks/openclaw-install");
 
     assert.strictEqual(getAgentDescriptor("claude-code").parentDir, claude.DEFAULT_PARENT_DIR);
     assert.strictEqual(getAgentDescriptor("claude-code").configPath, claude.DEFAULT_CONFIG_PATH);
@@ -67,6 +69,10 @@ describe("doctor agent descriptors", () => {
     assert.strictEqual(getAgentDescriptor("pi").marker, pi.EXTENSION_FILE);
     assert.strictEqual(getAgentDescriptor("pi").coreFile, pi.CORE_FILE);
     assert.strictEqual(getAgentDescriptor("pi").markerFile, pi.MARKER_FILE);
+
+    assert.strictEqual(getAgentDescriptor("openclaw").parentDir, openclaw.DEFAULT_STATE_DIR);
+    assert.strictEqual(getAgentDescriptor("openclaw").configPath, openclaw.DEFAULT_CONFIG_PATH);
+    assert.strictEqual(getAgentDescriptor("openclaw").marker, openclaw.PLUGIN_DIR_NAME);
   });
 
   it("returns copies from public accessors", () => {

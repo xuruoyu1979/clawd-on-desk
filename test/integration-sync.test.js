@@ -27,6 +27,11 @@ function makeRuntime(overrides = {}) {
     },
     syncOpencodePluginImpl: () => calls.push({ name: "opencode" }),
     syncPiExtensionImpl: () => calls.push({ name: "pi" }),
+    syncOpenClawPluginImpl: () => calls.push({ name: "openclaw" }),
+    repairOpenClawPluginImpl: () => {
+      calls.push({ name: "openclaw-repair" });
+      return { status: "ok", message: "done" };
+    },
     ...(overrides.ctx || {}),
   };
   const runtime = createIntegrationSyncRuntime({
@@ -73,6 +78,7 @@ describe("integration sync runtime", () => {
       "kimi",
       "codex",
       "pi",
+      "openclaw",
     ]);
   });
 
@@ -102,6 +108,15 @@ describe("integration sync runtime", () => {
     assert.deepStrictEqual(result, { status: "ok", message: "done" });
     assert.deepStrictEqual(calls.map((entry) => entry.name), ["codex-repair"]);
     assert.deepStrictEqual(repairOptions, [{ forceCodexHooksFeature: true }]);
+  });
+
+  it("repairIntegrationForAgent uses OpenClaw repair", () => {
+    const { runtime, calls } = makeRuntime();
+
+    const result = runtime.repairIntegrationForAgent("openclaw");
+
+    assert.deepStrictEqual(result, { status: "ok", message: "done" });
+    assert.deepStrictEqual(calls.map((entry) => entry.name), ["openclaw-repair"]);
   });
 
   it("stopIntegrationForAgent only stops the Claude watcher", () => {

@@ -45,6 +45,17 @@ describe("state agent icons", () => {
     assert.strictEqual(getAgentIconPath("pi"), path.join(AGENT_ICON_DIR, "pi.svg"));
   });
 
+  it("returns the bundled OpenClaw SVG icon", () => {
+    const iconUrl = getAgentIconUrl("openclaw");
+
+    assert.strictEqual(new URL(iconUrl).protocol, "file:");
+    assert.strictEqual(
+      path.normalize(fileURLToPath(iconUrl)),
+      path.join(AGENT_ICON_DIR, "openclaw.svg")
+    );
+    assert.strictEqual(getAgentIconPath("openclaw"), path.join(AGENT_ICON_DIR, "openclaw.svg"));
+  });
+
   it("returns the cached URL value for repeated lookups", () => {
     const first = getAgentIconUrl("codex");
     const second = getAgentIconUrl("codex");

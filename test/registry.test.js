@@ -17,6 +17,7 @@ describe("Agent Registry", () => {
       "kimi-cli",
       "opencode",
       "pi",
+      "openclaw",
     ]);
   });
 
@@ -29,6 +30,7 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("codebuddy").name, "CodeBuddy");
     assert.strictEqual(registry.getAgent("kiro-cli").name, "Kiro CLI");
     assert.strictEqual(registry.getAgent("pi").name, "Pi");
+    assert.strictEqual(registry.getAgent("openclaw").name, "OpenClaw");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 
@@ -52,6 +54,9 @@ describe("Agent Registry", () => {
 
     const pi = registry.getAgent("pi");
     assert.deepStrictEqual(pi.processNames.win, ["pi.exe"]);
+
+    const openclaw = registry.getAgent("openclaw");
+    assert.deepStrictEqual(openclaw.processNames.win, []);
   });
 
   it("should include explicit Linux process names", () => {
@@ -75,6 +80,9 @@ describe("Agent Registry", () => {
 
     const pi = registry.getAgent("pi");
     assert.deepStrictEqual(pi.processNames.linux, ["pi"]);
+
+    const openclaw = registry.getAgent("openclaw");
+    assert.deepStrictEqual(openclaw.processNames.linux, []);
   });
 
   it("should keep Kiro CLI process names narrowed to kiro-cli only", () => {
@@ -143,6 +151,14 @@ describe("Agent Registry", () => {
     assert.strictEqual(pi.capabilities.interactiveBubble, true);
     assert.strictEqual(pi.capabilities.sessionEnd, true);
     assert.strictEqual(pi.capabilities.subagent, false);
+
+    const openclaw = registry.getAgent("openclaw");
+    assert.strictEqual(openclaw.capabilities.httpHook, false);
+    assert.strictEqual(openclaw.capabilities.permissionApproval, false);
+    assert.strictEqual(openclaw.capabilities.interactiveBubble, false);
+    assert.strictEqual(openclaw.capabilities.notificationHook, false);
+    assert.strictEqual(openclaw.capabilities.sessionEnd, true);
+    assert.strictEqual(openclaw.capabilities.subagent, false);
   });
 
   it("should have eventMap for hook-based agents", () => {
@@ -174,6 +190,13 @@ describe("Agent Registry", () => {
     assert.strictEqual(pi.eventMap.UserPromptSubmit, "thinking");
     assert.strictEqual(pi.eventMap.PostToolUseFailure, "error");
     assert.strictEqual(pi.eventMap.PreCompact, "sweeping");
+
+    const openclaw = registry.getAgent("openclaw");
+    assert.strictEqual(openclaw.eventSource, "plugin-event");
+    assert.strictEqual(openclaw.eventMap.SessionStart, "idle");
+    assert.strictEqual(openclaw.eventMap.UserPromptSubmit, "thinking");
+    assert.strictEqual(openclaw.eventMap.PostToolUseFailure, "error");
+    assert.strictEqual(openclaw.eventMap.PreCompact, "sweeping");
   });
 
   it("treats Gemini CLI as a hook-only agent", () => {

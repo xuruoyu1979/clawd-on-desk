@@ -63,12 +63,12 @@ describe("prefs.getDefaults", () => {
 
   it("seeds all known agents as enabled", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi", "openclaw"]) {
       assert.strictEqual(d.agents[id].enabled, true, `${id} should default enabled`);
     }
   });
 
-  it("seeds bubble-capable agents with permissionsEnabled=true", () => {
+  it("seeds permission-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
     for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
       assert.strictEqual(
@@ -77,6 +77,13 @@ describe("prefs.getDefaults", () => {
         `${id} should default permissionsEnabled`
       );
     }
+  });
+
+  it("defaults OpenClaw permission bubbles off", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.agents.openclaw.enabled, true);
+    assert.strictEqual(d.agents.openclaw.permissionsEnabled, false);
+    assert.strictEqual(d.agents.openclaw.notificationHookEnabled, true);
   });
 
   it("defaults Pi permission bubbles on", () => {
@@ -321,7 +328,7 @@ describe("prefs.validate", () => {
 
   it("seeds all known agents with notificationHookEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode", "pi"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode", "pi", "openclaw"]) {
       assert.strictEqual(
         d.agents[id].notificationHookEnabled,
         true,

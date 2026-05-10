@@ -190,6 +190,39 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncOpenClawPlugin() {
+    try {
+      if (typeof ctx.syncOpenClawPluginImpl === "function") return ctx.syncOpenClawPluginImpl();
+      const { registerOpenClawPlugin } = require("../hooks/openclaw-install.js");
+      const result = registerOpenClawPlugin({ silent: true });
+      if (result.installed && result.updated) {
+        console.log("Clawd: synced OpenClaw plugin");
+      }
+      return { status: "ok", ...result };
+    } catch (err) {
+      console.warn("Clawd: failed to sync OpenClaw plugin:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync OpenClaw plugin" };
+    }
+  }
+
+  function repairOpenClawPlugin() {
+    try {
+      if (typeof ctx.repairOpenClawPluginImpl === "function") return ctx.repairOpenClawPluginImpl();
+      const { registerOpenClawPlugin } = require("../hooks/openclaw-install.js");
+      const result = registerOpenClawPlugin({ silent: true, useCliFallback: true });
+      if (result.status === "error" || result.installed === false) {
+        return {
+          status: "error",
+          message: result.message || result.reason || "Failed to repair OpenClaw plugin",
+        };
+      }
+      return { status: "ok", ...result, message: "OpenClaw plugin repaired" };
+    } catch (err) {
+      console.warn("Clawd: failed to repair OpenClaw plugin:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to repair OpenClaw plugin" };
+    }
+  }
+
   const AGENT_INTEGRATION_SYNCERS = Object.freeze({
     "gemini-cli": syncGeminiHooks,
     "cursor-agent": syncCursorHooks,
@@ -199,11 +232,13 @@ function createIntegrationSyncRuntime(options = {}) {
     codex: syncCodexHooks,
     opencode: syncOpencodePlugin,
     pi: syncPiExtension,
+    openclaw: syncOpenClawPlugin,
   });
 
   const AGENT_INTEGRATION_REPAIRERS = Object.freeze({
     ...AGENT_INTEGRATION_SYNCERS,
     codex: repairCodexHooks,
+    openclaw: repairOpenClawPlugin,
   });
 
   function syncIntegrationForAgent(agentId) {
@@ -256,7 +291,9 @@ function createIntegrationSyncRuntime(options = {}) {
     syncCodexHooks,
     syncOpencodePlugin,
     syncPiExtension,
+    syncOpenClawPlugin,
     repairCodexHooks,
+    repairOpenClawPlugin,
     syncIntegrationForAgent,
     repairIntegrationForAgent,
     stopIntegrationForAgent,

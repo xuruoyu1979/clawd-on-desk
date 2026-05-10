@@ -136,6 +136,7 @@ const SCHEMA = {
       "kimi-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "opencode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "pi": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      "openclaw": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },
