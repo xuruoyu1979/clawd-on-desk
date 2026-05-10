@@ -3353,6 +3353,76 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(resetButton.disabled, false);
   });
 
+  it("blocks wide hitbox edits while a same-card timing edit is pending", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          return new Promise(() => {});
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+
+    assert.strictEqual(toggle.disabled, true, "wide-hitbox toggle should be blocked while timing is pending");
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride"],
+      "blocked wide-hitbox changes should not enqueue a second override command"
+    );
+  });
+
+  it("blocks timing edits while a same-card wide hitbox edit is pending", async () => {
+    const card = createAnimOverrideCard();
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          return new Promise(() => {});
+        },
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    toggle.checked = true;
+    for (const listener of toggle.eventListeners.change || []) listener();
+
+    assert.strictEqual(range.disabled, true, "timing slider should be blocked while wide-hitbox is pending");
+    range.value = "260";
+    for (const listener of range.eventListeners.change || []) listener();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setWideHitboxOverride"],
+      "blocked timing changes should not enqueue a second override command"
+    );
+  });
+
   it("reconciles acknowledged pending wide hitbox edits during Animation Overrides render", () => {
     const card = createAnimOverrideCard({
       wideHitboxEnabled: true,
@@ -3480,6 +3550,88 @@ describe("settings renderer browser environment", () => {
       calls.map((call) => call.name),
       ["setAnimationOverride", "setWideHitboxOverride"]
     );
+    assert.strictEqual(calls[1].payload.enabled, null);
+  });
+
+  it("clears hitbox overrides for the pre-reset replacement file when resetting a slot", async () => {
+    const replacementFile = "replacement-thinking.svg";
+    const baseFile = "cloudling-thinking.svg";
+    const card = createAnimOverrideCard({
+      currentFile: replacementFile,
+      wideHitboxEnabled: true,
+      wideHitboxOverridden: true,
+      wideHitboxThemeDefault: false,
+    });
+    const runtime = createAnimOverridesRuntime(card);
+    const modalRoot = new FakeElement("div");
+    const calls = [];
+    let resolveAnimationReset;
+    let fetchCount = 0;
+    const { core } = loadAnimOverridesTabForTest({
+      runtime,
+      modalRoot,
+      settingsAPI: {
+        command: (name, payload) => {
+          calls.push({ name, payload });
+          if (name === "setAnimationOverride") {
+            return new Promise((resolve) => {
+              resolveAnimationReset = resolve;
+            });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+      opsOverrides: {
+        fetchAnimationOverridesData: () => {
+          fetchCount++;
+          if (fetchCount === 1) {
+            Object.assign(runtime.animationOverridesData.cards[0], {
+              currentFile: baseFile,
+              wideHitboxEnabled: false,
+              wideHitboxOverridden: false,
+              wideHitboxThemeDefault: false,
+            });
+          }
+          return Promise.resolve(runtime.animationOverridesData);
+        },
+      },
+      readersOverrides: {
+        readThemeOverrideMap: () => ({
+          states: {
+            thinking: {
+              file: replacementFile,
+            },
+          },
+          hitbox: {
+            wide: {
+              [replacementFile]: true,
+            },
+          },
+        }),
+      },
+    });
+    const parent = new FakeElement("main");
+    core.tabs.animOverrides.render(parent, core);
+
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(resetButton, "expanded row should render a reset button");
+    for (const listener of resetButton.eventListeners.click || []) listener();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    resolveAnimationReset({ status: "ok" });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepStrictEqual(
+      calls.map((call) => call.name),
+      ["setAnimationOverride", "setWideHitboxOverride"]
+    );
+    assert.strictEqual(calls[1].payload.file, replacementFile);
     assert.strictEqual(calls[1].payload.enabled, null);
   });
 
@@ -3713,6 +3865,81 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(contentRenderCount, 0, "matching timing ack should avoid rebuilding content");
     assert.strictEqual(modalRenderCount, 0, "modal render happens after the async fetch settles");
+  });
+
+  it("routes default-matching timing broadcasts through applyChanges in place", () => {
+    const core = loadSettingsCoreForTest({
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [],
+        cards: [{
+          id: "state:thinking",
+          slotType: "state",
+          stateKey: "thinking",
+          transition: { in: 150, out: 150 },
+          transitionThemeDefault: { in: 150, out: 150 },
+          hasTransitionOverride: false,
+        }],
+        sounds: [],
+      }),
+    });
+    core.state.activeTab = "animOverrides";
+    core.state.snapshot = {
+      theme: "cloudling",
+      themeOverrides: {
+        cloudling: {
+          states: {
+            thinking: {
+              transition: { in: 160, out: 150 },
+            },
+          },
+        },
+      },
+    };
+    core.runtime.animationOverridesData = {
+      theme: { id: "cloudling", name: "Cloudling" },
+      assets: [],
+      sections: [],
+      cards: [{
+        id: "state:thinking",
+        slotType: "state",
+        stateKey: "thinking",
+        transition: { in: 160, out: 150 },
+        transitionThemeDefault: { in: 150, out: 150 },
+        hasTransitionOverride: true,
+      }],
+      sounds: [],
+    };
+    core.runtime.animOverridesSubtab = "animations";
+    core.runtime.assetPicker.state = null;
+    core.runtime.pendingAnimationOverrideEdits.set("state:thinking", {
+      seq: 1,
+      slotType: "state",
+      stateKey: "thinking",
+      transition: { in: 150, out: 150 },
+      transitionThemeDefault: { in: 150, out: 150 },
+    });
+
+    let contentRenderCount = 0;
+    core.ops.installRenderHooks({
+      sidebar: () => {},
+      content: () => {
+        contentRenderCount++;
+      },
+      modal: () => {},
+    });
+
+    const nextSnapshot = {
+      theme: "cloudling",
+      themeOverrides: {},
+    };
+    core.ops.applyChanges({
+      changes: { themeOverrides: nextSnapshot.themeOverrides },
+      snapshot: nextSnapshot,
+    });
+
+    assert.strictEqual(contentRenderCount, 0, "default timing ack should avoid rebuilding content");
   });
 
   it("does not patch mixed-key Animation Overrides broadcasts in place", () => {

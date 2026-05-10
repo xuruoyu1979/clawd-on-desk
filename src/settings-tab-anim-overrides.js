@@ -89,6 +89,21 @@
     return state.mountedControls.animOverrideWideHitboxToggles;
   }
 
+  function isTimingControlBlocked(cardId) {
+    return !!(cardId && (
+      getPendingWideHitboxOverrideEdits().has(cardId)
+      || getPendingAnimationOverrideResets().has(cardId)
+    ));
+  }
+
+  function isWideHitboxControlBlocked(cardId) {
+    return !!(cardId && (
+      getPendingWideHitboxOverrideEdits().has(cardId)
+      || getPendingAnimationOverrideResets().has(cardId)
+      || getPendingAnimationOverrideEdits().has(cardId)
+    ));
+  }
+
   function timingControlKey(cardId, field) {
     return `${cardId}:${field}`;
   }
@@ -143,6 +158,11 @@
     let storedTimingValue = false;
     if (patch.transition && typeof patch.transition === "object") {
       next.transition = { ...patch.transition };
+      if (card.transitionThemeDefault && typeof card.transitionThemeDefault === "object") {
+        next.transitionThemeDefault = { ...card.transitionThemeDefault };
+      } else {
+        delete next.transitionThemeDefault;
+      }
       storedTimingValue = true;
     }
     if (Number.isFinite(patch.autoReturnMs)) {
@@ -169,6 +189,13 @@
   function transitionMatchesThemeDefault(transition, defaultTransition) {
     if (!transition || !defaultTransition) return false;
     return transition.in === defaultTransition.in && transition.out === defaultTransition.out;
+  }
+
+  function pendingTransitionMatchesThemeDefault(pending) {
+    return !!(pending
+      && pending.transition
+      && pending.transitionThemeDefault
+      && transitionMatchesThemeDefault(pending.transition, pending.transitionThemeDefault));
   }
 
   function hasTransitionOverride(entry) {
@@ -292,6 +319,9 @@
       const card = applyPendingAnimationOverrideEdit(getAnimOverrideCardById(control.cardId));
       const value = getCardTimingValue(card, control.field);
       if (Number.isFinite(value)) control.setValue(value);
+      const blocked = isTimingControlBlocked(control.cardId);
+      if (control.range) control.range.disabled = blocked;
+      if (control.number) control.number.disabled = blocked;
     }
   }
 
@@ -332,16 +362,13 @@
 
   function syncMountedWideHitboxToggles() {
     const controls = getMountedWideHitboxToggles();
-    const pendingEdits = getPendingWideHitboxOverrideEdits();
-    const pendingResets = getPendingAnimationOverrideResets();
     for (const [cardId, control] of controls) {
       if (!control || !control.row || !control.row.parentNode) {
         controls.delete(cardId);
         continue;
       }
       const card = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(cardId) || control.card);
-      const pending = pendingEdits.get(cardId);
-      const blocked = !!pending || pendingResets.has(cardId);
+      const blocked = isWideHitboxControlBlocked(cardId);
       control.card = card || control.card;
       control.input.checked = !!(card && card.wideHitboxEnabled);
       control.input.disabled = blocked;
@@ -429,13 +456,79 @@
     return null;
   }
 
+  function readThemeOverrideEntry(themeMap, pending) {
+    if (!themeMap || !pending || !pending.slotType) return null;
+    if (pending.slotType === "state") {
+      return pending.stateKey && themeMap.states ? themeMap.states[pending.stateKey] || null : null;
+    }
+    if (pending.slotType === "tier") {
+      const group = pending.tierGroup && themeMap.tiers && themeMap.tiers[pending.tierGroup];
+      return group && pending.originalFile ? group[pending.originalFile] || null : null;
+    }
+    if (pending.slotType === "idleAnimation") {
+      return pending.originalFile && themeMap.idleAnimations ? themeMap.idleAnimations[pending.originalFile] || null : null;
+    }
+    if (pending.slotType === "reaction") {
+      return pending.reactionKey && themeMap.reactions ? themeMap.reactions[pending.reactionKey] || null : null;
+    }
+    return null;
+  }
+
+  function prunePendingThemeOverrideEntry(themeMap, pending) {
+    if (!themeMap || !pending || !pending.slotType) return;
+    if (pending.slotType === "state") {
+      if (themeMap.states && pending.stateKey && themeMap.states[pending.stateKey]
+        && !Object.keys(themeMap.states[pending.stateKey]).length) {
+        delete themeMap.states[pending.stateKey];
+      }
+      pruneEmptyObject(themeMap, "states");
+      return;
+    }
+    if (pending.slotType === "tier") {
+      const group = pending.tierGroup && themeMap.tiers && themeMap.tiers[pending.tierGroup];
+      if (group && pending.originalFile && group[pending.originalFile] && !Object.keys(group[pending.originalFile]).length) {
+        delete group[pending.originalFile];
+      }
+      if (themeMap.tiers) {
+        pruneEmptyObject(themeMap.tiers, "workingTiers");
+        pruneEmptyObject(themeMap.tiers, "jugglingTiers");
+        pruneEmptyObject(themeMap, "tiers");
+      }
+      return;
+    }
+    if (pending.slotType === "idleAnimation") {
+      if (themeMap.idleAnimations && pending.originalFile && themeMap.idleAnimations[pending.originalFile]
+        && !Object.keys(themeMap.idleAnimations[pending.originalFile]).length) {
+        delete themeMap.idleAnimations[pending.originalFile];
+      }
+      pruneEmptyObject(themeMap, "idleAnimations");
+      return;
+    }
+    if (pending.slotType === "reaction") {
+      if (themeMap.reactions && pending.reactionKey && themeMap.reactions[pending.reactionKey]
+        && !Object.keys(themeMap.reactions[pending.reactionKey]).length) {
+        delete themeMap.reactions[pending.reactionKey];
+      }
+      pruneEmptyObject(themeMap, "reactions");
+    }
+  }
+
   function applyPendingEditToThemeOverrides(themeMap, pending) {
     let entry = null;
-    if (pending.transition || Object.prototype.hasOwnProperty.call(pending, "durationMs")) {
+    const transitionClearsDefault = pendingTransitionMatchesThemeDefault(pending);
+    if ((pending.transition && !transitionClearsDefault)
+      || Object.prototype.hasOwnProperty.call(pending, "durationMs")) {
       entry = ensureThemeOverrideEntry(themeMap, pending);
       if (!entry) return false;
     }
-    if (pending.transition) entry.transition = { ...pending.transition };
+    if (pending.transition) {
+      if (transitionClearsDefault) {
+        const existingEntry = entry || readThemeOverrideEntry(themeMap, pending);
+        if (existingEntry) delete existingEntry.transition;
+      } else {
+        entry.transition = { ...pending.transition };
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(pending, "autoReturnMs")) {
       if (pending.slotType !== "state" || !pending.stateKey) return false;
       themeMap.timings = themeMap.timings || {};
@@ -446,6 +539,7 @@
       if (pending.slotType !== "idleAnimation" && pending.slotType !== "reaction") return false;
       entry.durationMs = pending.durationMs;
     }
+    prunePendingThemeOverrideEntry(themeMap, pending);
     pruneThemeOverrideMap(themeMap);
     return true;
   }
@@ -605,11 +699,16 @@
     const payload = buildAnimOverrideRequest(card, patch);
     const timingOnly = isTimingOnlyPatch(patch);
     const pendingToken = timingOnly ? recordPendingAnimationOverrideEdit(card, patch) : null;
+    if (timingOnly && pendingToken) {
+      syncMountedWideHitboxToggles();
+      syncMountedOverrideStatusControls();
+    }
     return window.settingsAPI.command("setAnimationOverride", payload).then((result) => {
       if (!result || result.status !== "ok" || result.noop) {
         clearPendingAnimationOverrideEdit(pendingToken);
         if (timingOnly) {
           syncMountedTimingSliders();
+          syncMountedWideHitboxToggles();
           syncMountedOverrideStatusControls();
         }
         return result;
@@ -620,6 +719,7 @@
         ops.normalizeAssetPickerSelection();
         if (timingOnly && state.activeTab === "animOverrides") {
           syncMountedTimingSliders();
+          syncMountedWideHitboxToggles();
           syncMountedOverrideStatusControls();
         } else if (state.activeTab === "animOverrides") {
           ops.requestRender({ content: true });
@@ -1291,10 +1391,14 @@
     if (getPendingAnimationOverrideResets().has(card.id) && !options.allowDuringReset) {
       return Promise.resolve({ status: "ok", noop: true });
     }
+    if (getPendingAnimationOverrideEdits().has(card.id) && !options.allowDuringReset) {
+      return Promise.resolve({ status: "ok", noop: true });
+    }
     if (getPendingWideHitboxOverrideEdits().has(card.id)) return Promise.resolve({ status: "noop" });
     const pendingToken = recordPendingWideHitboxOverrideEdit(card, enabled);
     const pending = pendingToken && getPendingWideHitboxOverrideEdits().get(card.id);
     if (!pending) return Promise.resolve({ status: "noop" });
+    syncMountedTimingSliders();
     syncMountedWideHitboxToggles();
     syncMountedOverrideStatusControls();
     return window.settingsAPI.command("setWideHitboxOverride", {
@@ -1304,6 +1408,7 @@
     }).then((result) => {
       if (!result || result.status !== "ok" || result.noop) {
         clearPendingWideHitboxOverrideEdit(pendingToken);
+        syncMountedTimingSliders();
         syncMountedWideHitboxToggles();
         syncMountedOverrideStatusControls();
         if (result && result.status === "error") {
@@ -1315,6 +1420,7 @@
         reconcilePendingWideHitboxOverrideEdits();
         ops.normalizeAssetPickerSelection();
         if (state.activeTab === "animOverrides") {
+          syncMountedTimingSliders();
           syncMountedWideHitboxToggles();
           syncMountedOverrideStatusControls();
         }
@@ -1323,6 +1429,7 @@
       });
     }).catch((err) => {
       clearPendingWideHitboxOverrideEdit(pendingToken);
+      syncMountedTimingSliders();
       syncMountedWideHitboxToggles();
       syncMountedOverrideStatusControls();
       ops.showToast(t("toastSaveFailed") + ((err && err.message) || "unknown error"), { error: true });
@@ -1345,11 +1452,24 @@
       ...(card.supportsAutoReturn ? { autoReturnMs: null } : {}),
       ...(card.supportsDuration ? { durationMs: null } : {}),
     };
+    const resetHitboxFile = card.slotType !== "reaction" && card.currentFile && card.wideHitboxOverridden
+      ? card.currentFile
+      : null;
+    const resetHitboxThemeDefault = !!card.wideHitboxThemeDefault;
     return runAnimationOverrideCommand(card, patch).then((result) => {
       if (result && result.status === "error") return result;
       const currentCard = applyPendingWideHitboxOverrideEdit(getAnimOverrideCardById(card.id) || card);
-      if (currentCard.slotType === "reaction" || !currentCard.wideHitboxOverridden) return result;
-      return runWideHitboxCommand(currentCard, !!currentCard.wideHitboxThemeDefault, { allowDuringReset: true });
+      if (currentCard.slotType === "reaction" || !resetHitboxFile) return result;
+      return runWideHitboxCommand(
+        {
+          ...currentCard,
+          currentFile: resetHitboxFile,
+          wideHitboxOverridden: true,
+          wideHitboxThemeDefault: resetHitboxThemeDefault,
+        },
+        resetHitboxThemeDefault,
+        { allowDuringReset: true }
+      );
     }).finally(() => {
       pendingResets.delete(card.id);
       syncMountedWideHitboxToggles();
@@ -1360,10 +1480,7 @@
   function buildAnimWideHitboxToggle(card) {
     const row = document.createElement("div");
     row.className = "anim-override-toggle-row";
-    const pending = !!(card && card.id && (
-      getPendingWideHitboxOverrideEdits().has(card.id)
-      || getPendingAnimationOverrideResets().has(card.id)
-    ));
+    const pending = isWideHitboxControlBlocked(card && card.id);
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = !!card.wideHitboxEnabled;
@@ -1617,6 +1734,7 @@
     let committedValue = Number.isFinite(Number(value)) ? Number(value) : null;
     const commitValue = (v) => {
       if (!Number.isFinite(v)) return;
+      if (isTimingControlBlocked(cardId)) return;
       if (pendingValue === v || committedValue === v) return;
       pendingValue = v;
       const result = onCommit(v);
@@ -1647,6 +1765,10 @@
       number.value = range.value;
       syncRangeFill();
     });
+    const initialBlocked = isTimingControlBlocked(cardId);
+    range.disabled = initialBlocked;
+    number.disabled = initialBlocked;
+
     range.addEventListener("change", () => {
       const v = Number(range.value);
       commitValue(v);
