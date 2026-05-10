@@ -367,8 +367,7 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
   if (!pids.length) return;
 
   const pidsArg = pids.slice(0, 8).join(",");
-  // First ps call: detect cmux process by name (comm= needs full terminal width
-  // to avoid truncating long paths, so it must be a separate call from tty=).
+  const cmuxBin = "/Applications/cmux.app/Contents/Resources/bin/cmux";
   execFile("ps", ["-o", "comm=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err || !stdout) return;
     let hasCmux = false;
@@ -378,14 +377,12 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
     }
     if (!hasCmux) return;
 
-    // Second ps call: find TTY from any PID in the chain.
-    // cmux daemon entries have tty=?? so findFirstValidTty skips them naturally.
     execFile("ps", ["-o", "pid=,tty=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
       if (psErr || !psOut) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
       const ttyName = findFirstValidTty(psOut);
       if (!ttyName) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
 
-      // Read cmux session file, match TTY to workspace index, focus via AppleScript
+      // Read cmux session file, match TTY to workspace+panel, focus by panel id
       const cmuxDir = path.join(process.env.HOME, "Library/Application Support/cmux");
       try {
         const sessionFile = fs.readdirSync(cmuxDir)
@@ -394,20 +391,34 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
         if (!sessionFile) { logFocusResult("branch=cmux reason=cmux-session-read-failed"); return; }
         const sessionData = JSON.parse(fs.readFileSync(path.join(cmuxDir, sessionFile), "utf8"));
         const tabManager = sessionData.windows?.[0]?.tabManager;
-        const workspaceIndex = tabManager?.workspaces?.findIndex(ws =>
-          ws.panels?.some(panel => panel.ttyName === ttyName)
-        ) ?? -1;
-        if (workspaceIndex < 0) { logFocusResult("branch=cmux reason=cmux-workspace-not-found"); return; }
+        const match = tabManager?.workspaces?.flatMap(ws =>
+          ws.panels?.map(p => ({ workspaceId: ws.id, panelId: p.id, ttyName: p.ttyName })) ?? []
+        ).find(p => p.ttyName === ttyName);
+        if (!match) { logFocusResult("branch=cmux reason=cmux-workspace-not-found"); return; }
 
-        // Delay to let focusTerminalWindowLegacy (System Events) finish activating
-        // the terminal window before switching cmux workspace — same pattern as iTerm2.
-        const script = `tell application "cmux" to focus terminal 1 of tab ${workspaceIndex + 1} of front window`;
-        setTimeout(() => {
-          execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (osaErr) => {
-            if (osaErr) { logFocusResult("branch=cmux reason=cmux-applescript-failed"); return; }
-            logFocusResult("branch=cmux reason=cmux-workspace-selected");
+        const focusWithPanelId = (panelId) => {
+          execFile(cmuxBin, ["focus-panel", "--panel", panelId], { timeout: 1500 }, (panelErr) => {
+            if (panelErr) {
+              // Fallback 1: select-workspace
+              execFile(cmuxBin, ["select-workspace", "--workspace", match.workspaceId], { timeout: 1500 }, (wsErr) => {
+                if (wsErr) {
+                  // Fallback 2: AppleScript
+                  const script = `tell application "cmux" to focus terminal id "${panelId}"`;
+                  execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (osaErr) => {
+                    if (osaErr) { logFocusResult("branch=cmux reason=cmux-all-fallbacks-failed"); return; }
+                    logFocusResult("branch=cmux reason=cmux-workspace-selected");
+                  });
+                } else {
+                  logFocusResult("branch=cmux reason=cmux-workspace-selected");
+                }
+              });
+            } else {
+              logFocusResult("branch=cmux reason=cmux-workspace-selected");
+            }
           });
-        }, 400);
+        };
+
+        setTimeout(() => focusWithPanelId(match.panelId), 400);
       } catch (readErr) {
         logFocusResult("branch=cmux reason=cmux-session-read-failed");
       }
