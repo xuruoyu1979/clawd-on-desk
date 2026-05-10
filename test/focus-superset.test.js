@@ -90,19 +90,31 @@ test.describe("focus Superset helpers", () => {
       if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
     });
 
-    test("returns the most recently opened workspace for a path", (t) => {
-      if (!sqlite3Available) return t.skip("sqlite3 CLI unavailable");
-      assert.equal(querySupersetWorkspaceId(dbPath, "/tmp/foo"), "ws-recent");
+    test("returns the most recently opened workspace for a path", (t, done) => {
+      if (!sqlite3Available) { t.skip("sqlite3 CLI unavailable"); return done(); }
+      querySupersetWorkspaceId(dbPath, "/tmp/foo", (id) => {
+        assert.equal(id, "ws-recent");
+        done();
+      });
     });
 
-    test("returns null for an unknown path", (t) => {
-      if (!sqlite3Available) return t.skip("sqlite3 CLI unavailable");
-      assert.equal(querySupersetWorkspaceId(dbPath, "/tmp/missing"), null);
+    test("returns null for an unknown path", (t, done) => {
+      if (!sqlite3Available) { t.skip("sqlite3 CLI unavailable"); return done(); }
+      querySupersetWorkspaceId(dbPath, "/tmp/missing", (id) => {
+        assert.equal(id, null);
+        done();
+      });
     });
 
-    test("returns null when cwd is empty", () => {
-      assert.equal(querySupersetWorkspaceId(dbPath || "/dev/null", ""), null);
-      assert.equal(querySupersetWorkspaceId(dbPath || "/dev/null", null), null);
+    test("returns null when cwd is empty", (t, done) => {
+      let received = 0;
+      const expect = (id) => {
+        assert.equal(id, null);
+        received += 1;
+        if (received === 2) done();
+      };
+      querySupersetWorkspaceId(dbPath || "/dev/null", "", expect);
+      querySupersetWorkspaceId(dbPath || "/dev/null", null, expect);
     });
   });
 });

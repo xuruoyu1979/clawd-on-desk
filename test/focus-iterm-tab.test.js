@@ -128,10 +128,19 @@ describe("iTerm2 tab focus (macOS)", () => {
   });
 
   it("should skip iTerm2 tab focus when pidChain is empty", (t, done) => {
+    // Other focus probes (Superset / Ghostty) also call `ps -o comm=` to
+    // detect their host, so we can't use `ps -o comm=` count as a proxy for
+    // "iTerm not probed". Assert iTerm-specific behavior instead: no
+    // `tty=` lookup and no iTerm2 AppleScript dispatch.
     const calls = [];
     const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
       if (typeof opts === "function") { cb = opts; opts = {}; }
       calls.push({ cmd, args: [...args] });
+      if (cmd === "ps" && args.join(" ").includes("comm=")) {
+        // Return iTerm2 so we'd reach tty lookup if pidChain weren't empty.
+        if (cb) cb(null, "iTerm2\n", "");
+        return;
+      }
       if (cb) cb(null, "", "");
     });
 
@@ -141,8 +150,13 @@ describe("iTerm2 tab focus (macOS)", () => {
     setTimeout(() => {
       cleanup();
 
-      const commCalls = calls.filter(c => c.cmd === "ps" && c.args.join(" ").includes("comm="));
-      assert.strictEqual(commCalls.length, 0, "Should not attempt iTerm detection with empty pidChain");
+      const ttyCalls = calls.filter(c => c.cmd === "ps" && c.args.join(" ").includes("tty="));
+      assert.strictEqual(ttyCalls.length, 0, "Should not look up tty when pidChain is empty");
+
+      const itermScripts = calls
+        .filter(c => c.cmd === "osascript")
+        .filter(c => c.args.some(a => typeof a === "string" && a.includes("iTerm2")));
+      assert.strictEqual(itermScripts.length, 0, "Should not dispatch iTerm2 AppleScript with empty pidChain");
 
       done();
     }, 1000);

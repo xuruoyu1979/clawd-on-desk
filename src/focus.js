@@ -6,7 +6,7 @@ const http = require("http");
 const os = require("os");
 const crypto = require("crypto");
 const path = require("path");
-const { execFile, execFileSync, spawn } = require("child_process");
+const { execFile, spawn } = require("child_process");
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
@@ -49,25 +49,28 @@ function supersetSchemeForDir(dir) {
   return null;
 }
 
-function querySupersetWorkspaceId(dbPath, cwd) {
-  if (!cwd) return null;
+function querySupersetWorkspaceId(dbPath, cwd, callback) {
+  // Async callback form: invoke `callback(id|null)`. Spawning sqlite3 as a
+  // child process with execFile keeps the Electron main event loop free
+  // even on cold disks where the read can take a few hundred ms.
+  if (!cwd) return callback(null);
   const candidates = [cwd];
   try {
     const real = fs.realpathSync(cwd);
     if (real && real !== cwd) candidates.push(real);
   } catch {}
-  for (const candidate of candidates) {
-    const escaped = candidate.replace(/'/g, "''");
+  const tryNext = (idx) => {
+    if (idx >= candidates.length) return callback(null);
+    const escaped = candidates[idx].replace(/'/g, "''");
     const sql = `SELECT ws.id FROM workspaces ws JOIN worktrees w ON w.id = ws.worktree_id WHERE w.path = '${escaped}' ORDER BY COALESCE(ws.last_opened_at, 0) DESC LIMIT 1;`;
-    try {
-      const out = execFileSync("sqlite3", ["-readonly", dbPath, sql], {
-        encoding: "utf8",
-        timeout: 1500,
-      }).trim();
-      if (out) return out;
-    } catch {}
-  }
-  return null;
+    execFile("sqlite3", ["-readonly", dbPath, sql], { encoding: "utf8", timeout: 1500 }, (err, stdout) => {
+      if (err) return tryNext(idx + 1);
+      const trimmed = (stdout || "").trim();
+      if (trimmed) return callback(trimmed);
+      tryNext(idx + 1);
+    });
+  };
+  tryNext(0);
 }
 
 module.exports = function initFocus(ctx) {
@@ -489,17 +492,20 @@ function scheduleSupersetFocus(sourcePid, cwd) {
 
     const dirs = findSupersetDataDirs();
     if (!dirs.length) return;
-    for (const dir of dirs) {
-      const id = querySupersetWorkspaceId(path.join(dir, "local.db"), cwd);
-      if (!id) continue;
-      const scheme = supersetSchemeForDir(dir);
-      if (!scheme) continue;
-      const url = `${scheme}://workspace/${id}`;
-      execFile("/usr/bin/open", ["-b", SUPERSET_BUNDLE_ID, url], { timeout: 1500 }, (err2) => {
-        if (err2) focusLog(`superset deep-link failed: ${err2.message}`);
+    const tryDir = (idx) => {
+      if (idx >= dirs.length) return;
+      const dir = dirs[idx];
+      querySupersetWorkspaceId(path.join(dir, "local.db"), cwd, (id) => {
+        if (!id) return tryDir(idx + 1);
+        const scheme = supersetSchemeForDir(dir);
+        if (!scheme) return tryDir(idx + 1);
+        const url = `${scheme}://workspace/${id}`;
+        execFile("/usr/bin/open", ["-b", SUPERSET_BUNDLE_ID, url], { timeout: 1500 }, (err2) => {
+          if (err2) focusLog(`superset deep-link failed: ${err2.message}`);
+        });
       });
-      return;
-    }
+    };
+    tryDir(0);
   });
 }
 
