@@ -1,4 +1,5 @@
 import { readFileSync } from "fs";
+import { request } from "http";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -246,32 +247,49 @@ export function createOpenClawRuntime(options = {}) {
 
 export function postStateToClawd(body) {
   const payload = JSON.stringify(body);
-  const fetchImpl = typeof fetch === "function" ? fetch : null;
-  if (!fetchImpl) return;
 
   (async () => {
     for (const port of getPortCandidates()) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), POST_TIMEOUT_MS);
-      try {
-        const res = await fetchImpl(`http://127.0.0.1:${port}/state`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payload,
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (res.headers.get("x-clawd-server") === "clawd-on-desk") {
-          cachedPort = port;
-          try { await res.text(); } catch {}
-          return;
-        }
-      } catch {
-        clearTimeout(timer);
+      if (await postJsonToPort(port, payload)) {
+        cachedPort = port;
+        return;
       }
     }
     cachedPort = null;
   })().catch(() => {});
+}
+
+function postJsonToPort(port, payload) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    const req = request({
+      hostname: "127.0.0.1",
+      port,
+      path: "/state",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+      timeout: POST_TIMEOUT_MS,
+    }, (res) => {
+      const isClawd = res.headers["x-clawd-server"] === "clawd-on-desk";
+      res.resume();
+      res.on("end", () => finish(isClawd));
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      finish(false);
+    });
+    req.on("error", () => finish(false));
+    req.write(payload);
+    req.end();
+  });
 }
 
 let defaultRuntime = null;
