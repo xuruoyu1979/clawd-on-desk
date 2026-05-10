@@ -290,42 +290,41 @@
 
     const canDelete = !theme.builtin && !theme.active && !theme.managedCodexPet;
     const canRemoveCodexPet = !!theme.managedCodexPet;
-    if (theme.active || canDelete || canRemoveCodexPet) {
-      const footer = document.createElement("div");
-      footer.className = "theme-card-footer";
-      const indicator = document.createElement("span");
-      indicator.className = "theme-card-check";
-      indicator.textContent = theme.active ? t("themeActiveIndicator") : "";
-      footer.appendChild(indicator);
-      if (canDelete) {
-        const btn = document.createElement("button");
-        btn.className = "theme-delete-btn";
-        btn.type = "button";
-        btn.textContent = "\u{1F5D1}";
-        btn.title = t("themeDeleteLabel");
-        btn.setAttribute("aria-label", t("themeDeleteLabel"));
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          handleDeleteTheme(theme);
-        });
-        footer.appendChild(btn);
-      }
-      if (canRemoveCodexPet) {
-        const btn = document.createElement("button");
-        btn.className = "theme-uninstall-btn";
-        btn.type = "button";
-        btn.textContent = t("themeUninstallPetLabel");
-        btn.title = t("themeUninstallPetLabel");
-        btn.setAttribute("aria-label", t("themeUninstallPetLabel"));
-        btn.disabled = runtime.codexPetRemovalPendingThemeId === theme.id;
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          handleRemoveCodexPet(theme);
-        });
-        footer.appendChild(btn);
-      }
-      card.appendChild(footer);
+    const footer = document.createElement("div");
+    footer.className = "theme-card-footer";
+    const indicator = document.createElement("span");
+    indicator.className = "theme-card-check";
+    indicator.textContent = theme.active ? t("themeActiveIndicator") : "";
+    if (!theme.active) indicator.setAttribute("aria-hidden", "true");
+    footer.appendChild(indicator);
+    if (canDelete) {
+      const btn = document.createElement("button");
+      btn.className = "theme-delete-btn";
+      btn.type = "button";
+      btn.textContent = "\u{1F5D1}";
+      btn.title = t("themeDeleteLabel");
+      btn.setAttribute("aria-label", t("themeDeleteLabel"));
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        handleDeleteTheme(theme);
+      });
+      footer.appendChild(btn);
     }
+    if (canRemoveCodexPet) {
+      const btn = document.createElement("button");
+      btn.className = "theme-uninstall-btn";
+      btn.type = "button";
+      btn.textContent = t("themeUninstallPetLabel");
+      btn.title = t("themeUninstallPetLabel");
+      btn.setAttribute("aria-label", t("themeUninstallPetLabel"));
+      btn.disabled = runtime.codexPetRemovalPendingThemeId === theme.id;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        handleRemoveCodexPet(theme);
+      });
+      footer.appendChild(btn);
+    }
+    card.appendChild(footer);
 
     if (!theme.active) {
       helpers.attachActivation(card, () => window.settingsAPI.command("setThemeSelection", { themeId: theme.id }));

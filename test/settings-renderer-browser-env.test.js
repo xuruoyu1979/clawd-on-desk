@@ -1728,6 +1728,9 @@ describe("settings renderer browser environment", () => {
     assert.ok(tabSource.includes("handleRefreshThemes"));
     assert.ok(tabSource.includes("handleRemoveCodexPet"));
     assert.ok(tabSource.includes("themeUninstallPetLabel"));
+    assert.ok(tabSource.includes('footer.className = "theme-card-footer";'));
+    assert.ok(tabSource.includes('if (!theme.active) indicator.setAttribute("aria-hidden", "true");'));
+    assert.ok(!tabSource.includes("if (theme.active || canDelete || canRemoveCodexPet)"));
     assert.ok(coreSource.includes("codexPetZipImportPending"));
     assert.ok(coreSource.includes("userThemeZipImportPending"));
     assert.ok(coreSource.includes("codexPetRemovalPendingThemeId"));
@@ -1745,6 +1748,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(css.includes(".theme-action-group"));
     assert.ok(css.includes(".theme-action-buttons"));
     assert.ok(css.includes(".theme-uninstall-btn"));
+    assert.ok(/\.theme-card-footer\s*\{[\s\S]*min-height:\s*26px;[\s\S]*margin-top:\s*auto;/.test(css));
+    assert.ok(/\.theme-card-check\s*\{[\s\S]*white-space:\s*nowrap;/.test(css));
     assert.ok(i18nSource.includes("themeImportPetZip"));
     assert.ok(i18nSource.includes("themeImportUserThemeZip"));
     assert.ok(i18nSource.includes("themeImportUserThemeZipHint"));
