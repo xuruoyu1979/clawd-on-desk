@@ -142,9 +142,29 @@ function findHookCommands(settings, marker, options) {
   return commands;
 }
 
+/**
+ * Strip C-style and hash-style comments from a JSONC string and parse it.
+ * Musacode / opencode configs use .jsonc (JSON with Comments).
+ * Writing always produces plain JSON — comments outside the "plugin" array
+ * will be lost on the first write, which is acceptable.
+ */
+function readJsonc(filePath) {
+  const raw = fs.readFileSync(filePath, "utf-8");
+  // Remove single-line // comments only when // is at the start of a line
+  // (after optional whitespace).  Do NOT strip // inside strings such as
+  // "https://..." or "file:///path" which are common in config files.
+  const noSlash = raw.replace(/^[ \t]*\/\/[^\n]*/gm, "");
+  // Remove multi-line /* ... */ comments
+  const noBlock = noSlash.replace(/\/\*[\s\S]*?\*\//g, "");
+  // Remove hash # comments at start of line (Unix shell convention)
+  const noHash = noBlock.replace(/^[ \t]*#[^\n]*/gm, "");
+  return JSON.parse(noHash);
+}
+
 module.exports = {
   writeJsonAtomic,
   writeJsonAtomicAsync,
+  readJsonc,
   asarUnpackedPath,
   extractExistingNodeBin,
   findHookCommands,

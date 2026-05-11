@@ -160,6 +160,21 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncMusacodePlugin() {
+    try {
+      if (typeof ctx.syncMusacodePluginImpl === "function") return ctx.syncMusacodePluginImpl();
+      const { registerMusacodePlugin } = require("../hooks/musacode-install.js");
+      const { added, skipped, created } = registerMusacodePlugin({ silent: true });
+      if (added || created) {
+        console.log(`Clawd: synced musacode plugin (added=${added}, created=${created})`);
+      }
+      return { status: "ok", added, skipped, created };
+    } catch (err) {
+      console.warn("Clawd: failed to sync musacode plugin:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync musacode plugin" };
+    }
+  }
+
   function syncOpencodePlugin() {
     try {
       if (typeof ctx.syncOpencodePluginImpl === "function") return ctx.syncOpencodePluginImpl();
@@ -230,6 +245,7 @@ function createIntegrationSyncRuntime(options = {}) {
     "kiro-cli": syncKiroHooks,
     "kimi-cli": syncKimiHooks,
     codex: syncCodexHooks,
+    musacode: syncMusacodePlugin,
     opencode: syncOpencodePlugin,
     pi: syncPiExtension,
     openclaw: syncOpenClawPlugin,
@@ -289,6 +305,7 @@ function createIntegrationSyncRuntime(options = {}) {
     syncKiroHooks,
     syncKimiHooks,
     syncCodexHooks,
+    syncMusacodePlugin,
     syncOpencodePlugin,
     syncPiExtension,
     syncOpenClawPlugin,
