@@ -159,6 +159,132 @@ describe("buildElectronLaunchConfig()", () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// createPidResolver() — Windows PowerShell / Get-CimInstance path (win32 only)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("createPidResolver() — Windows PowerShell path", { skip: process.platform !== "win32" }, () => {
+  const childProcess = require("child_process");
+
+  function withMockedExec(mockFn, cb) {
+    const orig = childProcess.execFileSync;
+    childProcess.execFileSync = mockFn;
+    try { cb(); } finally { childProcess.execFileSync = orig; }
+  }
+
+  function psJson(name, parentPid) {
+    return JSON.stringify({ Name: name, ParentProcessId: parentPid });
+  }
+
+  it("populates pidChain by walking PS JSON output", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 1000 });
+    withMockedExec((_cmd, args) => {
+      if (args[3].includes("ProcessId=1000")) return psJson("cmd.exe", 1001);
+      if (args[3].includes("ProcessId=1001")) return psJson("explorer.exe", 0);
+      return "";
+    }, () => {
+      const { pidChain } = resolve();
+      assert.ok(pidChain.includes(1000));
+      assert.ok(pidChain.includes(1001));
+    });
+  });
+
+  it("breaks the walk immediately when PS returns empty (process not found)", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 9999 });
+    withMockedExec(() => "", () => {
+      const { pidChain } = resolve();
+      assert.strictEqual(pidChain.length, 0);
+    });
+  });
+
+  it("breaks the walk cleanly when ConvertTo-Json outputs 'null'", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 9000 });
+    withMockedExec(() => "null", () => {
+      const { pidChain } = resolve();
+      assert.strictEqual(pidChain.length, 0, "'null' PS output must abort the walk");
+    });
+  });
+
+  it("sets stablePid to the terminal PID when a terminal process is found", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 500 });
+    withMockedExec((_cmd, args) => {
+      if (args[3].includes("ProcessId=500")) return psJson("windowsterminal.exe", 0);
+      return "";
+    }, () => {
+      const { stablePid } = resolve();
+      assert.strictEqual(stablePid, 500);
+    });
+  });
+
+  it("detects editor from process name", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 200 });
+    withMockedExec((_cmd, args) => {
+      if (args[3].includes("ProcessId=200")) return psJson("code.exe", 0);
+      return "";
+    }, () => {
+      const { detectedEditor } = resolve();
+      assert.strictEqual(detectedEditor, "code");
+    });
+  });
+
+  it("stops the walk at a system boundary process (explorer.exe)", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({ platformConfig: cfg, startPid: 300 });
+    let callCount = 0;
+    withMockedExec(() => {
+      callCount++;
+      if (callCount === 1) return psJson("cmd.exe", 301);
+      if (callCount === 2) return psJson("explorer.exe", 0);
+      return psJson("unreachable.exe", 0);
+    }, () => {
+      resolve();
+      assert.strictEqual(callCount, 2, "must stop at system boundary");
+    });
+  });
+
+  it("detects agentPid when agentNameSet matches a process name", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({
+      platformConfig: cfg,
+      startPid: 400,
+      agentNames: { win: new Set(["claude.exe"]), mac: new Set(["claude"]) },
+    });
+    withMockedExec((_cmd, args) => {
+      if (args[3].includes("ProcessId=400")) return psJson("node.exe", 401);
+      if (args[3].includes("ProcessId=401")) return psJson("claude.exe", 0);
+      return "";
+    }, () => {
+      const { agentPid } = resolve();
+      assert.strictEqual(agentPid, 401);
+    });
+  });
+
+  it("detects agentPid via agentCmdlineCheck on node.exe", () => {
+    const cfg = getPlatformConfig();
+    const resolve = createPidResolver({
+      platformConfig: cfg,
+      startPid: 600,
+      agentCmdlineCheck: (cmdline) => cmdline.includes("claude-code"),
+    });
+    withMockedExec((_cmd, args) => {
+      const command = args[3];
+      if (command.includes("Select-Object")) {
+        if (command.includes("ProcessId=600")) return psJson("node.exe", 0);
+        return "";
+      }
+      return "node C:\\Users\\x\\AppData\\Local\\claude-code\\index.js";
+    }, () => {
+      const { agentPid } = resolve();
+      assert.strictEqual(agentPid, 600);
+    });
+  });
+});
+
 // readStdinJson() is not unit-tested here — it attaches listeners to
 // process.stdin (singleton) which prevents process exit. Validated by
 // real agent integration tests + the finishOnce/timeout logic is trivial.

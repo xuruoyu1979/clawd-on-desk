@@ -125,6 +125,7 @@ function createPidResolver(options) {
           const trimmed = (out || "").trim();
           if (!trimmed) break;
           const info = JSON.parse(trimmed);
+          if (!info) break;
           name = typeof info.Name === "string" ? info.Name.toLowerCase() : "";
           parentPid = Number(info.ParentProcessId) || 0;
         } else {
