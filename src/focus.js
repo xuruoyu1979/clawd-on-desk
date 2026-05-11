@@ -159,7 +159,9 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
             } elseif ($matches.Count -gt 1) {
                 $reason = 'wt-parent-title-ambiguous'
             } else {
-                $reason = 'wt-parent-title-mismatch'
+                [WinFocus]::Focus($proc.MainWindowHandle)
+                $focused = $true
+                $reason = 'wt-parent-direct-fallback'
             }
         } else {
             [WinFocus]::Focus($proc.MainWindowHandle)

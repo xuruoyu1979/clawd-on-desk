@@ -95,7 +95,8 @@ describe("Windows terminal focus", () => {
 
       assert.match(cmd, /wt-parent-title-match/);
       assert.match(cmd, /wt-parent-title-ambiguous/);
-      assert.match(cmd, /wt-parent-title-mismatch/);
+      assert.doesNotMatch(cmd, /wt-parent-title-mismatch/);
+      assert.match(cmd, /wt-parent-direct-fallback/);
       assert.match(cmd, /\$wtMatches = @\(\)/);
       assert.match(cmd, /\$wtMatches\.Count -eq 1/);
       assert.match(cmd, /wt-title-match/);
