@@ -86,10 +86,10 @@ module.exports = function initDashboard(ctx) {
       sendI18n();
       sendSnapshot();
     });
+    dashboardWindow.show();
+    dashboardWindow.focus();
     dashboardWindow.once("ready-to-show", () => {
-      if (!dashboardWindow || dashboardWindow.isDestroyed()) return;
-      dashboardWindow.show();
-      dashboardWindow.focus();
+      // show/focus already called after loadFile above
     });
     dashboardWindow.on("closed", () => {
       dashboardWindow = null;

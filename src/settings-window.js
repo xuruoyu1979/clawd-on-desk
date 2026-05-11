@@ -109,9 +109,10 @@ function createSettingsWindowRuntime(options = {}) {
     }
     settingsWindow.setMenuBarVisibility(false);
     settingsWindow.loadFile(settingsHtmlPath);
+    settingsWindow.show();
+    settingsWindow.focus();
     settingsWindow.once("ready-to-show", () => {
-      settingsWindow.show();
-      settingsWindow.focus();
+      // show/focus already called after loadFile above
     });
     settingsWindow.on("closed", () => {
       if (typeof options.onBeforeClosed === "function") options.onBeforeClosed();
