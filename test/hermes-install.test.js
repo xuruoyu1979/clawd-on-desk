@@ -7,6 +7,7 @@ const os = require("os");
 const {
   PLUGIN_ID,
   MANAGED_PLUGIN_FILES,
+  isHermesInstalled,
   registerHermesPlugin,
   resolveHermesHome,
   unregisterHermesPlugin,
@@ -179,6 +180,35 @@ describe("Hermes plugin installer", () => {
     });
 
     assert.strictEqual(resolved, localHermes);
+  });
+
+  it("detects missing Hermes without creating the default home", () => {
+    const homeDir = makeTempDir();
+    const defaultHome = path.join(homeDir, ".hermes");
+
+    const installed = isHermesInstalled({
+      env: {},
+      platform: "linux",
+      homeDir,
+    });
+
+    assert.strictEqual(installed, false);
+    assert.strictEqual(fs.existsSync(defaultHome), false);
+  });
+
+  it("detects Hermes from LOCALAPPDATA venv command without config.yaml", () => {
+    const localAppData = makeTempDir();
+    const command = path.join(localAppData, "hermes", "hermes-agent", "venv", "Scripts", "hermes.exe");
+    fs.mkdirSync(path.dirname(command), { recursive: true });
+    fs.writeFileSync(command, "", "utf8");
+
+    const installed = isHermesInstalled({
+      env: { LOCALAPPDATA: localAppData },
+      platform: "win32",
+      homeDir: makeTempDir(),
+    });
+
+    assert.strictEqual(installed, true);
   });
 
   it("uninstaller disables through CLI and removes only the managed plugin directory", () => {

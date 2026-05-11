@@ -116,6 +116,39 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.parentDirExists, false);
   });
 
+  it("keeps enabled Hermes missing install info-only when another integration is ok", () => {
+    const okDescriptor = baseDescriptor({
+      agentId: "ok-agent",
+      marker: "ok-hook.js",
+    });
+    writeJson(okDescriptor.configPath, {
+      hooks: {
+        Stop: [{ command: '"/node" "/app/hooks/ok-hook.js" Stop' }],
+      },
+    });
+    const hermesDescriptor = baseDescriptor({
+      agentId: "hermes",
+      marker: "clawd-on-desk",
+      configMode: "plugin-dir",
+    });
+
+    const result = checkAgentIntegrations({
+      fs,
+      prefs: { agents: { hermes: { enabled: true } } },
+      descriptors: [okDescriptor, hermesDescriptor],
+      validateCommand: () => ({
+        ok: true,
+        nodeBin: "/node",
+        scriptPath: "/app/hooks/ok-hook.js",
+      }),
+    });
+
+    const hermes = result.details.find((detail) => detail.agentId === "hermes");
+    assert.strictEqual(result.status, "pass");
+    assert.strictEqual(hermes.status, "not-installed");
+    assert.strictEqual(hermes.level, "info");
+  });
+
   it("returns not-connected when config is missing for an auto-installed agent", () => {
     const descriptor = baseDescriptor();
     fs.mkdirSync(descriptor.parentDir, { recursive: true });

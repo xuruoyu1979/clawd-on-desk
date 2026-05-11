@@ -44,15 +44,17 @@ function resolveHermesHome(options = {}) {
   return path.join(options.homeDir || os.homedir(), ".hermes");
 }
 
-function resolveHermesCommand(options = {}) {
-  if (options.hermesCommand === null || options.hermesCommand === false) return null;
-  if (typeof options.hermesCommand === "string" && options.hermesCommand.trim()) {
-    return options.hermesCommand;
+function pathExists(filePath) {
+  try {
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
   }
+}
 
+function hermesCommandCandidates(options = {}, hermesHome = resolveHermesHome(options)) {
   const env = options.env || process.env;
   const platform = options.platform || process.platform;
-  const hermesHome = options.hermesHome || resolveHermesHome(options);
   const candidates = [];
   if (platform === "win32") {
     candidates.push(path.join(hermesHome, "hermes-agent", "venv", "Scripts", "hermes.exe"));
@@ -62,11 +64,45 @@ function resolveHermesCommand(options = {}) {
   } else {
     candidates.push(path.join(hermesHome, "hermes-agent", "venv", "bin", "hermes"));
   }
+  return candidates;
+}
 
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) return candidate;
-    } catch {}
+function isHermesInstalled(options = {}) {
+  if (options.hermesCommand === null || options.hermesCommand === false) return false;
+  if (typeof options.hermesCommand === "string" && options.hermesCommand.trim()) return true;
+
+  const env = options.env || process.env;
+  const platform = options.platform || process.platform;
+  const homes = [];
+  if (typeof options.hermesHome === "string" && options.hermesHome.trim()) {
+    homes.push(path.resolve(options.hermesHome));
+  } else if (typeof env.HERMES_HOME === "string" && env.HERMES_HOME.trim()) {
+    homes.push(path.resolve(env.HERMES_HOME));
+  } else {
+    if (platform === "win32" && typeof env.LOCALAPPDATA === "string" && env.LOCALAPPDATA.trim()) {
+      homes.push(path.join(env.LOCALAPPDATA, "hermes"));
+    }
+    homes.push(path.join(options.homeDir || os.homedir(), ".hermes"));
+  }
+
+  for (const hermesHome of homes) {
+    if (pathExists(path.join(hermesHome, "config.yaml"))) return true;
+    for (const candidate of hermesCommandCandidates(options, hermesHome)) {
+      if (pathExists(candidate)) return true;
+    }
+  }
+  return false;
+}
+
+function resolveHermesCommand(options = {}) {
+  if (options.hermesCommand === null || options.hermesCommand === false) return null;
+  if (typeof options.hermesCommand === "string" && options.hermesCommand.trim()) {
+    return options.hermesCommand;
+  }
+
+  const hermesHome = options.hermesHome || resolveHermesHome(options);
+  for (const candidate of hermesCommandCandidates(options, hermesHome)) {
+    if (pathExists(candidate)) return candidate;
   }
 
   return "hermes";
@@ -283,6 +319,7 @@ module.exports = {
   PLUGIN_ID,
   copyManagedPluginFiles,
   formatHermesCommand,
+  isHermesInstalled,
   registerHermesPlugin,
   resolveHermesCommand,
   resolveHermesHome,

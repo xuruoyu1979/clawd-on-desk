@@ -226,7 +226,17 @@ function createIntegrationSyncRuntime(options = {}) {
   function syncHermesPlugin() {
     try {
       if (typeof ctx.syncHermesPluginImpl === "function") return ctx.syncHermesPluginImpl();
-      const { registerHermesPlugin } = require("../hooks/hermes-install.js");
+      const { isHermesInstalled, registerHermesPlugin } = require("../hooks/hermes-install.js");
+      const installed = typeof ctx.isHermesInstalledImpl === "function"
+        ? ctx.isHermesInstalledImpl()
+        : isHermesInstalled();
+      if (!installed) {
+        return {
+          status: "skipped",
+          reason: "hermes-not-installed",
+          message: "Hermes Agent is not installed; skipped plugin sync",
+        };
+      }
       const result = registerHermesPlugin({ silent: true });
       if (result && result.status === "error") {
         console.warn("Clawd: failed to sync Hermes plugin:", result.message);

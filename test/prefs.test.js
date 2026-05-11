@@ -592,6 +592,27 @@ describe("prefs.load", () => {
     assert.ok(snapshot.themeOverrides);
   });
 
+  it("loads v2 prefs without locking or warning", () => {
+    const p = makeTempPath();
+    fs.writeFileSync(
+      p,
+      JSON.stringify({ version: 2, lang: "zh" }),
+      "utf8"
+    );
+    const originalWarn = console.warn;
+    let warned = false;
+    console.warn = () => { warned = true; };
+    try {
+      const { snapshot, locked } = prefs.load(p);
+      assert.strictEqual(locked, false);
+      assert.strictEqual(snapshot.version, prefs.CURRENT_VERSION);
+      assert.strictEqual(snapshot.lang, "zh");
+      assert.strictEqual(warned, false);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it("returns locked=true and warns for future-version files", () => {
     const p = makeTempPath();
     fs.writeFileSync(

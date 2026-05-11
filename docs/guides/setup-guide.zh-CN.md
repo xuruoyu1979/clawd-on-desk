@@ -26,6 +26,8 @@
 
 **OpenClaw** — 使用 `~/.openclaw/openclaw.json` 里的 plugin 路径。如果 OpenClaw 配置文件已经存在，Clawd 启动时会自动注册；也可以手动执行 `npm run install:openclaw-plugin`，由 OpenClaw CLI 处理首次安装。Phase 1 只做状态动画，面向本地 `openclaw tui --local` 会话；暂不接 OpenClaw 权限气泡，也不支持 OpenClaw 终端聚焦。
 
+**Hermes Agent** — 从 [hermes-agent.org](https://hermes-agent.org/) 或 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 安装 Hermes。Clawd 默认会在 Settings 里显示 Hermes 开关，但启动自动同步会先探测 Hermes 是否已安装；未安装时不会写入 `~/.hermes` 或 `%LOCALAPPDATA%\hermes`。安装 Hermes 后，Clawd 会把 plugin 复制到 Hermes 的托管 plugin 目录，并通过 `hermes plugins enable clawd-on-desk` 启用它。也可以手动执行 `npm run install:hermes-plugin` 强制同步，或执行 `npm run uninstall:hermes-plugin` 移除 Clawd 的 Hermes plugin。
+
 ## 远程 SSH 模式（Claude Code & Codex CLI）
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="远程 SSH — 来自树莓派的权限气泡">

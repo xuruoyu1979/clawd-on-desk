@@ -26,6 +26,8 @@
 
 **OpenClaw** — uses a plugin path under `~/.openclaw/openclaw.json`. Clawd auto-registers it only when an OpenClaw config already exists, or you can run `npm run install:openclaw-plugin` manually to let OpenClaw's CLI handle first-time setup. Phase 1 is state-only and targets local `openclaw tui --local` sessions.
 
+**Hermes Agent** — install Hermes from [hermes-agent.org](https://hermes-agent.org/) or [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). Clawd shows Hermes in Settings by default, but startup auto-sync is no-op until Hermes is installed. Once Hermes exists (`%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` on macOS/Linux), Clawd copies its plugin into Hermes' managed plugin directory and enables it through `hermes plugins enable clawd-on-desk`. You can force a manual sync with `npm run install:hermes-plugin`, or remove Clawd's Hermes plugin with `npm run uninstall:hermes-plugin`.
+
 ## Remote SSH (Claude Code & Codex CLI)
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="Remote SSH — permission bubble from Raspberry Pi">

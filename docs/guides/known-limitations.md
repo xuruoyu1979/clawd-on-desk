@@ -11,6 +11,8 @@
 | **Gemini CLI: no permission bubble** | Gemini handles tool approval inside the terminal. Clawd observes Gemini hook events, but does not show permission bubbles unless Gemini adds a compatible blocking approval contract later. |
 | **Cursor Agent: no permission bubble** | Cursor handles permissions via stdout JSON in the hook, not HTTP blocking — Clawd can't intercept the approval flow. |
 | **Cursor Agent: startup recovery** | No process detection on startup (matching the editor PID would false-trigger on any Cursor instance). Clawd stays idle until the first hook event fires. |
+| **Hermes Agent: visible before install** | Hermes is enabled in Settings by default so users can discover it, but Clawd does not write Hermes plugin files until a real Hermes install is detected. Install Hermes, then restart Clawd or run `npm run install:hermes-plugin`. |
+| **Hermes Agent: no permission bubble or subagent animation yet** | Hermes plugin events currently cover state, sessions, SessionEnd, tool activity, and terminal focus. Permission bubbles and subagent lifecycle need upstream hooks with a blocking approval contract and paired subagent start/stop events. |
 | **Kiro CLI: no session tracking** | Kiro CLI stdin JSON has no session_id — all Kiro sessions are merged into a single tracked session. |
 | **Kiro CLI: no SessionEnd** | Kiro CLI has no session end event, so Clawd can't detect when a Kiro session ends. |
 | **Kiro CLI: no subagent detection** | Kiro CLI has no subagent events, so juggling/conducting animations won't trigger. |

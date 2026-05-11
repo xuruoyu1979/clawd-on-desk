@@ -148,6 +148,27 @@ describe("server Claude hook management", () => {
     assert.ok(getWatcher(), "watcher should start when management is enabled");
   });
 
+  it("startup skips Hermes plugin sync quietly when Hermes is not installed", () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(" "));
+    try {
+      const { api, syncCalls, getWatcher } = makeServer({
+        manageClaudeHooksAutomatically: true,
+        syncHermesPluginImpl: undefined,
+        isHermesInstalledImpl: () => false,
+      });
+
+      api.startHttpServer();
+
+      assert.deepStrictEqual(syncCalls, ["claude", "gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+      assert.ok(getWatcher(), "watcher should start when management is enabled");
+      assert.strictEqual(warnings.some((line) => /Hermes/i.test(line)), false);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it("startup skips Claude sync/watcher but still syncs other agents when automatic management is disabled", () => {
     const { api, syncCalls, getWatcher } = makeServer({
       manageClaudeHooksAutomatically: false,
