@@ -1,4 +1,5 @@
 const assert = require("assert");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { describe, it } = require("node:test");
@@ -25,6 +26,21 @@ function readManifestHooks() {
   return hooks;
 }
 
+function runPluginPython(code) {
+  const result = spawnSync("python", ["-"], {
+    cwd: path.join(__dirname, ".."),
+    input: code,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  assert.strictEqual(
+    result.status,
+    0,
+    `python exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
+  );
+  return result.stdout.trim();
+}
+
 describe("Hermes plugin", () => {
   it("keeps manifest hook declarations aligned with registered hooks", () => {
     const source = readPluginSource();
@@ -44,5 +60,57 @@ describe("Hermes plugin", () => {
     assert.match(source, /"on_session_finalize": \("sleeping", "SessionEnd"\)/);
     assert.match(source, /"on_session_reset": \("idle", "SessionStart"\)/);
     assert.match(source, /def _finish_session_boundary/);
+  });
+
+  it("clears stale tool mappings on reset and drops orphan post-tool events", () => {
+    const output = runPluginPython(String.raw`
+import importlib.util
+import json
+import sys
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hermes_plugin", r"hooks/hermes-plugin/__init__.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+posts = []
+def fake_post_state(payload):
+    posts.append(dict(payload))
+def fake_append_log(*args, **kwargs):
+    return None
+
+mod._post_state = fake_post_state
+mod._append_log = fake_append_log
+mod._active_session_id = ""
+mod._task_session_ids.clear()
+
+mod._handle_hook("pre_llm_call", session_id="old-session")
+mod._handle_hook("pre_tool_call", task_id="old-task", tool_name="terminal")
+assert posts[-1]["session_id"] == "old-session"
+assert "old-task" in mod._task_session_ids
+
+mod._handle_hook("on_session_reset", session_id="new-session")
+assert posts[-1]["event"] == "SessionStart"
+assert posts[-1]["session_id"] == "new-session"
+assert mod._active_session_id == "new-session"
+assert mod._task_session_ids == {}
+
+count = len(posts)
+mod._handle_hook("post_tool_call", task_id="old-task", tool_name="terminal", result='{"exit_code": 0}')
+assert len(posts) == count
+
+mod._handle_hook("on_session_finalize", session_id="new-session")
+assert posts[-1]["event"] == "SessionEnd"
+assert mod._active_session_id == ""
+
+print(json.dumps([{"event": item["event"], "session_id": item["session_id"]} for item in posts]))
+`);
+    const events = JSON.parse(output);
+    assert.deepStrictEqual(events, [
+      { event: "UserPromptSubmit", session_id: "old-session" },
+      { event: "PreToolUse", session_id: "old-session" },
+      { event: "SessionStart", session_id: "new-session" },
+      { event: "SessionEnd", session_id: "new-session" },
+    ]);
   });
 });

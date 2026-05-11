@@ -303,6 +303,8 @@ def _session_id(event_name: str, kwargs: Dict[str, Any]) -> str:
             return _active_session_id
         if parent_id:
             return parent_id
+        if event_name == "post_tool_call" and task_id:
+            return ""
         if _active_session_id:
             return _active_session_id
 
@@ -319,6 +321,8 @@ def _remember_session(event_name: str, kwargs: Dict[str, Any]) -> None:
     if not explicit:
         return
     with _session_lock:
+        if event_name == "on_session_reset":
+            _task_session_ids.clear()
         if event_name in (
             "on_session_start",
             "pre_llm_call",
