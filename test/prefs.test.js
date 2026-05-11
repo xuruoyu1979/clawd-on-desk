@@ -63,20 +63,34 @@ describe("prefs.getDefaults", () => {
 
   it("seeds all known agents as enabled", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi", "openclaw"]) {
       assert.strictEqual(d.agents[id].enabled, true, `${id} should default enabled`);
     }
   });
 
-  it("seeds all known agents with permissionsEnabled=true", () => {
+  it("seeds permission-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,
         `${id} should default permissionsEnabled`
       );
     }
+  });
+
+  it("defaults OpenClaw permission bubbles off", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.agents.openclaw.enabled, true);
+    assert.strictEqual(d.agents.openclaw.permissionsEnabled, false);
+    assert.strictEqual(d.agents.openclaw.notificationHookEnabled, true);
+  });
+
+  it("defaults Pi permission bubbles on", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.agents.pi.enabled, true);
+    assert.strictEqual(d.agents.pi.permissionsEnabled, true);
+    assert.strictEqual(d.agents.pi.notificationHookEnabled, true);
   });
 
   it("defaults Codex permissions to intercept mode", () => {
@@ -150,6 +164,32 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.permissionBubblesEnabled, true);
     assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 12);
     assert.strictEqual(v.updateBubbleAutoCloseSeconds, 8);
+  });
+
+  it("preserves existing Pi permission prefs during v2 migration", () => {
+    const v = prefs.validate(prefs.migrate({
+      version: 1,
+      agents: {
+        pi: { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      },
+    }));
+
+    assert.strictEqual(v.version, prefs.CURRENT_VERSION);
+    assert.strictEqual(v.agents.pi.enabled, true);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
+    assert.strictEqual(v.agents.pi.notificationHookEnabled, true);
+  });
+
+  it("defaults missing Pi permission prefs on during v2 migration", () => {
+    const v = prefs.validate(prefs.migrate({
+      version: 1,
+      agents: {
+        pi: { enabled: true, notificationHookEnabled: true },
+      },
+    }));
+
+    assert.strictEqual(v.version, prefs.CURRENT_VERSION);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
   });
 
   it("keeps valid fields verbatim", () => {
@@ -288,7 +328,7 @@ describe("prefs.validate", () => {
 
   it("seeds all known agents with notificationHookEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode", "pi", "openclaw"]) {
       assert.strictEqual(
         d.agents[id].notificationHookEnabled,
         true,
@@ -450,10 +490,10 @@ describe("prefs.validate", () => {
 });
 
 describe("prefs.migrate", () => {
-  it("upgrades v0 (no version field) to v1", () => {
+  it("upgrades v0 (no version field) to the current version", () => {
     const raw = { lang: "zh", soundMuted: true };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 1);
+    assert.strictEqual(upgraded.version, prefs.CURRENT_VERSION);
     assert.ok(upgraded.agents && typeof upgraded.agents === "object");
     assert.ok(upgraded.themeOverrides && typeof upgraded.themeOverrides === "object");
     // Original fields preserved
@@ -461,14 +501,14 @@ describe("prefs.migrate", () => {
     assert.strictEqual(upgraded.soundMuted, true);
   });
 
-  it("leaves v1 files alone", () => {
+  it("migrates v1 files to the current version while preserving agent prefs", () => {
     const raw = {
       version: 1,
       lang: "en",
       agents: { "claude-code": { enabled: false } },
     };
     const upgraded = prefs.migrate(raw);
-    assert.strictEqual(upgraded.version, 1);
+    assert.strictEqual(upgraded.version, prefs.CURRENT_VERSION);
     assert.strictEqual(upgraded.agents["claude-code"].enabled, false);
   });
 
@@ -523,7 +563,7 @@ describe("prefs.load", () => {
     );
     const { snapshot, locked } = prefs.load(p);
     assert.strictEqual(locked, false);
-    assert.strictEqual(snapshot.version, 1);
+    assert.strictEqual(snapshot.version, prefs.CURRENT_VERSION);
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.x, 100);
     assert.strictEqual(snapshot.y, 200);
@@ -566,7 +606,7 @@ describe("prefs.save", () => {
     assert.strictEqual(snapshot.lang, "zh");
     assert.strictEqual(snapshot.bubbleFollowPet, true);
     assert.strictEqual(snapshot.x, 42);
-    assert.strictEqual(snapshot.version, 1);
+    assert.strictEqual(snapshot.version, prefs.CURRENT_VERSION);
   });
 
   it("validates before writing — bad fields fall back to defaults on disk", () => {

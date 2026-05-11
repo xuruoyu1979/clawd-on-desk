@@ -618,6 +618,7 @@ function loadAgentsTabForTest({
           eventSourceHook: "Hook",
           eventSourceLogPoll: "Log poll",
           eventSourcePlugin: "Plugin",
+          eventSourceExtension: "Extension",
           collapsibleExpand: "Expand",
           collapsibleCollapse: "Collapse",
           toastSaveFailed: "Failed: ",

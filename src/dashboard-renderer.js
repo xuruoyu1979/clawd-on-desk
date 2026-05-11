@@ -10,6 +10,8 @@ const AGENT_LABELS = {
   "kimi-cli": "Kimi",
   opencode: "opencode",
   codebuddy: "CodeBuddy",
+  pi: "Pi",
+  openclaw: "OpenClaw",
 };
 
 let snapshot = { sessions: [], groups: [], orderedIds: [] };

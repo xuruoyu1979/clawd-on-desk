@@ -22,6 +22,10 @@
 
 **opencode** — uses a plugin entry in `~/.config/opencode/opencode.json`. Clawd auto-registers it on launch when opencode is installed, or you can run `node hooks/opencode-install.js` manually.
 
+**Pi** — uses a global extension directory at `~/.pi/agent/extensions/clawd-on-desk`. Clawd auto-registers it on launch when Pi is installed, or you can run `npm run install:pi-extension` manually. Interactive Pi sessions report lifecycle state to Clawd. Pi permission bubbles are enabled by default for `bash`, `write`, and `edit` tool calls; when Clawd bubbles are unavailable, disabled, or hidden by DND, the extension falls back to Pi's terminal confirmation instead of allowing the tool silently.
+
+**OpenClaw** — uses a plugin path under `~/.openclaw/openclaw.json`. Clawd auto-registers it only when an OpenClaw config already exists, or you can run `npm run install:openclaw-plugin` manually to let OpenClaw's CLI handle first-time setup. Phase 1 is state-only and targets local `openclaw tui --local` sessions.
+
 ## Remote SSH (Claude Code & Codex CLI)
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="Remote SSH — permission bubble from Raspberry Pi">
@@ -134,6 +138,12 @@ node hooks/codebuddy-install.js
 
 # opencode
 node hooks/opencode-install.js
+
+# Pi
+node hooks/pi-install.js
+
+# OpenClaw
+node hooks/openclaw-install.js
 ```
 
 > **Tip:** If the repo is cloned inside WSL (e.g. `~/clawd-on-desk`), hook scripts will automatically use WSL's Node.js path. If the repo is on a Windows drive (e.g. `/mnt/c/...`), make sure `node` is in WSL's `PATH`.

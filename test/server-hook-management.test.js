@@ -119,6 +119,7 @@ function makeServer(overrides = {}) {
     syncCodexHooksImpl: () => syncCalls.push("codex"),
     repairCodexHooksImpl: () => syncCalls.push("codex-repair"),
     syncOpencodePluginImpl: () => syncCalls.push("opencode"),
+    syncPiExtensionImpl: () => syncCalls.push("pi"),
     ...overrides,
   };
 
@@ -140,7 +141,7 @@ describe("server Claude hook management", () => {
 
     api.startHttpServer();
 
-    assert.deepStrictEqual(syncCalls, ["claude", "gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+    assert.deepStrictEqual(syncCalls, ["claude", "gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode", "pi"]);
     assert.ok(getWatcher(), "watcher should start when management is enabled");
   });
 
@@ -151,12 +152,12 @@ describe("server Claude hook management", () => {
 
     api.startHttpServer();
 
-    assert.deepStrictEqual(syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+    assert.deepStrictEqual(syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode", "pi"]);
     assert.strictEqual(getWatcher(), null);
   });
 
   it("startup skips automatic hook/plugin sync for disabled agents", () => {
-    const disabled = new Set(["gemini-cli", "cursor-agent", "kiro-cli", "opencode"]);
+    const disabled = new Set(["gemini-cli", "cursor-agent", "kiro-cli", "opencode", "pi"]);
     const { api, syncCalls, getWatcher } = makeServer({
       isAgentEnabled: (agentId) => !disabled.has(agentId),
     });
@@ -174,7 +175,7 @@ describe("server Claude hook management", () => {
 
     api.startHttpServer();
 
-    assert.deepStrictEqual(syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+    assert.deepStrictEqual(syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode", "pi"]);
     assert.strictEqual(getWatcher(), null);
   });
 
@@ -284,8 +285,8 @@ describe("server Claude hook management", () => {
     const second = makeServer({ manageClaudeHooksAutomatically: false });
     second.api.startHttpServer();
 
-    assert.deepStrictEqual(first.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
-    assert.deepStrictEqual(second.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode"]);
+    assert.deepStrictEqual(first.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode", "pi"]);
+    assert.deepStrictEqual(second.syncCalls, ["gemini", "cursor", "codebuddy", "kiro", "kimi", "codex", "opencode", "pi"]);
   });
 
   it("repairIntegrationForAgent uses the Codex official hook repair path", () => {

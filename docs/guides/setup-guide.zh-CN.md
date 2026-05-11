@@ -22,6 +22,10 @@
 
 **opencode** — 使用 `~/.config/opencode/opencode.json` 里的 plugin 配置。如果本机已安装 opencode，Clawd 启动时会自动注册；也可以手动执行 `node hooks/opencode-install.js`。
 
+**Pi** — 使用全局 extension 目录 `~/.pi/agent/extensions/clawd-on-desk`。如果本机已安装 Pi，Clawd 启动时会自动注册；也可以手动执行 `npm run install:pi-extension`。交互式 Pi 会话会向 Clawd 上报状态；`bash` / `write` / `edit` 工具默认走 Clawd 权限气泡。Clawd 气泡不可用、被关闭或被 DND 隐藏时，extension 会回退到 Pi 终端确认，而不是静默允许工具执行。
+
+**OpenClaw** — 使用 `~/.openclaw/openclaw.json` 里的 plugin 路径。如果 OpenClaw 配置文件已经存在，Clawd 启动时会自动注册；也可以手动执行 `npm run install:openclaw-plugin`，由 OpenClaw CLI 处理首次安装。Phase 1 只做状态动画，面向本地 `openclaw tui --local` 会话；暂不接 OpenClaw 权限气泡，也不支持 OpenClaw 终端聚焦。
+
 ## 远程 SSH 模式（Claude Code & Codex CLI）
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="远程 SSH — 来自树莓派的权限气泡">
@@ -134,6 +138,12 @@ node hooks/codebuddy-install.js
 
 # opencode
 node hooks/opencode-install.js
+
+# Pi
+node hooks/pi-install.js
+
+# OpenClaw
+node hooks/openclaw-install.js
 ```
 
 > 提示：如果仓库克隆在 WSL 内（如 `~/clawd-on-desk`），hook 脚本会自动使用 WSL 的 Node.js 路径。如果仓库放在 Windows 盘里（如 `/mnt/c/...`），请确保 WSL 的 PATH 中有 `node`。

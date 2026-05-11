@@ -570,6 +570,7 @@ function buildPermissionBubblePayload(permEntry) {
     lang: ctx.lang,
     isElicitation: permEntry.isElicitation || false,
     isOpencode: permEntry.isOpencode || false,
+    isPi: permEntry.isPi || false,
     opencodeAlways: permEntry.opencodeAlwaysCandidates || [],
     opencodePatterns: permEntry.opencodePatterns || [],
     sessionFolder,
@@ -653,6 +654,17 @@ function syncPermissionBubbleContent(permEntry) {
         behavior: behavior === "deny" ? "deny" : "allow",
         message,
       });
+    }
+    return;
+  }
+
+  if (permEntry.isPi) {
+    if (behavior === "no-decision") {
+      sendNoDecisionResponse(res, message || "fallback", "pi");
+    } else {
+      const decision = { behavior: behavior === "deny" ? "deny" : "allow" };
+      if (behavior === "deny" && message) decision.message = message;
+      sendPermissionResponse(res, decision);
     }
     return;
   }
@@ -768,12 +780,16 @@ function sendPermissionResponse(res, decisionOrBehavior, message, hookEventName 
   res.end(responseBody);
 }
 
-function sendCodexNoDecisionResponse(res, reason = "") {
+function sendNoDecisionResponse(res, reason = "", label = "permission") {
   if (!res || res.writableEnded || res.destroyed || res.headersSent) return false;
-  if (reason) permLog(`codex no-decision: ${reason}`);
+  if (reason) permLog(`${label} no-decision: ${reason}`);
   res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
   res.end();
   return true;
+}
+
+function sendCodexNoDecisionResponse(res, reason = "") {
+  return sendNoDecisionResponse(res, reason, "codex");
 }
 
 function sendCodexPermissionResponse(res, decisionOrBehavior, message) {
@@ -820,6 +836,11 @@ function handleDecide(event, behavior) {
     // elsewhere" must answer no-decision immediately instead of leaving the
     // hook parked until its long timeout.
     resolvePermissionEntry(perm, "no-decision", `Unsupported Codex bubble action: ${String(behavior)}`);
+    if (behavior === "deny-and-focus") ctx.focusTerminalForSession(perm.sessionId);
+    return;
+  }
+  if (perm.isPi && behavior !== "allow" && behavior !== "deny") {
+    resolvePermissionEntry(perm, "no-decision", `Unsupported Pi bubble action: ${String(behavior)}`);
     if (behavior === "deny-and-focus") ctx.focusTerminalForSession(perm.sessionId);
     return;
   }
@@ -1018,6 +1039,8 @@ function dismissInteractivePermissionWithoutDecision(perm, reason) {
   // close, and opencode falls back by receiving no bridge reply.
   if (perm.isCodex) {
     sendCodexNoDecisionResponse(perm.res, reason || "permission-dismissed");
+  } else if (perm.isPi) {
+    sendNoDecisionResponse(perm.res, reason || "permission-dismissed", "pi");
   } else if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
     try { perm.res.destroy(); } catch {}
   }
@@ -1108,7 +1131,7 @@ function cleanup() {
   for (const perm of [...pendingPermissions]) {
     if (perm._delayTimer) clearTimeout(perm._delayTimer);
     if (perm.autoExpireTimer) clearTimeout(perm.autoExpireTimer);
-    if (perm.isCodex) resolvePermissionEntry(perm, "no-decision", "Clawd is quitting");
+    if (perm.isCodex || perm.isPi) resolvePermissionEntry(perm, "no-decision", "Clawd is quitting");
     else resolvePermissionEntry(perm, "deny", "Clawd is quitting");
   }
 }

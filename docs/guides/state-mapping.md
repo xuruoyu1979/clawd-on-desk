@@ -50,6 +50,24 @@ Gemini CLI stays on hook-only integration, but two Gemini-native events are inte
 | AfterAgent | Recorded as `AfterAgent` and the session returns to `idle`. It does not remap to shared `Stop`, so Gemini turns no longer auto-show the `attention` / done animation. |
 | PreCompress | Recorded as `PreCompress` in session history, but does not switch the pet to `sweeping`. The current visible state (usually `thinking` or `working`) stays in place. |
 
+## Pi Extension Events
+
+Pi uses a global extension (`~/.pi/agent/extensions/clawd-on-desk`) and maps interactive-session lifecycle events to shared Clawd states:
+
+| Pi Extension Event | Clawd Event | State |
+|---|---|---|
+| session_start | SessionStart | idle |
+| before_agent_start | UserPromptSubmit | thinking |
+| tool_call | PreToolUse | working |
+| tool_result (ok) | PostToolUse | working |
+| tool_result (isError) | PostToolUseFailure | error |
+| agent_end | Stop | attention |
+| session_before_compact | PreCompact | sweeping |
+| session_compact | PostCompact | attention |
+| session_shutdown | SessionEnd | remove session; idle if no live sessions |
+
+Pi is state-only in Clawd for now: permission approvals remain in Pi's own terminal/TUI.
+
 ## Mini Mode
 
 Drag to the right screen edge (or right-click → "Mini Mode") to enter mini mode — half-body visible at screen edge, peeking out on hover.

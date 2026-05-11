@@ -40,7 +40,7 @@ function makeCtx(overrides = {}) {
   return ctx;
 }
 
-describe("detectRunningAgentProcesses() Kimi coverage", () => {
+describe("detectRunningAgentProcesses() agent coverage", () => {
   let api;
   let originalExec;
   let originalPlatform;
@@ -57,7 +57,7 @@ describe("detectRunningAgentProcesses() Kimi coverage", () => {
     api.cleanup();
   });
 
-  it("includes kimi.exe in Windows process query", async () => {
+  it("includes kimi.exe and pi.exe in Windows process query", async () => {
     let seenCommand = "";
     childProcess.exec = (cmd, opts, cb) => {
       seenCommand = cmd;
@@ -71,9 +71,10 @@ describe("detectRunningAgentProcesses() Kimi coverage", () => {
 
     assert.strictEqual(found, true);
     assert.match(seenCommand, /Name='kimi\.exe'/);
+    assert.match(seenCommand, /Name='pi\.exe'/);
   });
 
-  it("includes kimi in macOS/Linux pgrep query", async () => {
+  it("includes kimi and Pi package markers in macOS/Linux pgrep query", async () => {
     let seenCommand = "";
     childProcess.exec = (cmd, opts, cb) => {
       seenCommand = cmd;
@@ -87,5 +88,7 @@ describe("detectRunningAgentProcesses() Kimi coverage", () => {
 
     assert.strictEqual(found, true);
     assert.match(seenCommand, /claude-code\|codex\|copilot\|codebuddy\|kimi/);
+    assert.match(seenCommand, /pi-coding-agent/);
+    assert.doesNotMatch(seenCommand, /pgrep -x 'pi'/);
   });
 });

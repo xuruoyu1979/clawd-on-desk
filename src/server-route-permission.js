@@ -38,6 +38,12 @@ function shouldBypassOpencodeBubble(ctx) {
   return !ctx.isAgentPermissionsEnabled("opencode");
 }
 
+function shouldBypassPiBubble(ctx) {
+  if (!arePermissionBubblesEnabled(ctx)) return true;
+  if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
+  return !ctx.isAgentPermissionsEnabled("pi");
+}
+
 function shouldBypassCodexBubble(ctx) {
   if (!arePermissionBubblesEnabled(ctx)) return true;
   if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
@@ -60,6 +66,11 @@ function arePermissionBubblesEnabled(ctx) {
 }
 
 function sendCodexPermissionNoDecision(res) {
+  res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+  res.end();
+}
+
+function sendPiPermissionNoDecision(res) {
   res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
   res.end();
 }
@@ -307,6 +318,85 @@ function handlePermissionPost(req, res, options) {
         return;
       }
 
+      // ── Pi extension PermissionRequest branch ──
+      // Pi waits synchronously on tool_call handlers but has no native
+      // permission prompt. Any Clawd-side no-decision must therefore return
+      // promptly so the extension can call ctx.ui.confirm() in the terminal.
+      if (data.agent_id === "pi") {
+        const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "unknown";
+        const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+        const toolInput = truncateDeep(rawInput);
+        const sessionId = typeof data.session_id === "string" && data.session_id ? data.session_id : "pi:default";
+        const toolUseId = normalizeHookToolUseId(
+          data.tool_use_id ?? data.toolUseId ?? data.toolUseID
+        );
+        const toolInputFingerprint = buildToolInputFingerprint(rawInput);
+
+        if (ctx.doNotDisturb) {
+          recordRequestHookEvent.droppedByDnd();
+          ctx.permLog(`pi DND -> no decision, terminal fallback (tool=${toolName})`);
+          sendPiPermissionNoDecision(res);
+          return;
+        }
+
+        if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("pi")) {
+          recordRequestHookEvent.droppedByDisabled();
+          ctx.permLog(`pi disabled -> no decision, terminal fallback (tool=${toolName})`);
+          sendPiPermissionNoDecision(res);
+          return;
+        }
+
+        if (shouldBypassPiBubble(ctx)) {
+          recordRequestHookEvent.accepted();
+          const reason = !arePermissionBubblesEnabled(ctx)
+            ? "permission bubbles disabled"
+            : "pi bubbles disabled";
+          ctx.permLog(`${reason} -> no decision, terminal fallback (tool=${toolName})`);
+          sendPiPermissionNoDecision(res);
+          return;
+        }
+
+        const permEntry = {
+          res,
+          abortHandler: null,
+          suggestions: [],
+          sessionId,
+          bubble: null,
+          hideTimer: null,
+          toolName,
+          toolInput,
+          toolUseId,
+          toolInputFingerprint,
+          resolvedSuggestion: null,
+          createdAt: Date.now(),
+          agentId: "pi",
+          isPi: true,
+        };
+        const abortHandler = () => {
+          if (res.writableFinished) return;
+          ctx.permLog("abortHandler fired (pi)");
+          ctx.resolvePermissionEntry(permEntry, "no-decision", "Client disconnected");
+        };
+        permEntry.abortHandler = abortHandler;
+        res.on("close", abortHandler);
+
+        ctx.pendingPermissions.push(permEntry);
+        ctx.updateSession(sessionId, "notification", "PermissionRequest", { agentId: "pi" });
+
+        ctx.permLog(`pi showing bubble: tool=${toolName} session=${sessionId} stack=${ctx.pendingPermissions.length}`);
+        recordRequestHookEvent.accepted();
+        try {
+          ctx.showPermissionBubble(permEntry);
+        } catch (bubbleErr) {
+          ctx.permLog(`pi bubble failed: ${bubbleErr && bubbleErr.message} -> no decision`);
+          const popIdx = ctx.pendingPermissions.indexOf(permEntry);
+          if (popIdx !== -1) ctx.pendingPermissions.splice(popIdx, 1);
+          if (permEntry.abortHandler) res.removeListener("close", permEntry.abortHandler);
+          sendPiPermissionNoDecision(res);
+        }
+        return;
+      }
+
       // ── Claude Code branch ──
       // DND: destroy connection — do NOT send deny on the user's behalf.
       // CC falls back to its built-in chat permission prompt so the user
@@ -462,8 +552,10 @@ module.exports = {
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
+  shouldBypassPiBubble,
   arePermissionBubblesEnabled,
   shouldInterceptCodexPermission,
   sendCodexPermissionNoDecision,
+  sendPiPermissionNoDecision,
   handlePermissionPost,
 };

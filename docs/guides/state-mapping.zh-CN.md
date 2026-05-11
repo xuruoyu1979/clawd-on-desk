@@ -39,6 +39,24 @@ Kimi Code CLI（Kimi-CLI）现已采用 hook-only 集成（`~/.kimi/config.toml`
 | PostCompact | attention |
 | Notification | notification |
 
+## Pi Extension 事件
+
+Pi 使用全局 extension（`~/.pi/agent/extensions/clawd-on-desk`），会把交互式会话生命周期事件映射到 Clawd 的共享状态：
+
+| Pi Extension Event | Clawd Event | 状态 |
+|---|---|---|
+| session_start | SessionStart | idle |
+| before_agent_start | UserPromptSubmit | thinking |
+| tool_call | PreToolUse | working |
+| tool_result (ok) | PostToolUse | working |
+| tool_result (isError) | PostToolUseFailure | error |
+| agent_end | Stop | attention |
+| session_before_compact | PreCompact | sweeping |
+| session_compact | PostCompact | attention |
+| session_shutdown | SessionEnd | 删除会话；无其他 live 会话时回到 idle |
+
+Pi 当前在 Clawd 中是 state-only 集成：权限审批仍在 Pi 自己的终端 / TUI 中处理。
+
 ## 极简模式
 
 拖到屏幕右边缘（或右键 →"极简模式"）进入——半身露出在屏幕边缘，悬停时探出来。

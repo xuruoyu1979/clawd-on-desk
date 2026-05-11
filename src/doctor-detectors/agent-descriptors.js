@@ -11,6 +11,8 @@ const codebuddy = require("../../hooks/codebuddy-install");
 const kiro = require("../../hooks/kiro-install");
 const kimi = require("../../hooks/kimi-install");
 const opencode = require("../../hooks/opencode-install");
+const pi = require("../../hooks/pi-install");
+const openclaw = require("../../hooks/openclaw-install");
 
 function agentName(agentId) {
   const agent = getAgent(agentId);
@@ -126,6 +128,30 @@ const AGENT_DESCRIPTORS = Object.freeze([
     // Detection matches an absolute plugin entry by basename.
     marker: "opencode-plugin",
     detection: "opencode-plugin",
+  }),
+  Object.freeze({
+    agentId: "pi",
+    agentName: agentName("pi"),
+    eventSource: agentEventSource("pi"),
+    parentDir: pi.DEFAULT_PARENT_DIR,
+    configPath: pi.DEFAULT_EXTENSION_DIR,
+    configMode: "pi-extension",
+    autoInstall: true,
+    marker: pi.EXTENSION_FILE,
+    coreFile: pi.CORE_FILE,
+    markerFile: pi.MARKER_FILE,
+  }),
+  Object.freeze({
+    agentId: "openclaw",
+    agentName: agentName("openclaw"),
+    eventSource: agentEventSource("openclaw"),
+    parentDir: openclaw.DEFAULT_STATE_DIR,
+    configPath: openclaw.DEFAULT_CONFIG_PATH,
+    configMode: "openclaw-plugin",
+    autoInstall: true,
+    marker: openclaw.PLUGIN_DIR_NAME,
+    pluginId: openclaw.PLUGIN_ID,
+    detection: "openclaw-plugin",
   }),
 ]);
 
