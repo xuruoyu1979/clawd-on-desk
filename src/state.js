@@ -1091,8 +1091,6 @@ function detectRunningAgentProcesses(callback) {
   }
   const { execFile, exec } = require("child_process");
   if (process.platform === "win32") {
-    // wmic was removed from Windows 11 24H2 default installs. Use PowerShell
-    // Get-CimInstance for the equivalent agent-process probe.
     const psScript =
       "$names = 'claude.exe','codex.exe','copilot.exe','gemini.exe','codebuddy.exe','kiro-cli.exe','kimi.exe','opencode.exe','pi.exe','hermes.exe'; " +
       "$match = Get-CimInstance Win32_Process | Where-Object { " +

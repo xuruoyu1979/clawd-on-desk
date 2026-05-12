@@ -171,8 +171,6 @@ function buildStateBody(event, payload, resolve) {
     if (agentPid) {
       body.agent_pid = agentPid;
       body.claude_pid = agentPid; // backward compat with older Clawd versions
-      // Headless (-p/--print) detection reuses the agentCommandLine captured by
-      // the resolver — no extra spawn here. See hooks/shared-process.js.
       if (agentCommandLine && /\s(-p|--print)(\s|$)/.test(agentCommandLine)) {
         body.headless = true;
       }

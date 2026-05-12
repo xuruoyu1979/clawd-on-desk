@@ -287,9 +287,6 @@ function detectEditor(name: string, editorByProcess: Map<string, "code" | "curso
   return undefined;
 }
 
-// Windows 11 24H2+ no longer ships wmic. Take one Get-CimInstance snapshot of
-// all processes and walk it in memory — saves N PowerShell cold-starts (~270 ms
-// each) on a chain of depth N.
 type WinProcessRecord = { name: string; rawName: string; ppid: number };
 
 function getWindowsProcessSnapshot(): Map<number, WinProcessRecord> {

@@ -168,10 +168,8 @@ function getPortCandidates() {
   return ordered;
 }
 
-// Snapshot the entire Windows process table in one PowerShell call. wmic was
-// removed from Win 11 24H2 default installs (FoD), and a per-PID PS query
-// cold-starts the runtime every ancestor (~270 ms each). One snapshot keeps
-// the walk near the wmic-era timing.
+// One PS spawn per resolve, not per ancestor — PowerShell cold-start (~270 ms)
+// would dominate the walk otherwise. Returns empty Map on failure.
 function getWindowsProcessSnapshot() {
   try {
     const out = execFileSync(
@@ -201,18 +199,10 @@ function getWindowsProcessSnapshot() {
   }
 }
 
-// Walk the process tree from process.pid until we hit a terminal app (for
-// window focus) or a system boundary (explorer.exe / launchd / systemd). The
-// walk keeps going past the first terminal match so we can pick the OUTERMOST
-// terminal — matters for Electron terminals like Antigravity where the chain
-// shows renderer→main, and we want the main process so Clawd can activate the
-// right window. Synchronous + cached; runs once at plugin init (one PS spawn
-// on Windows after the 24H2 fix). Never throws — returns null if the walk
-// completely fails.
-//
-// Mirrors hooks/clawd-hook.js getStablePid() but starts at process.pid (plugin
-// is in-process with opencode, not a child hook script) and skips the
-// Claude-specific binary detection.
+// Walks past the first terminal match to pick the OUTERMOST terminal —
+// matters for Electron terminals like Antigravity where the chain shows
+// renderer→main and we want the main process so Clawd activates the right
+// window. Cached after first call.
 function getStablePid() {
   if (_stablePid) return _stablePid;
   const isWin = platform() === "win32";
@@ -227,10 +217,6 @@ function getStablePid() {
   _pidChain = [];
   _detectedEditor = null;
 
-  // Windows: snapshot all processes once. Win 11 24H2 dropped wmic from the
-  // default install, and PowerShell cold-starts at ~270 ms — one spawn per
-  // ancestor would push the walk past 1 s. Single snapshot keeps it close to
-  // the wmic-era timing.
   const winSnapshot = isWin ? getWindowsProcessSnapshot() : null;
 
   for (let i = 0; i < 10 && pid && pid > 1; i++) {
@@ -585,10 +571,7 @@ export default async (ctx) => {
   _ctxClient = ctx && ctx.client ? ctx.client : null;
   _cwd = ctx && typeof ctx.directory === "string" ? ctx.directory : "";
   debugLog(`INIT directory=${_cwd} serverUrl=${_serverUrl} pid=${process.pid} hasClient=${!!_ctxClient}`);
-  // Resolve terminal PID synchronously at init. One PowerShell snapshot call
-  // on Windows (~300-500 ms) is acceptable because opencode's TUI is still
-  // booting — the user never sees it. After init, every POST reads the cached
-  // result.
+  // Sync init blocks the TUI boot path; later POSTs hit the cached result.
   getStablePid();
   startBridge();
 

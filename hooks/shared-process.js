@@ -81,13 +81,8 @@ function getPlatformConfig(options) {
 //   startPid             — number (default process.ppid)
 //   maxDepth             — number (default 8)
 
-// Windows: snapshot the entire process table in a single PowerShell invocation.
-// `wmic` was removed from Win 11 24H2 default installs (FoD), and PowerShell
-// cold-start is heavy (~270 ms), so spawning one PS per ancestor walked would
-// make the resolver multi-second. One snapshot + in-memory Map walk keeps the
-// total cost to a single PS spawn regardless of chain depth.
-//
-// Returns Map<pid, { name, ppid, commandLine }>. Empty Map on failure.
+// One PS spawn per resolve, not per ancestor — PowerShell cold-start (~270 ms)
+// would dominate the walk otherwise. Returns empty Map on failure.
 function getWindowsProcessSnapshot(execFileSync) {
   try {
     const out = execFileSync(
@@ -174,8 +169,6 @@ function createPidResolver(options) {
       pidChain.push(pid);
       if (!detectedEditor && editorMap[name]) detectedEditor = editorMap[name];
 
-      // Agent process detection. agentCommandLine is captured here so callers
-      // (e.g. clawd-hook headless detection) can reuse it without re-spawning.
       if (!agentPid) {
         if (agentNameSet && agentNameSet.has(name)) {
           agentPid = pid;
