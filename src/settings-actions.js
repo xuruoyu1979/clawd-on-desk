@@ -163,6 +163,11 @@ const updateRegistry = {
     0,
     MAX_AUTO_CLOSE_SECONDS
   ),
+  permissionBubbleAutoCloseSeconds: requireIntegerInRange(
+    "permissionBubbleAutoCloseSeconds",
+    0,
+    MAX_AUTO_CLOSE_SECONDS
+  ),
   updateBubbleAutoCloseSeconds: requireIntegerInRange(
     "updateBubbleAutoCloseSeconds",
     0,

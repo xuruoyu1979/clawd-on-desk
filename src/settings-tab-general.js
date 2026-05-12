@@ -23,6 +23,7 @@
   ]);
   const BUBBLE_POLICY_KEYS = new Set([
     "permissionBubblesEnabled",
+    "permissionBubbleAutoCloseSeconds",
     "notificationBubbleAutoCloseSeconds",
     "updateBubbleAutoCloseSeconds",
   ]);
@@ -576,7 +577,8 @@
       category: "permission",
       labelKey: "bubblePermissionLabel",
       descKey: "bubblePermissionDesc",
-      secondsKey: null,
+      enabledKey: "permissionBubblesEnabled",
+      secondsKey: "permissionBubbleAutoCloseSeconds",
     }));
     list.appendChild(buildBubbleCategoryControl({
       category: "notification",
@@ -594,8 +596,8 @@
     return list;
   }
 
-  function buildBubbleCategoryControl({ category, labelKey, descKey, warningKey = null, secondsKey = null }) {
-    const stateKey = secondsKey || "permissionBubblesEnabled";
+  function buildBubbleCategoryControl({ category, labelKey, descKey, warningKey = null, secondsKey = null, enabledKey = null }) {
+    const stateKey = enabledKey || secondsKey || "permissionBubblesEnabled";
     const item = document.createElement("div");
     item.className = "bubble-policy-item";
     item.innerHTML =
@@ -625,6 +627,7 @@
 
     function currentEnabled() {
       if (state.snapshot && state.snapshot.hideBubbles === true) return false;
+      if (enabledKey) return !!(state.snapshot && state.snapshot[enabledKey] !== false);
       if (!secondsKey) return !!(state.snapshot && state.snapshot.permissionBubblesEnabled !== false);
       const seconds = Number(state.snapshot && state.snapshot[secondsKey]);
       return Number.isFinite(seconds) && seconds > 0;
@@ -785,6 +788,15 @@
       row: item,
       syncFromSnapshot,
     });
+    // Permission row owns two settings keys (the on/off toggle and the
+    // autoclose seconds). Register the secondary key against the same row so
+    // the diff-based sync loop can resolve either key without remounting.
+    if (secondsKey && secondsKey !== stateKey) {
+      state.mountedControls.bubblePolicyControls.set(secondsKey, {
+        row: item,
+        syncFromSnapshot,
+      });
+    }
 
     return item;
   }

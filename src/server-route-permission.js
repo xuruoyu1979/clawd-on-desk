@@ -534,7 +534,30 @@ function handlePermissionPost(req, res, options) {
 
       ctx.permLog(`showing bubble: tool=${toolName} session=${sessionId} suggestions=${suggestions.length} stack=${ctx.pendingPermissions.length}`);
       recordRequestHookEvent.accepted();
-      ctx.showPermissionBubble(permEntry);
+      try {
+        ctx.showPermissionBubble(permEntry);
+      } catch (bubbleErr) {
+        // Mirror the Codex/Pi branches: a BrowserWindow construction failure
+        // here would leave a ghost permEntry in pendingPermissions because
+        // abortHandler only fires on res close. Pop the entry explicitly and
+        // destroy the socket so CC falls back to its built-in chat prompt
+        // (non-blocking error per hooks doc) instead of hanging on a stale
+        // bubble that was never visible. showPermissionBubble assigns
+        // permEntry.bubble before loadFile/showInactive/reposition, so a
+        // throw after that point leaves a partially-constructed window —
+        // tear it down along with any timers we've armed.
+        ctx.permLog(`bubble failed: ${bubbleErr && bubbleErr.message} -> drop connection, chat fallback`);
+        const popIdx = ctx.pendingPermissions.indexOf(permEntry);
+        if (popIdx !== -1) ctx.pendingPermissions.splice(popIdx, 1);
+        if (permEntry.abortHandler) res.removeListener("close", permEntry.abortHandler);
+        if (permEntry.autoCloseTimer) { clearTimeout(permEntry.autoCloseTimer); permEntry.autoCloseTimer = null; }
+        if (permEntry.hideTimer) { clearTimeout(permEntry.hideTimer); permEntry.hideTimer = null; }
+        if (permEntry.bubble && !permEntry.bubble.isDestroyed()) {
+          try { permEntry.bubble.destroy(); } catch {}
+        }
+        permEntry.bubble = null;
+        try { res.destroy(); } catch {}
+      }
     } catch (err) {
       ctx.permLog(`/permission handler error: ${err && err.message}`);
       // Response may already be sent (opencode branch 200-ACKs before
