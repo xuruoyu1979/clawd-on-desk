@@ -174,9 +174,6 @@ function getHitRectScreen(theme, bounds, state, file, hitBox, options = {}) {
     right: artRect.x + (hitBox.x - vb.x + hitBox.w) * scaleX + padX,
     bottom: artRect.y + (hitBox.y - vb.y + hitBox.h) * scaleY + padY,
   };
-  console.log("[clawd-hitwin] getHitRectScreen:", JSON.stringify({
-    bounds, artRect, vb, hitBox, scaleX, scaleY, padX, padY, hit,
-  }));
   return hit;
 }
 

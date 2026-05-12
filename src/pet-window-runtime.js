@@ -133,12 +133,15 @@ function createPetWindowRuntime(options = {}) {
   function getPetWindowBounds() {
     const win = getRenderWindow();
     if (!isLiveWindow(win)) return null;
-    const bounds = win.getBounds();
+    const raw = win.getBounds();
+    if (raw.x === 0 && raw.y === 0) {
+      console.warn("[clawd-hitwin] getPetWindowBounds: win.getBounds() returned origin!", raw);
+    }
     return {
-      x: bounds.x,
-      y: bounds.y - viewportOffsetY,
-      width: bounds.width,
-      height: bounds.height,
+      x: raw.x,
+      y: raw.y - viewportOffsetY,
+      width: raw.width,
+      height: raw.height,
     };
   }
 
@@ -152,6 +155,13 @@ function createPetWindowRuntime(options = {}) {
   }
 
   function applyPetWindowBounds(bounds) {
+    if (!bounds) {
+      console.warn("[clawd-hitwin] applyPetWindowBounds: null bounds received");
+      return null;
+    }
+    if (bounds.x === 0 && bounds.y === 0) {
+      console.warn("[clawd-hitwin] applyPetWindowBounds: bounds at origin!", bounds);
+    }
     const win = getRenderWindow();
     if (!isLiveWindow(win) || !bounds) return null;
     const materialized = materializeVirtualBounds(bounds);
@@ -375,7 +385,6 @@ function createPetWindowRuntime(options = {}) {
       width: Math.round(hit.right - hit.left),
       height: Math.round(hit.bottom - hit.top),
     };
-    console.log("[clawd-hitwin] getInitialHitWindowBounds:", JSON.stringify({ renderBounds, hit, result }));
     return result;
   }
 
@@ -461,15 +470,6 @@ function createPetWindowRuntime(options = {}) {
     const svgFile = getCurrentSvg();
     const hitBox = getCurrentHitBox();
     const petBounds = getPetWindowBounds();
-    console.log("[clawd-hitwin] createHitWindow startup:", JSON.stringify({
-      petBounds,
-      themeId: theme && theme._id,
-      viewBox: theme && theme.viewBox,
-      hitBox,
-      state,
-      svgFile,
-      initialHitWindowBounds,
-    }));
     const hitWin = new BrowserWindow({
       width: initialHitWindowBounds.width,
       height: initialHitWindowBounds.height,
