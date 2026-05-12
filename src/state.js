@@ -1089,11 +1089,20 @@ function detectRunningAgentProcesses(callback) {
     done(false);
     return;
   }
-  const { exec } = require("child_process");
+  const { execFile, exec } = require("child_process");
   if (process.platform === "win32") {
-    exec(
-      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\' or Name=\'codex.exe\' or Name=\'copilot.exe\' or Name=\'gemini.exe\' or Name=\'codebuddy.exe\' or Name=\'kiro-cli.exe\' or Name=\'kimi.exe\' or Name=\'opencode.exe\' or Name=\'pi.exe\' or Name=\'hermes.exe\'" get ProcessId /format:csv',
-      { encoding: "utf8", timeout: 5000, windowsHide: true },
+    // wmic was removed from Windows 11 24H2 default installs. Use PowerShell
+    // Get-CimInstance for the equivalent agent-process probe.
+    const psScript =
+      "$names = 'claude.exe','codex.exe','copilot.exe','gemini.exe','codebuddy.exe','kiro-cli.exe','kimi.exe','opencode.exe','pi.exe','hermes.exe'; " +
+      "$match = Get-CimInstance Win32_Process | Where-Object { " +
+        "$names -contains $_.Name -or ($_.Name -eq 'node.exe' -and $_.CommandLine -like '*claude-code*') " +
+      "} | Select-Object -First 1; " +
+      "if ($match) { $match.ProcessId }";
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", psScript],
+      { encoding: "utf8", timeout: 5000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout) => done(!err && /\d+/.test(stdout))
     );
   } else {
