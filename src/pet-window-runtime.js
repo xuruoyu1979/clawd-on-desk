@@ -369,12 +369,14 @@ function createPetWindowRuntime(options = {}) {
   function getInitialHitWindowBounds(renderBounds = getPetWindowBounds()) {
     const hit = getHitRectScreen(renderBounds);
     if (!hit) return null;
-    return {
+    const result = {
       x: Math.round(hit.left),
       y: Math.round(hit.top),
       width: Math.round(hit.right - hit.left),
       height: Math.round(hit.bottom - hit.top),
     };
+    console.log("[clawd-hitwin] getInitialHitWindowBounds:", JSON.stringify({ renderBounds, hit, result }));
+    return result;
   }
 
   function createRenderWindow(optionsArg = {}) {
@@ -454,6 +456,20 @@ function createPetWindowRuntime(options = {}) {
       throw new Error("createHitWindow requires BrowserWindow");
     }
     const initialHitWindowBounds = getInitialHitWindowBounds();
+    const theme = getActiveTheme();
+    const state = getCurrentState();
+    const svgFile = getCurrentSvg();
+    const hitBox = getCurrentHitBox();
+    const petBounds = getPetWindowBounds();
+    console.log("[clawd-hitwin] createHitWindow startup:", JSON.stringify({
+      petBounds,
+      themeId: theme && theme._id,
+      viewBox: theme && theme.viewBox,
+      hitBox,
+      state,
+      svgFile,
+      initialHitWindowBounds,
+    }));
     const hitWin = new BrowserWindow({
       width: initialHitWindowBounds.width,
       height: initialHitWindowBounds.height,
