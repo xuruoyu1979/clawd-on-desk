@@ -287,31 +287,39 @@ function detectEditor(name: string, editorByProcess: Map<string, "code" | "curso
   return undefined;
 }
 
-function parseWindowsProcessInfo(pid: number, raw: string): ProcessInfo | null {
-  let name = "";
-  let ppid = 0;
-  for (const line of raw.split(/\r?\n/)) {
-    const idx = line.indexOf("=");
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    if (key === "name") name = value;
-    if (key === "parentprocessid") ppid = Number(value);
+type WinProcessRecord = { name: string; rawName: string; ppid: number };
+
+function getWindowsProcessSnapshot(): Map<number, WinProcessRecord> {
+  try {
+    const raw = childProcess.execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile", "-NonInteractive", "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name | ConvertTo-Json -Compress",
+      ],
+      { encoding: "utf8", timeout: 3000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }
+    );
+    const trimmed = (raw || "").trim();
+    if (!trimmed) return new Map();
+    const parsed = JSON.parse(trimmed);
+    const list: any[] = Array.isArray(parsed) ? parsed : [parsed];
+    const map = new Map<number, WinProcessRecord>();
+    for (const proc of list) {
+      const pid = Number(proc && proc.ProcessId);
+      if (!Number.isFinite(pid)) continue;
+      const rawName = typeof proc.Name === "string" ? proc.Name : "";
+      const ppid = Number(proc.ParentProcessId) || 0;
+      if (!rawName) continue;
+      map.set(pid, { rawName, name: normalizeProcessName(rawName), ppid: Math.floor(ppid) });
+    }
+    return map;
+  } catch {
+    return new Map();
   }
-  if (!name || !Number.isFinite(ppid) || ppid <= 0) return null;
-  return { pid, ppid: Math.floor(ppid), name: normalizeProcessName(name), rawName: name };
 }
 
-function getProcessInfo(pid: number): ProcessInfo | null {
+function getUnixProcessInfo(pid: number): ProcessInfo | null {
   try {
-    if (process.platform === "win32") {
-      const raw = childProcess.execFileSync(
-        "wmic",
-        ["process", "where", `ProcessId=${pid}`, "get", "Name,ParentProcessId", "/format:list"],
-        { encoding: "utf8", timeout: 1000, windowsHide: true }
-      );
-      return parseWindowsProcessInfo(pid, raw);
-    }
     const raw = childProcess.execFileSync(
       "ps",
       ["-o", "ppid=", "-o", "comm=", "-p", String(pid)],
@@ -340,9 +348,19 @@ function getProcessMetadata(): ProcessMetadata {
   let editor: "code" | "cursor" | undefined;
   let pid = process.pid;
   const { terminalNames, systemBoundary, editorByProcess } = getPlatformProcessConfig();
+  const isWin = process.platform === "win32";
+  const winSnapshot = isWin ? getWindowsProcessSnapshot() : null;
 
   for (let depth = 0; depth < 12; depth++) {
-    const info = getProcessInfo(pid);
+    let info: ProcessInfo | null;
+    if (isWin) {
+      const snap = winSnapshot!.get(pid);
+      info = snap && snap.ppid > 0
+        ? { pid, ppid: snap.ppid, name: snap.name, rawName: snap.rawName }
+        : null;
+    } else {
+      info = getUnixProcessInfo(pid);
+    }
     if (!info) break;
     pidChain.push(info.pid);
 

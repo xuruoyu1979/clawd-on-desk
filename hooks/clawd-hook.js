@@ -165,24 +165,15 @@ function buildStateBody(event, payload, resolve) {
   if (process.env.CLAWD_REMOTE) {
     body.host = readHostPrefix();
   } else {
-    const { stablePid, agentPid, detectedEditor, pidChain } = resolve();
+    const { stablePid, agentPid, agentCommandLine, detectedEditor, pidChain } = resolve();
     body.source_pid = stablePid;
     if (detectedEditor) body.editor = detectedEditor;
     if (agentPid) {
       body.agent_pid = agentPid;
       body.claude_pid = agentPid; // backward compat with older Clawd versions
-      // Check if claude process is running in non-interactive (-p/--print) mode
-      try {
-        const { execSync } = require("child_process");
-        const isWin = process.platform === "win32";
-        const cmdOut = isWin
-          ? execSync(
-              `wmic process where "ProcessId=${agentPid}" get CommandLine /format:csv`,
-              { encoding: "utf8", timeout: 500, windowsHide: true }
-            )
-          : execSync(`ps -o command= -p ${agentPid}`, { encoding: "utf8", timeout: 500 });
-        if (/\s(-p|--print)(\s|$)/.test(cmdOut)) body.headless = true;
-      } catch {}
+      if (agentCommandLine && /\s(-p|--print)(\s|$)/.test(agentCommandLine)) {
+        body.headless = true;
+      }
     }
     if (pidChain.length) body.pid_chain = pidChain;
   }
