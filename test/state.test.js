@@ -366,15 +366,15 @@ describe("working sub-animations", () => {
     assert.strictEqual(api.getSvgOverride("working"), "clawd-working-building.svg");
   });
 
-  it("1 juggling session → juggling SVG", () => {
+  it("1 juggling session → headphones groove SVG", () => {
     api.sessions.set("s1", rawSession("juggling"));
-    assert.strictEqual(api.getSvgOverride("juggling"), "clawd-working-juggling.svg");
+    assert.strictEqual(api.getSvgOverride("juggling"), "clawd-headphones-groove.svg");
   });
 
-  it("2+ juggling sessions → conducting SVG", () => {
+  it("2+ juggling sessions → three-ball juggling SVG", () => {
     api.sessions.set("s1", rawSession("juggling"));
     api.sessions.set("s2", rawSession("juggling"));
-    assert.strictEqual(api.getSvgOverride("juggling"), "clawd-working-conducting.svg");
+    assert.strictEqual(api.getSvgOverride("juggling"), "clawd-working-juggling.svg");
   });
 
   it("idle → follow SVG", () => {
