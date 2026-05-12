@@ -293,6 +293,108 @@ print(json.dumps(cases, sort_keys=True))
     assert.deepStrictEqual(cases.failure, {});
   });
 
+  it("uses one PowerShell CIM snapshot for Windows process metadata", () => {
+    // Concatenate so this file does not match the project-wide deprecated-tool grep.
+    const deprecatedProcessTool = "w" + "mic";
+    const deprecatedProcessToolPattern = new RegExp(`\\b${deprecatedProcessTool}\\b`, "i");
+    assert.doesNotMatch(readPluginSource(), deprecatedProcessToolPattern);
+    const output = runPluginPython(String.raw`
+import importlib.util
+import json
+import sys
+import types
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hermes_plugin", r"hooks/hermes-plugin/__init__.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+mod._platform_key = lambda: "win32"
+calls = []
+snapshot = [
+    {"ProcessId": 10, "Name": "python.exe", "ParentProcessId": 20, "ExecutablePath": "", "CommandLine": ""},
+    {"ProcessId": 20, "Name": "hermes.exe", "ParentProcessId": 30, "ExecutablePath": "", "CommandLine": ""},
+    {"ProcessId": 30, "Name": "pwsh.exe", "ParentProcessId": 40, "ExecutablePath": "", "CommandLine": ""},
+    {"ProcessId": 40, "Name": "WindowsTerminal.exe", "ParentProcessId": 50, "ExecutablePath": "", "CommandLine": ""},
+    {"ProcessId": 50, "Name": "explorer.exe", "ParentProcessId": 4, "ExecutablePath": "", "CommandLine": ""},
+]
+
+def fake_run(args, timeout=0.8):
+    calls.append({"args": list(args), "timeout": timeout})
+    joined = " ".join(args).lower()
+    # Concatenate so this test file itself does not match the project-wide grep.
+    assert ("w" + "mic") not in joined
+    assert args[0] == "powershell.exe"
+    assert "Get-CimInstance Win32_Process" in args[-1]
+    return types.SimpleNamespace(returncode=0, stdout=json.dumps(snapshot))
+
+mod._run_process_command = fake_run
+meta = mod._resolve_process_metadata(10)
+
+print(json.dumps({"calls": calls, "meta": meta}, sort_keys=True))
+`);
+    const result = JSON.parse(output);
+    assert.strictEqual(result.calls.length, 1);
+    assert.match(result.calls[0].args.join(" "), /Get-CimInstance Win32_Process/);
+    assert.doesNotMatch(result.calls[0].args.join(" "), deprecatedProcessToolPattern);
+    assert.strictEqual(result.meta.source_pid, 40);
+    assert.deepStrictEqual(result.meta.pid_chain, [10, 20, 30, 40, 50]);
+  });
+
+  it("falls back to per-PID CIM lookups when the Windows snapshot is unavailable", () => {
+    const output = runPluginPython(String.raw`
+import importlib.util
+import json
+import re
+import sys
+import types
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hermes_plugin", r"hooks/hermes-plugin/__init__.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+mod._platform_key = lambda: "win32"
+tree = {
+    10: {"ProcessId": 10, "Name": "python.exe", "ParentProcessId": 20, "ExecutablePath": "", "CommandLine": ""},
+    20: {"ProcessId": 20, "Name": "hermes.exe", "ParentProcessId": 30, "ExecutablePath": "", "CommandLine": ""},
+    30: {"ProcessId": 30, "Name": "pwsh.exe", "ParentProcessId": 40, "ExecutablePath": "", "CommandLine": ""},
+    40: {"ProcessId": 40, "Name": "Code.exe", "ParentProcessId": 50, "ExecutablePath": "", "CommandLine": ""},
+    50: {"ProcessId": 50, "Name": "explorer.exe", "ParentProcessId": 4, "ExecutablePath": "", "CommandLine": ""},
+}
+calls = []
+
+def fake_run(args, timeout=0.8):
+    calls.append({"args": list(args), "timeout": timeout})
+    script = args[-1]
+    joined = " ".join(args).lower()
+    assert ("w" + "mic") not in joined
+    assert args[0] == "powershell.exe"
+    assert "Get-CimInstance Win32_Process" in script
+    if "-Filter" not in script:
+        return types.SimpleNamespace(returncode=0, stdout="[]")
+    match = re.search(r"ProcessId=(\d+)", script)
+    assert match
+    row = tree.get(int(match.group(1)))
+    return types.SimpleNamespace(returncode=0, stdout=json.dumps(row or {}))
+
+mod._run_process_command = fake_run
+meta = mod._resolve_process_metadata(10)
+
+print(json.dumps({"calls": calls, "meta": meta}, sort_keys=True))
+`);
+    const result = JSON.parse(output);
+    assert.strictEqual(result.calls.length, 6);
+    assert.doesNotMatch(result.calls[0].args.join(" "), /-Filter/);
+    assert.deepStrictEqual(
+      result.calls.slice(1).map((call) => call.args.join(" ").match(/ProcessId=(\d+)/)[1]),
+      ["10", "20", "30", "40", "50"]
+    );
+    assert.strictEqual(result.meta.source_pid, 40);
+    assert.strictEqual(result.meta.editor, "code");
+    assert.deepStrictEqual(result.meta.pid_chain, [10, 20, 30, 40, 50]);
+  });
+
   it("attaches cached Hermes process metadata to state payloads without hot-path lookups", () => {
     const output = runPluginPython(String.raw`
 import importlib.util

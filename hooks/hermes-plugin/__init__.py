@@ -7,7 +7,6 @@ a Hermes hook callback.
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import subprocess
@@ -318,45 +317,52 @@ def _process_info(pid: int, name: Any, parent_pid: Any, path: Any = "", cmdline:
     }
 
 
-def _parse_wmic_process_info(pid: int, text: str) -> Optional[Dict[str, Any]]:
-    rows = [line for line in str(text or "").splitlines() if line.strip()]
-    if len(rows) < 2:
+def _windows_process_info_from_row(row: Any, fallback_pid: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    if not isinstance(row, dict):
         return None
+    pid = _int_pid(row.get("ProcessId"))
+    if not pid:
+        pid = _int_pid(fallback_pid)
+    if not pid:
+        return None
+    return _process_info(
+        pid,
+        row.get("Name"),
+        row.get("ParentProcessId"),
+        row.get("ExecutablePath") or "",
+        row.get("CommandLine") or "",
+    )
+
+
+def _query_windows_process_snapshot() -> Dict[int, Dict[str, Any]]:
+    script = (
+        "Get-CimInstance Win32_Process | "
+        "Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine | "
+        "ConvertTo-Json -Compress"
+    )
+    result = _run_process_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=3.0)
+    if not result or result.returncode != 0 or not result.stdout.strip():
+        return {}
     try:
-        for row in csv.DictReader(rows):
-            lowered = {str(key).lower(): value for key, value in row.items()}
-            info = _process_info(
-                pid,
-                lowered.get("name"),
-                lowered.get("parentprocessid"),
-                lowered.get("executablepath") or "",
-                lowered.get("commandline") or "",
-            )
-            if info:
-                return info
+        parsed = json.loads(result.stdout)
     except Exception:
-        return None
-    return None
-
-
-def _query_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
-    result = _run_process_command([
-        "wmic",
-        "process",
-        "where",
-        f"ProcessId={pid}",
-        "get",
-        "Name,ParentProcessId,ExecutablePath,CommandLine",
-        "/format:csv",
-    ])
-    if result and result.returncode == 0:
-        info = _parse_wmic_process_info(pid, result.stdout)
+        return {}
+    rows = parsed if isinstance(parsed, list) else [parsed]
+    snapshot: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        info = _windows_process_info_from_row(row)
         if info:
-            return info
+            snapshot[info["pid"]] = info
+    return snapshot
+
+
+def _query_windows_process_info(pid: int, snapshot: Optional[Dict[int, Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+    if snapshot is not None:
+        return snapshot.get(pid)
 
     script = (
         f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction SilentlyContinue; "
-        "if ($p) { $p | Select-Object Name,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress }"
+        "if ($p) { $p | Select-Object ProcessId,Name,ParentProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress }"
     )
     result = _run_process_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=1.2)
     if result and result.returncode == 0 and result.stdout.strip():
@@ -364,22 +370,15 @@ def _query_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
             row = json.loads(result.stdout)
             if isinstance(row, list):
                 row = row[0] if row else {}
-            if isinstance(row, dict):
-                info = _process_info(
-                    pid,
-                    row.get("Name"),
-                    row.get("ParentProcessId"),
-                    row.get("ExecutablePath") or "",
-                    row.get("CommandLine") or "",
-                )
-                if info:
-                    return info
+            info = _windows_process_info_from_row(row, pid)
+            if info:
+                return info
         except Exception:
             pass
 
     # PowerShell 7 exposes a Parent property on Get-Process. This is a useful
-    # fallback on Windows builds where WMIC is missing and Win32_Process CIM is
-    # unavailable. Windows PowerShell 5.1 may return no Parent; that is fine.
+    # fallback when Win32_Process CIM is unavailable. Windows PowerShell 5.1
+    # may return no Parent; that is fine.
     get_process_script = (
         f"$p=Get-Process -Id {pid} -ErrorAction SilentlyContinue; "
         "if ($p) { "
@@ -387,7 +386,7 @@ def _query_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
         "if ($p.Path) { $name=[IO.Path]::GetFileName($p.Path) }; "
         "$parentId=0; "
         "if ($p.Parent) { $parentId=$p.Parent.Id }; "
-        "[pscustomobject]@{Name=$name;ParentProcessId=$parentId;ExecutablePath=$p.Path;CommandLine=''} | ConvertTo-Json -Compress "
+        f"[pscustomobject]@{{ProcessId={pid};Name=$name;ParentProcessId=$parentId;ExecutablePath=$p.Path;CommandLine=''}} | ConvertTo-Json -Compress "
         "}"
     )
     for shell in ("pwsh.exe", "powershell.exe"):
@@ -398,15 +397,7 @@ def _query_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
             row = json.loads(result.stdout)
             if isinstance(row, list):
                 row = row[0] if row else {}
-            if not isinstance(row, dict):
-                continue
-            info = _process_info(
-                pid,
-                row.get("Name"),
-                row.get("ParentProcessId"),
-                row.get("ExecutablePath") or "",
-                row.get("CommandLine") or "",
-            )
+            info = _windows_process_info_from_row(row, pid)
             if info:
                 return info
         except Exception:
@@ -453,6 +444,9 @@ def _query_process_info(pid: int) -> Optional[Dict[str, Any]]:
     return _query_posix_process_info(pid)
 
 
+_DEFAULT_QUERY_PROCESS_INFO = _query_process_info
+
+
 def _detect_editor(platform: str, info: Dict[str, Any]) -> str:
     name = _normalize_process_name(info.get("name"))
     editor = EDITOR_NAMES.get(platform, EDITOR_NAMES["linux"]).get(name)
@@ -478,12 +472,20 @@ def _resolve_process_metadata(start_pid: Optional[int] = None) -> Dict[str, Any]
     terminal_pid: Optional[int] = None
     editor_pid: Optional[int] = None
     detected_editor = ""
+    query_process_info = _query_process_info
+    windows_snapshot: Optional[Dict[int, Dict[str, Any]]] = None
+    if platform == "win32" and query_process_info is _DEFAULT_QUERY_PROCESS_INFO:
+        windows_snapshot = _query_windows_process_snapshot()
+
+        if windows_snapshot:
+            def query_process_info(snapshot_pid: int) -> Optional[Dict[str, Any]]:
+                return _query_windows_process_info(snapshot_pid, windows_snapshot)
 
     for _ in range(PROCESS_TREE_MAX_DEPTH):
         if pid in seen:
             break
         seen.add(pid)
-        info = _query_process_info(pid)
+        info = query_process_info(pid)
         if not info:
             break
         current_pid = _int_pid(info.get("pid")) or pid

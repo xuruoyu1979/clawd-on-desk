@@ -1083,7 +1083,7 @@ function detectRunningAgentProcesses(callback) {
   // call entirely — nothing we could "find" should keep startup recovery
   // alive. When at least one agent is enabled, we still run the combined
   // detection because the query can't attribute individual processes back
-  // to agent ids (wmic/pgrep would need per-name queries), and the result
+  // to agent ids without per-name process queries, and the result
   // is only a boolean for startup recovery — not a session creator.
   if (typeof ctx.hasAnyEnabledAgent === "function" && !ctx.hasAnyEnabledAgent()) {
     done(false);
