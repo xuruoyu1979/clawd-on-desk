@@ -160,7 +160,8 @@ function createPetWindowRuntime(options = {}) {
       return null;
     }
     if (bounds.x === 0 && bounds.y === 0) {
-      console.warn("[clawd-hitwin] applyPetWindowBounds: bounds at origin!", bounds);
+      const err = new Error();
+      console.warn("[clawd-hitwin] applyPetWindowBounds: bounds at origin!", bounds, err.stack);
     }
     const win = getRenderWindow();
     if (!isLiveWindow(win) || !bounds) return null;
@@ -625,6 +626,18 @@ function createPetWindowRuntime(options = {}) {
       : null;
     const initialVirtualBounds = startupRegularizedBounds || startBounds;
     const initialMaterialized = materializeVirtualBounds(initialVirtualBounds);
+    console.log(
+      "[resolveStartupPlacement] startBounds=%o startupNeedsRegularize=%o startupRegularizedBounds=%o initialVirtualBounds=%o initialMaterialized=%o prefs.x=%s prefs.y=%s prefs.positionSaved=%o prefs.miniMode=%o",
+      startBounds,
+      startupNeedsRegularize,
+      startupRegularizedBounds,
+      initialVirtualBounds,
+      initialMaterialized,
+      prefs.x,
+      prefs.y,
+      prefs.positionSaved,
+      prefs.miniMode
+    );
     return {
       startBounds,
       startupNeedsRegularize,
