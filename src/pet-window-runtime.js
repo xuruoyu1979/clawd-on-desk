@@ -167,7 +167,10 @@ function createPetWindowRuntime(options = {}) {
     if (!isLiveWindow(win) || !bounds) return null;
     const materialized = materializeVirtualBounds(bounds);
     if (!materialized) return null;
+    console.log(`[clawd-hitwin] applyPetWindowBounds: win.setBounds(${JSON.stringify(materialized.bounds)})`);
     win.setBounds(materialized.bounds);
+    const actual = win.getBounds();
+    console.log(`[clawd-hitwin] applyPetWindowBounds: after setBounds, win.getBounds() = ${JSON.stringify(actual)}`);
     setViewportOffsetY(materialized.viewportOffsetY);
     repositionSessionHud();
     return materialized.bounds;
@@ -421,6 +424,8 @@ function createPetWindowRuntime(options = {}) {
       },
     });
 
+    const rawAfterNew = renderWin.getBounds();
+    console.log(`[clawd-hitwin] createRenderWindow: new BrowserWindow → getBounds() = ${JSON.stringify(rawAfterNew)}`);
     if (typeof optionsArg.setRenderWindow === "function") {
       optionsArg.setRenderWindow(renderWin);
     }
@@ -445,7 +450,9 @@ function createPetWindowRuntime(options = {}) {
 
     if (isWin) renderWin.setAlwaysOnTop(true, topmostLevel);
     renderWin.loadFile(optionsArg.loadFilePath);
-    applyPetWindowBounds(optionsArg.initialVirtualBounds);
+    console.log(`[clawd-hitwin] createRenderWindow: before applyPetWindowBounds initialVirtualBounds = ${JSON.stringify(optionsArg.initialVirtualBounds)}`);
+    const applied = applyPetWindowBounds(optionsArg.initialVirtualBounds);
+    console.log(`[clawd-hitwin] createRenderWindow: after applyPetWindowBounds result = ${JSON.stringify(applied)}, getPetWindowBounds() = ${JSON.stringify(getPetWindowBounds())}`);
     renderWin.showInactive();
     keepOutOfTaskbar(renderWin);
     reapplyMacVisibility();
@@ -466,11 +473,13 @@ function createPetWindowRuntime(options = {}) {
       throw new Error("createHitWindow requires BrowserWindow");
     }
     const initialHitWindowBounds = getInitialHitWindowBounds();
+    console.log(`[clawd-hitwin] createHitWindow: getInitialHitWindowBounds() = ${JSON.stringify(initialHitWindowBounds)}`);
     const theme = getActiveTheme();
     const state = getCurrentState();
     const svgFile = getCurrentSvg();
     const hitBox = getCurrentHitBox();
     const petBounds = getPetWindowBounds();
+    console.log(`[clawd-hitwin] createHitWindow: getPetWindowBounds() = ${JSON.stringify(petBounds)}`);
     const hitWin = new BrowserWindow({
       width: initialHitWindowBounds.width,
       height: initialHitWindowBounds.height,
@@ -590,7 +599,10 @@ function createPetWindowRuntime(options = {}) {
     let startBounds;
     if (prefs.miniMode) {
       startBounds = restoreMiniFromPrefs(prefs, size);
-    } else if (prefs.positionSaved) {
+    } else if (prefs.positionSaved && (prefs.x !== 0 || prefs.y !== 0)) {
+      // Guard against prefs that are in an inconsistent state: positionSaved=true
+      // but coordinates are still at origin (e.g. prefs file was corrupted or
+      // partially written). Treat as if no position was saved → auto-place.
       startBounds = { x: prefs.x, y: prefs.y, width: size.width, height: size.height };
     } else {
       const workArea = getPrimaryWorkAreaFallback();
