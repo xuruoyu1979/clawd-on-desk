@@ -49,7 +49,7 @@
   let helpers = null;
   let ops = null;
 
-  const LANGUAGE_OPTIONS = ["en", "zh", "ko", "ja"];
+  const LANGUAGE_OPTIONS = ["en", "zh", "zh-TW", "ko", "ja"];
 
   function t(key) {
     return helpers.t(key);
@@ -185,6 +185,7 @@
         `<div class="segmented language-segmented" role="tablist">` +
           `<button data-lang="en"></button>` +
           `<button data-lang="zh"></button>` +
+          `<button data-lang="zh-TW"></button>` +
           `<button data-lang="ko"></button>` +
           `<button data-lang="ja"></button>` +
         `</div>` +
@@ -194,8 +195,9 @@
     const buttons = row.querySelectorAll(".segmented button");
     buttons[0].textContent = t("langEnglish");
     buttons[1].textContent = t("langChinese");
-    buttons[2].textContent = t("langKorean");
-    buttons[3].textContent = t("langJapanese");
+    buttons[2].textContent = t("langTraditionalChinese");
+    buttons[3].textContent = t("langKorean");
+    buttons[4].textContent = t("langJapanese");
     const current = readers.getLang();
     const segmented = row.querySelector(".language-segmented");
     const transition = runtime && runtime.languageTransition;

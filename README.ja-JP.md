@@ -7,6 +7,8 @@
   ·
   <a href="README.zh-CN.md">中文版</a>
   ·
+  <a href="README.zh-TW.md">繁體中文</a>
+  ·
   <a href="README.ko-KR.md">한국어</a>
   ·
   <a href="README.ja-JP.md">日本語</a>

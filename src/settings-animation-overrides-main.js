@@ -39,6 +39,13 @@ const ANIMATION_OVERRIDES_EXPORT_DIALOG_STRINGS = {
     jsonFilter: "Clawd 动画覆盖",
     nothingToExport: "没有可导出的动画覆盖。先自定义几个动画试试。",
   },
+  "zh-TW": {
+    saveTitle: "匯出動畫與音效自訂設定",
+    openTitle: "匯入動畫與音效自訂設定",
+    defaultName: (ts) => `clawd-animation-overrides-${ts}.json`,
+    jsonFilter: "Clawd 動畫與音效自訂設定",
+    nothingToExport: "目前沒有可匯出的自訂設定。",
+  },
   ko: {
     saveTitle: "애니메이션 덮어쓰기 내보내기",
     openTitle: "애니메이션 덮어쓰기 가져오기",
