@@ -19,6 +19,7 @@ const PRELOAD_SETTINGS = path.join(SRC_DIR, "preload-settings.js");
 const MAIN_PROCESS = path.join(SRC_DIR, "main.js");
 const SETTINGS_IPC = path.join(SRC_DIR, "settings-ipc.js");
 const DOCTOR_IPC = path.join(SRC_DIR, "doctor-ipc.js");
+const { SUPPORTED_LANGS } = require("../src/i18n");
 const TAB_MODULES = [
   path.join(SRC_DIR, "settings-tab-general.js"),
   path.join(SRC_DIR, "settings-tab-agents.js"),
@@ -337,24 +338,33 @@ class FakeElement {
 
 function loadGeneralLanguageRowForTest({
   snapshot,
+  update = () => Promise.resolve({ status: "ok" }),
 } = {}) {
   const raf = createQueuedRaf();
   const body = new FakeElement("body");
   const content = new FakeElement("main");
   content.id = "content";
   body.appendChild(content);
+  const toastStack = new FakeElement("div");
+  toastStack.id = "toastStack";
+  body.appendChild(toastStack);
 
   const document = {
     body,
     createElement: (tagName) => new FakeElement(tagName),
     getElementById(id) {
       if (id === "content") return content;
+      if (id === "toastStack") return toastStack;
       return null;
     },
   };
 
+  const updateCalls = [];
   const settingsAPI = {
-    update: () => Promise.resolve({ status: "ok" }),
+    update: (key, value) => {
+      updateCalls.push({ key, value });
+      return update(key, value);
+    },
   };
   const context = {
     console,
@@ -365,6 +375,7 @@ function loadGeneralLanguageRowForTest({
     },
     document,
     requestAnimationFrame: (cb) => raf.requestAnimationFrame(cb),
+    setTimeout: () => 1,
     window: null,
     globalThis: null,
     settingsAPI,
@@ -422,14 +433,10 @@ function loadGeneralLanguageRowForTest({
   context.ClawdSettingsTabGeneral.init(core);
 
   let contentRenderCount = 0;
-  let languageTransitionSeenByRender = null;
   function renderLanguageOnly() {
     contentRenderCount++;
     core.ops.clearMountedControls();
     content.innerHTML = "";
-    languageTransitionSeenByRender = core.runtime.languageTransition
-      ? { ...core.runtime.languageTransition }
-      : null;
     content.appendChild(context.ClawdSettingsTabGeneral.__test.buildLanguageRow());
   }
   core.ops.installRenderHooks({ content: renderLanguageOnly });
@@ -438,9 +445,14 @@ function loadGeneralLanguageRowForTest({
     core,
     content,
     raf,
+    settingsAPI,
+    updateCalls,
     getContentRenderCount: () => contentRenderCount,
-    getLanguageTransitionSeenByRender: () => languageTransitionSeenByRender,
-    getSegmented: () => content.querySelector(".language-segmented"),
+    getLangSelect: () => content.querySelector(".language-select"),
+    getToastText: () => {
+      const toast = toastStack.querySelector(".toast");
+      return toast ? toast.textContent : "";
+    },
   };
 }
 
@@ -1094,19 +1106,139 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes('commandAction.type !== "restart-clawd"'));
     assert.ok(doctorModalSource.includes("repairFeedback"));
     assert.ok(doctorModalSource.includes("lastRepairFeedback"));
+    assert.ok(doctorModalSource.includes("actionNotice"));
+    assert.ok(doctorModalSource.includes("actionNoticeTimer"));
+    assert.ok(doctorModalSource.includes("checkExpansionOverrides"));
+    assert.ok(doctorModalSource.includes("checksLoading"));
+    assert.ok(doctorModalSource.includes("connectionRunId"));
+    assert.ok(doctorModalSource.includes("repairRunId"));
+    assert.ok(doctorModalSource.includes("modalEntering"));
+    assert.ok(doctorModalSource.includes("clearModalEnteringTimer"));
+    assert.ok(doctorModalSource.includes("startModalEntering"));
+    assert.ok(doctorModalSource.includes("showActionNotice"));
+    assert.ok(doctorModalSource.includes("if (state.modalOpen)"));
     assert.ok(doctorModalSource.includes("core.ops.showToast"));
     assert.ok(!doctorModalSource.includes("core.helpers.showToast"));
     assert.ok(doctorModalSource.includes("agentDetailText"));
     assert.ok(doctorModalSource.includes("startConnectionTest"));
     assert.ok(doctorModalSource.includes("stopConnectionCountdown();"));
+    assert.ok(doctorModalSource.includes('class="doctor-title-row"'));
+    assert.ok(doctorModalSource.includes("renderLocalServerCheck"));
+    assert.ok(doctorModalSource.includes("doctor-local-server-main"));
+    assert.ok(doctorModalSource.includes('class="doctor-check-summary" title='));
+    assert.ok(doctorModalSource.includes('const fullDetail = detail && cls !== "pass"'));
+    assert.ok(doctorModalSource.includes("renderAgentIntegrationCheck"));
+    assert.ok(doctorModalSource.includes("doctor-agent-collapsible"));
+    assert.ok(doctorModalSource.includes("doctor-agent-chevron"));
+    assert.ok(/doctor-agent-chevron[\s\S]*doctor-check-label[\s\S]*doctor-check-summary[\s\S]*doctor-check-status/.test(doctorModalSource));
+    assert.ok(doctorModalSource.includes("doctor-agent-body"));
+    assert.ok(doctorModalSource.includes("doctor-agent-body-inner"));
+    assert.ok(doctorModalSource.includes('data-action="toggle-check"'));
+    assert.ok(doctorModalSource.includes('button.setAttribute("aria-expanded"'));
+    assert.ok(doctorModalSource.includes('row.classList.toggle("expanded"'));
+    assert.ok(doctorModalSource.includes('body.setAttribute("aria-hidden"'));
+    assert.ok(doctorModalSource.includes('" inert"'));
+    assert.ok(doctorModalSource.includes('body.setAttribute("inert", "")'));
+    assert.ok(doctorModalSource.includes("body.removeAttribute(\"inert\")"));
+    assert.ok(doctorModalSource.includes("checkNeedsAttention"));
+    assert.ok(doctorModalSource.includes("formatAgentIntegrationSummary"));
+    assert.ok(doctorModalSource.includes("formatAgentAttentionNames"));
+    assert.ok(doctorModalSource.includes("AGENT_ATTENTION_NAME_LIMIT"));
+    assert.ok(doctorModalSource.includes("doctorAgentSummaryNeedsAttention"));
+    assert.ok(doctorModalSource.includes("+${hidden}"));
+    assert.ok(doctorModalSource.includes("doctorAgentSummaryOk"));
+    assert.ok(doctorModalSource.includes("doctorAgentSummaryAttention"));
+    assert.ok(doctorModalSource.includes("doctorAgentSummarySkipped"));
+    assert.ok(doctorModalSource.includes("AGENT_WARNING_STATUSES"));
+    assert.ok(doctorModalSource.includes("AGENT_INFO_STATUSES"));
+    assert.ok(doctorModalSource.includes("renderCheckSkeleton"));
+    assert.ok(doctorModalSource.includes("doctor-check-skeleton"));
+    assert.ok(doctorModalSource.includes("doctor-skeleton-line"));
+    assert.ok(doctorModalSource.includes("doctor-connection-progress"));
+    assert.ok(doctorModalSource.includes("const runId = ++state.connectionRunId"));
+    assert.ok(doctorModalSource.includes("if (runId !== state.connectionRunId) return;"));
+    assert.ok(doctorModalSource.includes("state.connectionTesting = false"));
+    assert.ok(doctorModalSource.includes("state.connectionTest = null"));
+    assert.ok(doctorModalSource.includes('state.checksLoading = true'));
+    assert.ok(doctorModalSource.includes('state.checksLoading = false'));
+    assert.ok(doctorModalSource.includes("formatCheckedDateTime"));
+    assert.ok(doctorModalSource.includes('year: "numeric"'));
+    assert.ok(doctorModalSource.includes('month: "2-digit"'));
+    assert.ok(doctorModalSource.includes('day: "2-digit"'));
+    assert.ok(doctorModalSource.includes("renderLastChecked"));
+    assert.ok(doctorModalSource.includes("doctorLastCheckedAt"));
+    assert.ok(doctorModalSource.includes("result.generatedAt"));
+    assert.ok(doctorModalSource.includes("doctor-last-checked"));
+    assert.ok(doctorModalSource.includes("const opening = !state.modalOpen"));
+    assert.ok(doctorModalSource.includes("const entering = state.modalEntering"));
+    assert.ok(doctorModalSource.includes("doctor-modal-entering"));
+    assert.ok(doctorModalSource.includes("renderModalBody(core, result, { entering })"));
+    assert.ok(doctorModalSource.includes("renderActionNotice"));
+    assert.ok(doctorModalSource.includes("doctor-action-notice-icon"));
+    assert.ok(doctorModalSource.includes("doctor-action-notice-text"));
+    assert.ok(doctorModalSource.includes("doctor-action-bar"));
+    assert.ok(doctorModalSource.includes("clearActionNoticeTimer();"));
+    assert.ok(doctorModalSource.includes("state.repairFeedback = {};"));
+    assert.ok(doctorModalSource.includes("state.repairingKey = null;"));
+    assert.ok(doctorModalSource.includes("const runId = ++state.repairRunId"));
+    assert.ok(doctorModalSource.includes("if (runId !== state.repairRunId) return;"));
+    assert.ok(doctorModalSource.includes("doctor-privacy"));
+    assert.ok(!doctorModalSource.includes("doctorPrivacyShort"));
+    assert.ok(!i18nSource.includes("doctorPrivacyShort"));
+    assert.ok(!doctorModalSource.includes("doctor-privacy-inline"));
     assert.ok(css.includes(".doctor-agent-detail"));
     assert.ok(css.includes(".doctor-connection-panel"));
     assert.ok(css.includes(".doctor-fix-button"));
     assert.ok(css.includes(".doctor-fix-confirm"));
-    assert.ok(css.includes(".doctor-privacy-inline"));
-    assert.ok(doctorModalSource.includes("doctorPrivacyShort"));
+    assert.ok(!css.includes(".doctor-privacy-inline"));
     assert.ok(css.includes(".doctor-repair-feedback"));
     assert.ok(css.includes(".doctor-repair-summary"));
+    assert.ok(css.includes(".doctor-title-row"));
+    assert.ok(css.includes(".doctor-check-row-compact"));
+    assert.ok(css.includes(".doctor-local-server-main"));
+    assert.ok(css.includes(".doctor-agent-toggle"));
+    assert.ok(css.includes(".doctor-agent-chevron"));
+    assert.ok(css.includes(".doctor-agent-collapsible.expanded"));
+    assert.ok(css.includes(".doctor-agent-body"));
+    assert.ok(css.includes(".doctor-agent-body-inner"));
+    assert.ok(css.includes(".doctor-action-bar"));
+    assert.ok(css.includes(".doctor-action-notice"));
+    assert.ok(!css.includes(".doctor-action-notice::after"));
+    assert.ok(css.includes(".doctor-action-notice-icon"));
+    assert.ok(/@media \(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.doctor-action-notice\.ok[\s\S]*color:\s*#8ce99a;[\s\S]*\.doctor-action-notice\.error[\s\S]*color:\s*#fca5a5;/.test(css));
+    assert.ok(css.includes("@keyframes doctor-notice-in"));
+    assert.ok(/\.doctor-modal\s*\{[\s\S]*width:\s*min\(728px,\s*100%\);[\s\S]*max-height:\s*calc\(100vh - 32px\);/.test(css));
+    assert.ok(/\.doctor-modal\s*\{[\s\S]*gap:\s*8px;[\s\S]*padding:\s*14px;/.test(css));
+    assert.ok(css.includes(".doctor-modal-entering"));
+    assert.ok(css.includes("@keyframes doctor-modal-in"));
+    assert.ok(css.includes(".doctor-last-checked"));
+    assert.ok(/\.doctor-overall\s*\{[\s\S]*flex-wrap:\s*wrap;/.test(css));
+    assert.ok(/\.doctor-check-list\s*\{[\s\S]*gap:\s*6px;/.test(css));
+    assert.ok(/\.doctor-check-row\s*\{[\s\S]*padding:\s*8px 10px;/.test(css));
+    assert.ok(/\.doctor-check-detail\s*\{[\s\S]*margin:\s*5px 0 0 17px;/.test(css));
+    assert.ok(css.includes("--doctor-pass"));
+    assert.ok(css.includes("--doctor-warning"));
+    assert.ok(css.includes("--doctor-critical"));
+    assert.ok(css.includes("--doctor-critical-rgb: 220, 38, 38;"));
+    assert.ok(css.includes(".doctor-check-skeleton"));
+    assert.ok(css.includes("@keyframes doctor-skeleton-sheen"));
+    assert.ok(css.includes(".doctor-connection-panel.testing"));
+    assert.ok(css.includes(".doctor-connection-progress"));
+    assert.ok(/\.doctor-action-bar\s*\{[\s\S]*align-items:\s*center;/.test(css));
+    assert.ok(/\.doctor-action-notice-slot\s*\{[\s\S]*min-height:\s*24px;/.test(css));
+    assert.ok(/\.doctor-check-row\.pass\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-pass-rgb\),\s*0\.72\);/.test(css));
+    assert.ok(/\.doctor-check-row\.warning\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-warning-rgb\),\s*0\.78\);/.test(css));
+    assert.ok(/\.doctor-check-row\.critical\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-critical-rgb\),\s*0\.78\);/.test(css));
+    assert.ok(/\.doctor-agent-toggle\s*\{[\s\S]*grid-template-columns:\s*auto auto auto minmax\(0,\s*1fr\) auto;/.test(css));
+    assert.ok(/\.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*0fr;[\s\S]*transition:[\s\S]*grid-template-rows 0\.24s cubic-bezier/.test(css));
+    assert.ok(/\.doctor-agent-collapsible\.expanded \.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*1fr;/.test(css));
+    assert.ok(/\.doctor-check-row\s*\{[\s\S]*border-left-width:\s*3px;/.test(css));
+    assert.ok(/\.doctor-check-status\s*\{[\s\S]*border-radius:\s*999px;/.test(css));
+    assert.ok(/\.doctor-close:hover\s*\{[\s\S]*background:\s*rgba\(217,\s*119,\s*87,\s*0\.1\);[\s\S]*transform:\s*scale\(1\.04\);/.test(css));
+    assert.ok(/\.doctor-close:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(css));
+    assert.ok(/\.doctor-agent-toggle:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.doctor-modal-entering[\s\S]*animation:\s*none;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.doctor-action-bar\s*\{[\s\S]*flex-direction:\s*column;/.test(css));
     // Regression guard: agent list must not introduce its own scroll viewport.
     // The outer .doctor-check-list owns scrolling so users get a single scrollbar.
     // [^}]*? keeps the match scoped to this rule body so unrelated max-height
@@ -1139,9 +1271,22 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("doctorFixApplied"));
     assert.ok(i18nSource.includes("doctorFixConfirmCodexDetail"));
     assert.ok(i18nSource.includes("doctorRestartConfirmDetail"));
-    assert.ok(i18nSource.includes("doctorPrivacyShort"));
+    assert.ok(i18nSource.includes("doctorPrivacy"));
+    assert.ok(i18nSource.includes("doctorLastCheckedAt"));
+    assert.ok(i18nSource.includes("doctorAgentSummaryOk"));
+    assert.ok(i18nSource.includes("doctorAgentSummaryAttention"));
+    assert.ok(i18nSource.includes("doctorAgentSummaryNeedsAttention"));
+    assert.ok(i18nSource.includes("doctorAgentSummarySkipped"));
     assert.ok(i18nSource.includes("doctorConnectionHttpVerified"));
     assert.ok(i18nSource.includes("doctorOpenLog"));
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "Debug log opened"'));
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "已打开调试日志"'));
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다"'));
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました"'));
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "Debug log opened."'));
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "已打开调试日志。"'));
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다."'));
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました。"'));
   });
 
   it("does not animate the size bubble's horizontal position", () => {
@@ -1183,83 +1328,74 @@ describe("settings renderer browser environment", () => {
     assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.switch,[\s\S]*\.switch::after\s*\{[\s\S]*transition:\s*none;/.test(css));
   });
 
-  it("animates the Settings language segmented control with a sliding active pill", () => {
+  it("renders the Settings language picker as a dropdown over all supported langs", () => {
     const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
 
-    assert.ok(generalSource.includes("const LANGUAGE_OPTIONS = [\"en\", \"zh\", \"ko\", \"ja\"];"));
-    assert.ok(generalSource.includes("language-segmented"));
-    assert.ok(generalSource.includes("runtime.languageTransition"));
-    assert.ok(!generalSource.includes("language-segmented-transitioning"));
-    assert.ok(generalSource.includes('segmented.style.setProperty("--language-active-index", String(fromIndex));'));
-    assert.ok(generalSource.includes("requestAnimationFrame(() => {"));
-    assert.ok(generalSource.includes("segmented.getBoundingClientRect();"));
-    assert.ok(generalSource.includes('segmented.style.setProperty("--language-active-index", String(currentIndex));'));
-    assert.ok(coreSource.includes("languageTransition: null"));
-    assert.ok(coreSource.includes("const previousLang = getLang();"));
-    assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "lang")'));
-    assert.ok(coreSource.includes('runtime.languageTransition = state.activeTab === "general" && previousLang !== nextLang'));
-    assert.ok(/\.language-segmented\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/.test(css));
-    assert.ok(css.includes("language-segmented intentionally overrides .segmented display"));
-    assert.ok(/\.language-segmented::before\s*\{[\s\S]*transform:\s*translateX\(calc\(var\(--language-active-index\)\s*\*\s*100%\)\);[\s\S]*transition:\s*transform 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/.test(css));
-    assert.ok(/\.language-segmented button\.active\s*\{[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/.test(css));
-    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.language-segmented::before\s*\{[\s\S]*transition:\s*none;/.test(css));
+    assert.ok(new RegExp(
+      String.raw`const LANGUAGE_OPTIONS = \[` +
+      SUPPORTED_LANGS.map((lang) => String.raw`"${lang}"`).join(String.raw`,\s*`) +
+      String.raw`\];`
+    ).test(generalSource));
+    assert.ok(generalSource.includes(`<select class="language-select"`));
+    assert.ok(!generalSource.includes("language-segmented"));
+    assert.ok(!generalSource.includes("runtime.languageTransition"));
+    assert.ok(!generalSource.includes("--language-active-index"));
+    assert.ok(!coreSource.includes("languageTransition"));
+    assert.ok(/\.language-select\s*\{[\s\S]*appearance:\s*none;/.test(css));
+    assert.ok(/\.language-select:focus\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(css));
+    assert.ok(!css.includes(".language-segmented"));
   });
 
-  it("uses and clears the General tab language slide transition during render", () => {
+  it("populates the language dropdown with current selection and propagates change events", () => {
     const harness = loadGeneralLanguageRowForTest({
       snapshot: { lang: "en" },
     });
 
     harness.core.ops.requestRender({ content: true });
     assert.strictEqual(harness.getContentRenderCount(), 1);
-    assert.strictEqual(harness.getSegmented().style.getPropertyValue("--language-active-index"), "0");
+    const select = harness.getLangSelect();
+    assert.ok(select, "language dropdown should be rendered");
+    const options = select.querySelectorAll("option");
+    assert.strictEqual(options.length, SUPPORTED_LANGS.length);
+    for (let i = 0; i < SUPPORTED_LANGS.length; i++) {
+      assert.strictEqual(options[i].getAttribute("value"), SUPPORTED_LANGS[i]);
+    }
+    assert.strictEqual(select.value, "en");
+
+    select.value = "zh";
+    select.dispatchEvent({ type: "change" });
+
+    assert.deepStrictEqual(
+      harness.updateCalls,
+      [{ key: "lang", value: "zh" }],
+      "changing the dropdown should call settingsAPI.update with the new lang"
+    );
 
     harness.core.ops.applyChanges({
       changes: { lang: "zh" },
       snapshot: { lang: "zh" },
     });
-
-    const segmented = harness.getSegmented();
     assert.strictEqual(harness.getContentRenderCount(), 2);
-    assert.deepStrictEqual(
-      harness.getLanguageTransitionSeenByRender(),
-      { from: "en", to: "zh" },
-      "General render should consume the previous and next language pair"
-    );
-    assert.strictEqual(
-      segmented.style.getPropertyValue("--language-active-index"),
-      "0",
-      "language pill should start at the previous language before rAF"
-    );
-    assert.strictEqual(harness.core.runtime.languageTransition, null);
-    const buttons = segmented.querySelectorAll("button");
-    assert.strictEqual(buttons[1].classList.contains("active"), true);
-
-    harness.raf.flush();
-    assert.strictEqual(
-      segmented.style.getPropertyValue("--language-active-index"),
-      "1",
-      "language pill should move to the new language on rAF"
-    );
+    assert.strictEqual(harness.getLangSelect().value, "zh");
   });
 
-  it("does not keep a stale language slide transition when language changes off the General tab", () => {
-    const core = loadSettingsCoreForTest({});
-    core.state.activeTab = "agents";
-    core.state.snapshot = { lang: "en" };
-
-    core.ops.applyChanges({
-      changes: { lang: "zh" },
-      snapshot: { lang: "zh" },
+  it("reverts the language dropdown when saving the selection fails", async () => {
+    const harness = loadGeneralLanguageRowForTest({
+      snapshot: { lang: "en" },
+      update: () => Promise.resolve({ status: "error", message: "synthetic failure" }),
     });
 
-    assert.strictEqual(
-      core.runtime.languageTransition,
-      null,
-      "language changes outside General should not animate later when returning to General"
-    );
+    harness.core.ops.requestRender({ content: true });
+    const select = harness.getLangSelect();
+    select.value = "zh";
+    select.dispatchEvent({ type: "change" });
+    await Promise.resolve();
+
+    assert.deepStrictEqual(harness.updateCalls, [{ key: "lang", value: "zh" }]);
+    assert.strictEqual(select.value, "en");
+    assert.strictEqual(harness.getToastText(), "Failed: synthetic failure");
   });
 
   it("exposes aggregate and split bubble controls in the General tab", () => {

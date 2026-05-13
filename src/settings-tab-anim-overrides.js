@@ -782,6 +782,11 @@
       if (minSessions === maxSessions) return `${minSessions} 会话`;
       return `${minSessions}-${maxSessions} 会话`;
     }
+    if (lang === "zh-TW") {
+      if (maxSessions == null) return `${minSessions}+ 工作階段`;
+      if (minSessions === maxSessions) return `${minSessions} 工作階段`;
+      return `${minSessions}-${maxSessions} 工作階段`;
+    }
     if (lang === "ko") {
       if (maxSessions == null) return `${minSessions}+ 세션`;
       if (minSessions === maxSessions) return `${minSessions} 세션`;

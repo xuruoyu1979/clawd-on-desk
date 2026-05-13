@@ -893,6 +893,27 @@ describe("updateSession()", () => {
     });
   });
 
+  it("Codex PermissionRequest focus metadata respects the session cap", () => {
+    for (let i = 0; i < 20; i++) {
+      update(api, { id: `s${i}`, state: "working" });
+      mock.timers.tick(1);
+    }
+    assert.strictEqual(api.sessions.size, 20);
+
+    update(api, {
+      id: "codex:019e115a-4df2-7ed0-b90e-8e6345aca777",
+      state: "notification",
+      event: "PermissionRequest",
+      agentId: "codex",
+      sourcePid: 456,
+      codexOriginator: "Codex Desktop",
+    });
+
+    assert.strictEqual(api.sessions.size, 20);
+    assert.ok(api.sessions.has("codex:019e115a-4df2-7ed0-b90e-8e6345aca777"));
+    assert.ok(!api.sessions.has("s0"));
+  });
+
   it("SessionEnd + sweeping → plays sweeping even with other active sessions", () => {
     // Insert sessions directly to avoid MIN_DISPLAY_MS cascade from setState
     api.sessions.set("s1", rawSession("working"));

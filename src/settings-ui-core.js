@@ -106,7 +106,6 @@
       clickCount: 0,
       contributorsExpanded: false,
     },
-    languageTransition: null,
   };
 
   const renderHooks = {
@@ -904,7 +903,6 @@
   }
 
   function applyChanges(payload) {
-    const previousLang = getLang();
     const previousSnapshot = state.snapshot;
     if (payload && payload.snapshot) {
       state.snapshot = payload.snapshot;
@@ -914,12 +912,6 @@
     if (!state.snapshot) return;
 
     const changes = payload && payload.changes;
-    if (changes && Object.prototype.hasOwnProperty.call(changes, "lang")) {
-      const nextLang = getLang();
-      runtime.languageTransition = state.activeTab === "general" && previousLang !== nextLang
-        ? { from: previousLang, to: nextLang }
-        : null;
-    }
     clearTransientStateForChanges(changes);
     const needsAnimOverridesRefresh = !!(changes && (
       "theme" in changes || "themeVariant" in changes || "themeOverrides" in changes

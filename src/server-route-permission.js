@@ -90,11 +90,13 @@ function buildCodexPermissionSessionOptions(data) {
   if (pidChain && pidChain.length) options.pidChain = pidChain;
   const cwd = normalizeString(data.cwd);
   const host = normalizeString(data.host);
+  const platform = normalizeString(data.platform);
   const model = normalizeString(data.model);
   const codexOriginator = normalizeString(data.codex_originator);
   const codexSource = normalizeString(data.codex_source);
   if (cwd) options.cwd = cwd;
   if (host) options.host = host;
+  if (platform) options.platform = platform;
   if (model) options.model = model;
   if (codexOriginator) options.codexOriginator = codexOriginator;
   if (codexSource) options.codexSource = codexSource;
@@ -328,6 +330,7 @@ function handlePermissionPost(req, res, options) {
           agentPid: codexSessionOptions.agentPid || null,
           pidChain: codexSessionOptions.pidChain || null,
           host: codexSessionOptions.host || null,
+          platform: codexSessionOptions.platform || null,
           model: codexSessionOptions.model || null,
           codexOriginator: codexSessionOptions.codexOriginator || null,
           codexSource: codexSessionOptions.codexSource || null,

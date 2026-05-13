@@ -173,6 +173,7 @@ describe("server-route-permission POST", () => {
       agent_pid: 456,
       pid_chain: [789, 456, -1],
       cwd: "/repo",
+      platform: "webui",
       model: "gpt-5.4",
       codex_originator: "Codex Desktop",
       codex_source: "vscode",
@@ -188,6 +189,7 @@ describe("server-route-permission POST", () => {
     assert.strictEqual(entry.agentPid, 456);
     assert.deepStrictEqual(entry.pidChain, [789, 456]);
     assert.strictEqual(entry.cwd, "/repo");
+    assert.strictEqual(entry.platform, "webui");
     assert.strictEqual(entry.model, "gpt-5.4");
     assert.strictEqual(entry.codexOriginator, "Codex Desktop");
     assert.strictEqual(entry.codexSource, "vscode");
@@ -202,6 +204,7 @@ describe("server-route-permission POST", () => {
         agentPid: 456,
         pidChain: [789, 456],
         cwd: "/repo",
+        platform: "webui",
         model: "gpt-5.4",
         codexOriginator: "Codex Desktop",
         codexSource: "vscode",

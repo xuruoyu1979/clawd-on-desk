@@ -49,7 +49,7 @@
   let helpers = null;
   let ops = null;
 
-  const LANGUAGE_OPTIONS = ["en", "zh", "ko", "ja"];
+  const LANGUAGE_OPTIONS = ["en", "zh", "zh-TW", "ko", "ja"];
 
   function t(key) {
     return helpers.t(key);
@@ -173,6 +173,14 @@
     return row;
   }
 
+  const LANGUAGE_LABEL_KEYS = {
+    "en": "langEnglish",
+    "zh": "langChinese",
+    "zh-TW": "langTraditionalChinese",
+    "ko": "langKorean",
+    "ja": "langJapanese",
+  };
+
   function buildLanguageRow() {
     const row = document.createElement("div");
     row.className = "row";
@@ -182,52 +190,38 @@
         `<span class="row-desc"></span>` +
       `</div>` +
       `<div class="row-control">` +
-        `<div class="segmented language-segmented" role="tablist">` +
-          `<button data-lang="en"></button>` +
-          `<button data-lang="zh"></button>` +
-          `<button data-lang="ko"></button>` +
-          `<button data-lang="ja"></button>` +
-        `</div>` +
+        `<select class="language-select" aria-label=""></select>` +
       `</div>`;
     row.querySelector(".row-label").textContent = t("rowLanguage");
     row.querySelector(".row-desc").textContent = t("rowLanguageDesc");
-    const buttons = row.querySelectorAll(".segmented button");
-    buttons[0].textContent = t("langEnglish");
-    buttons[1].textContent = t("langChinese");
-    buttons[2].textContent = t("langKorean");
-    buttons[3].textContent = t("langJapanese");
-    const current = readers.getLang();
-    const segmented = row.querySelector(".language-segmented");
-    const transition = runtime && runtime.languageTransition;
-    const currentIndex = Math.max(0, LANGUAGE_OPTIONS.indexOf(current));
-    const fromIndex = transition && transition.to === current
-      ? Math.max(0, LANGUAGE_OPTIONS.indexOf(transition.from))
-      : currentIndex;
-    segmented.style.setProperty("--language-active-index", String(fromIndex));
-    if (fromIndex !== currentIndex) {
-      requestAnimationFrame(() => {
-        segmented.getBoundingClientRect();
-        segmented.style.setProperty("--language-active-index", String(currentIndex));
+    const select = row.querySelector(".language-select");
+    select.setAttribute("aria-label", t("rowLanguage"));
+    const currentLang = readers.getLang();
+    for (const lang of LANGUAGE_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.setAttribute("value", lang);
+      opt.textContent = t(LANGUAGE_LABEL_KEYS[lang] || "langEnglish");
+      if (lang === currentLang) opt.setAttribute("selected", "");
+      select.appendChild(opt);
+    }
+    select.value = currentLang;
+    select.addEventListener("change", () => {
+      const next = select.value;
+      if (next === readers.getLang()) return;
+      const revertIfStillPending = () => {
+        if (select.value === next) select.value = readers.getLang();
+      };
+      window.settingsAPI.update("lang", next).then((result) => {
+        if (!result || result.status !== "ok") {
+          const msg = (result && result.message) || "unknown error";
+          ops.showToast(t("toastSaveFailed") + msg, { error: true });
+          revertIfStillPending();
+        }
+      }).catch((err) => {
+        ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true });
+        revertIfStillPending();
       });
-    }
-    if (runtime && transition) {
-      runtime.languageTransition = null;
-    }
-    for (const btn of buttons) {
-      if (btn.dataset.lang === current) btn.classList.add("active");
-      btn.addEventListener("click", () => {
-        const next = btn.dataset.lang;
-        if (next === readers.getLang()) return;
-        window.settingsAPI.update("lang", next).then((result) => {
-          if (!result || result.status !== "ok") {
-            const msg = (result && result.message) || "unknown error";
-            ops.showToast(t("toastSaveFailed") + msg, { error: true });
-          }
-        }).catch((err) => {
-          ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-        });
-      });
-    }
+    });
     return row;
   }
 

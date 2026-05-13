@@ -315,6 +315,7 @@ function buildPermissionFocusEntry(perm) {
   if (perm.agentPid) focusEntry.agentPid = perm.agentPid;
   if (perm.pidChain) focusEntry.pidChain = perm.pidChain;
   if (perm.host) focusEntry.host = perm.host;
+  if (perm.platform) focusEntry.platform = perm.platform;
   if (perm.model) focusEntry.model = perm.model;
   if (perm.codexOriginator) focusEntry.codexOriginator = perm.codexOriginator;
   if (perm.codexSource) focusEntry.codexSource = perm.codexSource;

@@ -8,6 +8,7 @@ const SOUND_OVERRIDE_ASSET_EXTS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac
 const SOUND_OVERRIDE_DIALOG_STRINGS = {
   en: { title: "Choose a sound file", filterName: "Audio" },
   zh: { title: "选择音效文件", filterName: "音频" },
+  "zh-TW": { title: "選擇音效檔案", filterName: "音效" },
   ko: { title: "음향 파일 선택", filterName: "오디오" },
   ja: { title: "音声ファイルを選択", filterName: "音声" },
 };
@@ -24,6 +25,12 @@ const REMOVE_THEME_DIALOG_STRINGS = {
     cancel: "取消",
     message: (name) => `确认删除主题 "${name}"？`,
     detail: "此操作不可撤销。主题的所有文件将从磁盘移除。",
+  },
+  "zh-TW": {
+    delete: "刪除",
+    cancel: "取消",
+    message: (name) => `確定要刪除主題「${name}」？`,
+    detail: "此動作無法復原。此主題的所有檔案都會從磁碟移除。",
   },
   ko: {
     delete: "삭제",

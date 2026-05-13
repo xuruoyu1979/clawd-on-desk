@@ -5,6 +5,8 @@
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
   ·
+  <a href="README.zh-TW.md">繁體中文</a>
+  ·
   <a href="README.ko-KR.md">한국어</a>
   ·
   <a href="README.ja-JP.md">日本語</a>
@@ -82,7 +84,7 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 - **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Clawd. Permission bubbles are suppressed during DND — Codex and opencode fall back to their native prompts, Pi falls back to terminal confirmation, while Claude Code and CodeBuddy fall back to their built-in permission flow
 - **Sound effects** — short audio cues on task completion and permission requests (toggle via right-click menu; 10s cooldown, auto-muted during DND)
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
-- **i18n** — English, Chinese, Korean, and Japanese UI; switch via right-click menu or tray
+- **i18n** — English, Simplified Chinese, Traditional Chinese, Korean, and Japanese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS/Linux `git pull` + restart when running from a cloned repo
 
 ## Animations
@@ -209,7 +211,7 @@ Clawd on Desk is a community-driven project. Bug reports, feature ideas, and pul
 Thanks to everyone who has helped make Clawd better:
 
 <details>
-<summary>Show all 46 contributors</summary>
+<summary>Show all 47 contributors</summary>
 
 <table>
   <tr>
@@ -271,6 +273,7 @@ Thanks to everyone who has helped make Clawd better:
     <td align="center" valign="top" width="110"><a href="https://github.com/Hwasowl"><img src="https://github.com/Hwasowl.png" width="50" style="border-radius:50%" /><br /><sub>Hwasowl</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/XiangZheng2002"><img src="https://github.com/XiangZheng2002.png" width="50" style="border-radius:50%" /><br /><sub>XiangZheng2002</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/keiyo118"><img src="https://github.com/keiyo118.png" width="50" style="border-radius:50%" /><br /><sub>keiyo118</sub></a></td>
+    <td align="center" valign="top" width="110"><a href="https://github.com/pan93412"><img src="https://github.com/pan93412.png" width="50" style="border-radius:50%" /><br /><sub>pan93412</sub></a></td>
   </tr>
 </table>
 

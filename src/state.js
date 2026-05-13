@@ -699,6 +699,19 @@ function resolvePidReachable(existing, agentPid, sourcePid) {
   return existing ? !!existing.pidReachable : false;
 }
 
+function evictOldestSessionIfNeeded(sessionId) {
+  if (sessions.has(sessionId) || sessions.size < MAX_SESSIONS) return;
+  let oldestId = null;
+  let oldestTime = Infinity;
+  for (const [id, s] of sessions) {
+    if (s.updatedAt < oldestTime) {
+      oldestTime = s.updatedAt;
+      oldestId = id;
+    }
+  }
+  if (oldestId) sessions.delete(oldestId);
+}
+
 // ── Session management ──
 // Session-related fields go through `opts`. Earlier versions took 13
 // positional params — refactored in B2 to an options bag so new fields
@@ -752,6 +765,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     );
     if (shouldPersistCodexPermissionFocus) {
       const existing = sessions.get(sessionId);
+      evictOldestSessionIfNeeded(sessionId);
       const srcPid = sourcePid || (existing && existing.sourcePid) || null;
       const srcCwd = cwd || (existing && existing.cwd) || "";
       const srcEditor = editor || (existing && existing.editor) || null;
@@ -825,14 +839,8 @@ function updateSession(sessionId, state, event, opts = {}) {
   const recentEvents = pushRecentEvent(existing, preservedState || state, event);
   const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, platform: srcPlatform, model: srcModel, provider: srcProvider, codexOriginator: srcCodexOriginator, codexSource: srcCodexSource, sessionTitle: srcSessionTitle, recentEvents, pidReachable };
 
-  // Evict oldest session if at capacity and this is a new session
-  if (!existing && sessions.size >= MAX_SESSIONS) {
-    let oldestId = null, oldestTime = Infinity;
-    for (const [id, s] of sessions) {
-      if (s.updatedAt < oldestTime) { oldestTime = s.updatedAt; oldestId = id; }
-    }
-    if (oldestId) sessions.delete(oldestId);
-  }
+  // Evict oldest session if at capacity and this is a new session.
+  evictOldestSessionIfNeeded(sessionId);
 
   if (isSubagentStop) {
     updateCodexExitProbe(sessionId, srcAgentId, event);

@@ -824,6 +824,7 @@ function getPendingPermissionFocusEntry(sessionId) {
   if (entry.agentPid) focusEntry.agentPid = entry.agentPid;
   if (entry.pidChain) focusEntry.pidChain = entry.pidChain;
   if (entry.host) focusEntry.host = entry.host;
+  if (entry.platform) focusEntry.platform = entry.platform;
   if (entry.model) focusEntry.model = entry.model;
   if (entry.codexOriginator) focusEntry.codexOriginator = entry.codexOriginator;
   if (entry.codexSource) focusEntry.codexSource = entry.codexSource;
