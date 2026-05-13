@@ -52,6 +52,7 @@ test("settings-i18n.js: all language packs include remote-ssh keys", () => {
     "remoteSshStatus_connecting",
     "remoteSshStatus_connected",
     "remoteSshStatus_failed",
+    "remoteSshStep_install-copilot",
   ];
   // Each key should appear at least once per language pack.
   for (const key of REQUIRED_KEYS) {

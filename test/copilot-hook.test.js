@@ -238,4 +238,32 @@ describe("buildStateBody (Copilot)", () => {
     const body = buildStateBody("sessionStart", { sessionId: "s" }, mockResolve);
     assert.strictEqual("cwd" in body, false);
   });
+
+  it("remote mode includes host prefix and skips local PID fields", () => {
+    const oldRemote = process.env.CLAWD_REMOTE;
+    process.env.CLAWD_REMOTE = "1";
+    let resolveCalled = false;
+    try {
+      const body = buildStateBody(
+        "sessionStart",
+        { sessionId: "s", cwd: "/repo", session_title: "Remote Copilot" },
+        () => {
+          resolveCalled = true;
+          throw new Error("resolve should not be called in remote mode");
+        },
+        { readHostPrefix: () => "remote-box" }
+      );
+
+      assert.strictEqual(body.host, "remote-box");
+      assert.strictEqual(body.cwd, "/repo");
+      assert.strictEqual(body.session_title, "Remote Copilot");
+      assert.strictEqual("source_pid" in body, false);
+      assert.strictEqual("agent_pid" in body, false);
+      assert.strictEqual("pid_chain" in body, false);
+      assert.strictEqual(resolveCalled, false);
+    } finally {
+      if (oldRemote === undefined) delete process.env.CLAWD_REMOTE;
+      else process.env.CLAWD_REMOTE = oldRemote;
+    }
+  });
 });

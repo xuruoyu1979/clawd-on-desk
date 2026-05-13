@@ -41,17 +41,20 @@ function quote(value) {
  * Both fields go into the same hook entry; Copilot picks the right one for
  * the host OS at runtime.
  */
-function buildCopilotHookCommands(nodeBin, hookScript, eventName) {
+function buildCopilotHookCommands(nodeBin, hookScript, eventName, options = {}) {
   const tail = `${quote(hookScript)} ${quote(eventName)}`;
-  const bash = `${quote(nodeBin)} ${tail}`;
+  const command = `${quote(nodeBin)} ${tail}`;
+  const bash = options.remote ? `CLAWD_REMOTE=1 ${command}` : command;
   // PowerShell needs `&` to invoke a quoted exe path as a command, otherwise
   // the quoted string is parsed as a literal.
-  const powershell = `& ${quote(nodeBin)} ${tail}`;
+  const powershell = options.remote
+    ? `$env:CLAWD_REMOTE='1'; & ${command}`
+    : `& ${command}`;
   return { bash, powershell };
 }
 
-function buildCopilotHookEntry(nodeBin, hookScript, eventName) {
-  const { bash, powershell } = buildCopilotHookCommands(nodeBin, hookScript, eventName);
+function buildCopilotHookEntry(nodeBin, hookScript, eventName, options = {}) {
+  const { bash, powershell } = buildCopilotHookCommands(nodeBin, hookScript, eventName, options);
   return {
     type: "command",
     bash,
@@ -85,6 +88,7 @@ function entryHasMarker(entry) {
  * @param {string}  [options.nodeBin]   pin node binary; defaults to bare "node"
  *                                       since Copilot's launcher inherits PATH
  * @param {string}  [options.hookScript] override absolute path to copilot-hook.js
+ * @param {boolean} [options.remote]     register hooks for SSH remote mode
  * @returns {{ added: number, updated: number, skipped: number, configChanged: boolean }}
  */
 function registerCopilotHooks(options = {}) {
@@ -131,7 +135,9 @@ function registerCopilotHooks(options = {}) {
   let changed = false;
 
   for (const event of COPILOT_HOOK_EVENTS) {
-    const desired = buildCopilotHookEntry(nodeBin, hookScript, event);
+    const desired = buildCopilotHookEntry(nodeBin, hookScript, event, {
+      remote: options.remote === true,
+    });
 
     if (!Array.isArray(settings.hooks[event])) {
       settings.hooks[event] = [];
@@ -179,15 +185,10 @@ module.exports = {
   registerCopilotHooks,
 };
 
-// CLI: `node hooks/copilot-install.js [--remote]`. The `--remote` flag is
-// accepted but currently advisory — the install logic is identical for local
-// and remote since both end up writing ~/.copilot/hooks/hooks.json with paths
-// derived from this script's __dirname. The flag is retained for symmetry
-// with install.js / codex-install.js so scripts/remote-deploy.sh keeps a
-// uniform call shape across agents.
+// CLI: `node hooks/copilot-install.js [--remote]`.
 if (require.main === module) {
   try {
-    registerCopilotHooks({});
+    registerCopilotHooks({ remote: process.argv.includes("--remote") });
   } catch (err) {
     console.error(err.message);
     process.exit(1);

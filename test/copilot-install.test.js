@@ -63,6 +63,23 @@ describe("buildCopilotHookCommands", () => {
     const { bash } = buildCopilotHookCommands('node"', "/p/copilot-hook.js", "preToolUse");
     assert.ok(bash.includes('"node\\""'));
   });
+
+  it("adds CLAWD_REMOTE env prefixes for remote hook commands", () => {
+    const { bash, powershell } = buildCopilotHookCommands(
+      "/usr/bin/node",
+      "/home/u/.claude/hooks/copilot-hook.js",
+      "sessionStart",
+      { remote: true }
+    );
+    assert.strictEqual(
+      bash,
+      'CLAWD_REMOTE=1 "/usr/bin/node" "/home/u/.claude/hooks/copilot-hook.js" "sessionStart"'
+    );
+    assert.strictEqual(
+      powershell,
+      '$env:CLAWD_REMOTE=\'1\'; & "/usr/bin/node" "/home/u/.claude/hooks/copilot-hook.js" "sessionStart"'
+    );
+  });
 });
 
 describe("buildCopilotHookEntry", () => {
@@ -106,6 +123,29 @@ describe("registerCopilotHooks", () => {
       assert.ok(entry.bash.includes("/srv/clawd/hooks/copilot-hook.js"));
       assert.ok(entry.bash.includes(event));
       assert.ok(entry.powershell.startsWith("& "));
+      assert.ok(entry.powershell.includes(event));
+    }
+  });
+
+  it("registers remote hooks with CLAWD_REMOTE in both platform commands", () => {
+    const { homeDir, hooksPath } = makeTempHomeWithCopilot();
+
+    const result = registerCopilotHooks({
+      silent: true,
+      homeDir,
+      nodeBin: "/usr/local/bin/node",
+      hookScript: "/srv/clawd/hooks/copilot-hook.js",
+      remote: true,
+    });
+
+    assert.strictEqual(result.added, COPILOT_HOOK_EVENTS.length);
+
+    const settings = readJson(hooksPath);
+    for (const event of COPILOT_HOOK_EVENTS) {
+      const entry = settings.hooks[event][0];
+      assert.ok(entry.bash.startsWith("CLAWD_REMOTE=1 "));
+      assert.ok(entry.bash.includes(event));
+      assert.ok(entry.powershell.startsWith("$env:CLAWD_REMOTE='1'; & "));
       assert.ok(entry.powershell.includes(event));
     }
   });

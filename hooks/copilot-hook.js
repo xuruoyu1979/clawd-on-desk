@@ -6,7 +6,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { postStateToRunningServer } = require("./server-config");
+const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
 
 const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
@@ -114,7 +114,7 @@ const EVENT_TO_STATE = {
   preCompact: "sweeping",
 };
 
-function buildStateBody(event, payload, resolve) {
+function buildStateBody(event, payload, resolve, options = {}) {
   const state = EVENT_TO_STATE[event];
   if (!state) return null;
 
@@ -135,11 +135,16 @@ function buildStateBody(event, payload, resolve) {
     readCopilotSessionTitle(sessionId);
   if (sessionTitle) body.session_title = sessionTitle;
 
-  const { stablePid, agentPid, detectedEditor, pidChain } = resolve();
-  body.source_pid = stablePid;
-  if (detectedEditor) body.editor = detectedEditor;
-  if (agentPid) body.agent_pid = agentPid;
-  if (pidChain.length) body.pid_chain = pidChain;
+  if (process.env.CLAWD_REMOTE) {
+    const readHost = options.readHostPrefix || readHostPrefix;
+    body.host = readHost();
+  } else {
+    const { stablePid, agentPid, detectedEditor, pidChain } = resolve();
+    body.source_pid = stablePid;
+    if (detectedEditor) body.editor = detectedEditor;
+    if (agentPid) body.agent_pid = agentPid;
+    if (pidChain.length) body.pid_chain = pidChain;
+  }
 
   return body;
 }
@@ -155,8 +160,9 @@ function main() {
     platformConfig: config,
   });
 
-  // Pre-resolve on sessionStart
-  if (event === "sessionStart") resolve();
+  // Pre-resolve on sessionStart. Remote mode skips PID collection because
+  // remote PIDs are meaningless on the local machine.
+  if (event === "sessionStart" && !process.env.CLAWD_REMOTE) resolve();
 
   readStdinJson().then((payload) => {
     const body = buildStateBody(event, payload || {}, resolve);
