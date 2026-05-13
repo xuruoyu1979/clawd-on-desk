@@ -1412,6 +1412,14 @@ describe("settings renderer browser environment", () => {
     for (const option of options) assert.strictEqual(option.tabIndex, -1);
     assert.strictEqual(harness.getLangValue().textContent, "Chinese");
 
+    trigger.dispatchEvent({ type: "click" });
+    options[1].dispatchEvent({ type: "click" });
+    assert.deepStrictEqual(
+      harness.updateCalls,
+      [{ key: "lang", value: "zh" }],
+      "clicking the already displayed pending language should not submit a duplicate update"
+    );
+
     harness.core.ops.applyChanges({
       changes: { lang: "zh" },
       snapshot: { lang: "zh" },

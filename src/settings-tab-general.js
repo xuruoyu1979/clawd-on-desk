@@ -245,6 +245,10 @@
       if (option && typeof option.focus === "function") option.focus();
     }
     function chooseLanguage(next) {
+      if (next === activeLang) {
+        setOpen(false);
+        return;
+      }
       if (next === readers.getLang()) {
         setOpen(false);
         return;
