@@ -22,7 +22,22 @@
     actionNotice: null,
     actionNoticeTimer: null,
     checkExpansionOverrides: new Map(),
+    checksLoading: false,
   };
+
+  const AGENT_WARNING_STATUSES = new Set([
+    "not-connected",
+    "broken-path",
+    "config-corrupt",
+    "needs-review",
+  ]);
+  const AGENT_INFO_STATUSES = new Set([
+    "disabled",
+    "manual-managed",
+    "manual-only",
+    "not-installed",
+  ]);
+  const AGENT_ATTENTION_NAME_LIMIT = 3;
 
   function t(core, key) {
     return core.helpers.t(key);
@@ -265,6 +280,79 @@
     });
   }
 
+  function agentDetailNeedsAttention(detail) {
+    if (!detail || typeof detail !== "object") return false;
+    if (detail.level === "critical" || detail.level === "warning") return true;
+    if (detail.fixAction) return true;
+    return AGENT_WARNING_STATUSES.has(detail.status);
+  }
+
+  function formatCount(core, key, count) {
+    const formatter = t(core, key);
+    if (typeof formatter === "function") return formatter(count);
+    return String(formatter).replace("{count}", String(count));
+  }
+
+  function formatClockTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+    } catch {
+      const hour = String(date.getHours()).padStart(2, "0");
+      const minute = String(date.getMinutes()).padStart(2, "0");
+      return `${hour}:${minute}`;
+    }
+  }
+
+  function renderLastChecked(core, result) {
+    if (state.checksLoading || !result || !result.generatedAt) return "";
+    const time = formatClockTime(result.generatedAt);
+    if (!time) return "";
+    const formatter = t(core, "doctorLastCheckedAt");
+    const text = typeof formatter === "function"
+      ? formatter(time)
+      : String(formatter).replace("{time}", time);
+    return `<span class="doctor-last-checked">${escape(core, text)}</span>`;
+  }
+
+  function agentDetailName(detail) {
+    if (!detail || typeof detail !== "object") return "";
+    return String(detail.agentName || detail.agentId || "").trim();
+  }
+
+  function formatAgentAttentionNames(core, details) {
+    const names = details.map(agentDetailName).filter(Boolean);
+    if (!names.length) return formatCount(core, "doctorAgentSummaryAttention", details.length);
+    const visible = names.slice(0, AGENT_ATTENTION_NAME_LIMIT);
+    const hidden = names.length - visible.length;
+    const suffix = hidden > 0 ? ` +${hidden}` : "";
+    return `${visible.join(", ")} ${t(core, "doctorAgentSummaryNeedsAttention")}${suffix}`;
+  }
+
+  function formatAgentIntegrationSummary(core, check) {
+    const details = check && Array.isArray(check.details) ? check.details : [];
+    if (!details.length) return "";
+    let ok = 0;
+    const attentionDetails = [];
+    let skipped = 0;
+    for (const detail of details) {
+      if (detail && detail.status === "ok") ok++;
+      else if (agentDetailNeedsAttention(detail)) attentionDetails.push(detail);
+      else if (detail && AGENT_INFO_STATUSES.has(detail.status)) skipped++;
+      else skipped++;
+    }
+    const parts = [];
+    if (attentionDetails.length) parts.push(formatAgentAttentionNames(core, attentionDetails));
+    if (ok) parts.push(formatCount(core, "doctorAgentSummaryOk", ok));
+    if (skipped) parts.push(formatCount(core, "doctorAgentSummarySkipped", skipped));
+    return parts.join(" · ");
+  }
+
   function isCheckExpanded(check) {
     const id = check && check.id;
     if (!id) return false;
@@ -313,22 +401,27 @@
 
   function renderAgentIntegrationCheck(core, check, cls) {
     const expanded = isCheckExpanded(check);
-    const summary = check.detail || "";
+    const summary = formatAgentIntegrationSummary(core, check) || check.detail || "";
     return (
       `<div class="doctor-check-row doctor-agent-collapsible ${cls}${expanded ? " expanded" : " collapsed"}">` +
         `<button type="button" class="doctor-check-main doctor-agent-toggle" data-action="toggle-check" data-check-id="${escape(core, check.id)}" aria-expanded="${expanded ? "true" : "false"}">` +
           `<span class="doctor-check-dot"></span>` +
+          `<span class="doctor-agent-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M8 5l5 5-5 5"></path></svg></span>` +
           `<span class="doctor-check-label">${escape(core, checkLabel(core, check))}</span>` +
           `<span class="doctor-check-summary">${escape(core, summary)}</span>` +
           `<span class="doctor-check-status">${escape(core, checkStatusLabel(core, check))}</span>` +
-          `<span class="doctor-agent-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M8 5l5 5-5 5"></path></svg></span>` +
         `</button>` +
-        (expanded ? renderAgentRows(core, check) : "") +
+        `<div class="doctor-agent-body" aria-hidden="${expanded ? "false" : "true"}">` +
+          `<div class="doctor-agent-body-inner">` +
+            renderAgentRows(core, check) +
+          `</div>` +
+        `</div>` +
       `</div>`
     );
   }
 
   function renderCheckList(core, result) {
+    if (state.checksLoading) return renderCheckSkeleton(core);
     const checks = result && Array.isArray(result.checks) ? result.checks : [];
     if (!checks.length) {
       return `<div class="doctor-empty">${escape(core, t(core, "doctorNoResult"))}</div>`;
@@ -354,42 +447,80 @@
     }).join("");
   }
 
+  function renderCheckSkeleton(core) {
+    const labels = [
+      t(core, "doctorCheckLocalServer"),
+      t(core, "doctorCheckAgentIntegrations"),
+      t(core, "doctorCheckPermissionBubbles"),
+      t(core, "doctorCheckTheme"),
+    ];
+    return labels.map((label, index) => (
+      `<div class="doctor-check-row doctor-check-skeleton" aria-busy="true">` +
+        `<div class="doctor-check-main">` +
+          `<span class="doctor-check-dot"></span>` +
+          `<span class="doctor-skeleton-title">${escape(core, label)}</span>` +
+          `<span class="doctor-skeleton-pill"></span>` +
+        `</div>` +
+        `<div class="doctor-skeleton-line ${index === 1 ? "short" : ""}"></div>` +
+      `</div>`
+    )).join("");
+  }
+
   function renderConnectionTest(core) {
     const test = state.connectionTest;
+    const cls = `${connectionStatusClass(test)}${state.connectionTesting ? " testing" : ""}`;
     const detail = state.connectionTesting
       ? t(core, "doctorConnectionInstruction")
       : (test && test.detail) || t(core, "doctorConnectionInstruction");
+    const progress = state.connectionTesting
+      ? `<div class="doctor-connection-progress" aria-hidden="true"><span style="width: ${escape(core, String(connectionProgressPercent()))}%"></span></div>`
+      : "";
     return (
-      `<div class="doctor-connection-panel ${connectionStatusClass(test)}">` +
+      `<div class="doctor-connection-panel ${cls}">` +
         `<div class="doctor-connection-main">` +
           `<span class="doctor-check-dot"></span>` +
           `<span class="doctor-check-label">${escape(core, t(core, "doctorConnectionTitle"))}</span>` +
           `<span class="doctor-check-status">${escape(core, connectionStatusLabel(core, test))}</span>` +
         `</div>` +
         `<div class="doctor-check-detail">${escape(core, detail)}</div>` +
+        progress +
       `</div>`
     );
+  }
+
+  function connectionProgressPercent() {
+    if (!state.connectionTesting) return 0;
+    const total = 10;
+    const remaining = Math.max(0, Math.min(total, state.connectionRemainingSeconds));
+    return Math.round(((total - remaining) / total) * 100);
   }
 
   function renderActionNotice(core) {
     const notice = state.actionNotice;
     if (!notice || !notice.message) return `<div class="doctor-action-notice-slot" aria-live="polite"></div>`;
     const cls = notice.error ? "error" : "ok";
+    const iconPath = notice.error
+      ? "M10 5v6M10 15h.01M10 2a8 8 0 100 16 8 8 0 000-16z"
+      : "M5 10.5l3 3L15 7";
     return (
       `<div class="doctor-action-notice-slot" aria-live="polite">` +
-        `<div class="doctor-action-notice ${cls}" role="status">${escape(core, notice.message)}</div>` +
+        `<div class="doctor-action-notice ${cls}" role="status">` +
+          `<span class="doctor-action-notice-icon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="${iconPath}"></path></svg></span>` +
+          `<span class="doctor-action-notice-text">${escape(core, notice.message)}</span>` +
+        `</div>` +
       `</div>`
     );
   }
 
-  function renderModalBody(core, result) {
+  function renderModalBody(core, result, options = {}) {
     state.fixActionByKey = new Map();
     const issueCount = result && result.overall ? result.overall.issueCount || 0 : 0;
     const testDisabled = state.connectionTesting ? " disabled" : "";
     const checkList = renderCheckList(core, result);
     const fixConfirm = renderFixConfirm(core);
+    const modalClass = options.entering ? "doctor-modal doctor-modal-entering" : "doctor-modal";
     return (
-      `<div class="doctor-modal">` +
+      `<div class="${modalClass}">` +
         `<div class="doctor-modal-header">` +
           `<div class="doctor-title-row">` +
             `<h2>${escape(core, t(core, "doctorTitle"))}</h2>` +
@@ -397,6 +528,7 @@
               `<span class="doctor-overall-dot"></span>` +
               `<span>${escape(core, overallText(core, result))}</span>` +
               `<span class="doctor-issue-count">${escape(core, t(core, "doctorIssueCount").replace("{count}", String(issueCount)))}</span>` +
+              renderLastChecked(core, result) +
             `</div>` +
           `</div>` +
           `<button type="button" class="doctor-close" aria-label="${escape(core, t(core, "doctorClose"))}" title="${escape(core, t(core, "doctorClose"))}"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M6 6l8 8M14 6l-8 8"></path></svg></button>` +
@@ -409,7 +541,6 @@
         `<div class="doctor-action-bar">` +
           `<div class="doctor-action-side">` +
             renderActionNotice(core) +
-            `<div class="doctor-privacy-inline">${escape(core, t(core, "doctorPrivacyShort"))}</div>` +
           `</div>` +
           `<div class="doctor-actions">` +
             `<button type="button" class="soft-btn" data-action="copy">${escape(core, t(core, "doctorCopyReport"))}</button>` +
@@ -446,12 +577,13 @@
   }
 
   function mountModal(core, result) {
+    const entering = !state.modalOpen;
     state.modalOpen = true;
     const rootEl = document.getElementById("modalRoot");
     if (!rootEl) return;
     rootEl.innerHTML = (
       `<div class="modal-backdrop doctor-modal-backdrop">` +
-        renderModalBody(core, result) +
+        renderModalBody(core, result, { entering }) +
       `</div>`
     );
     const backdrop = rootEl.querySelector(".doctor-modal-backdrop");
@@ -528,7 +660,14 @@
         const id = button.getAttribute("data-check-id") || "";
         const expanded = button.getAttribute("aria-expanded") === "true";
         if (id) state.checkExpansionOverrides.set(id, !expanded);
-        refreshModal(core);
+        const row = button.parentElement || button.parentNode;
+        const body = row && row.querySelector ? row.querySelector(".doctor-agent-body") : null;
+        button.setAttribute("aria-expanded", expanded ? "false" : "true");
+        if (row && row.classList) {
+          row.classList.toggle("expanded", !expanded);
+          row.classList.toggle("collapsed", expanded);
+        }
+        if (body) body.setAttribute("aria-hidden", expanded ? "true" : "false");
       });
     }
   }
@@ -617,7 +756,10 @@
   async function runChecks(core) {
     if (!root.doctor || typeof root.doctor.runChecks !== "function") return null;
     if (state.runningPromise) return state.runningPromise;
-    state.runningPromise = Promise.resolve(root.doctor.runChecks())
+    state.checksLoading = true;
+    if (state.modalOpen) refreshModal(core);
+    state.runningPromise = Promise.resolve()
+      .then(() => root.doctor.runChecks())
       .then((result) => {
         state.lastResult = result;
         updateIndicator(core, result);
@@ -629,6 +771,8 @@
       })
       .finally(() => {
         state.runningPromise = null;
+        state.checksLoading = false;
+        if (state.modalOpen) refreshModal(core);
       });
     return state.runningPromise;
   }
