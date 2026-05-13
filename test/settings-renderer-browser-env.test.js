@@ -19,6 +19,7 @@ const PRELOAD_SETTINGS = path.join(SRC_DIR, "preload-settings.js");
 const MAIN_PROCESS = path.join(SRC_DIR, "main.js");
 const SETTINGS_IPC = path.join(SRC_DIR, "settings-ipc.js");
 const DOCTOR_IPC = path.join(SRC_DIR, "doctor-ipc.js");
+const { SUPPORTED_LANGS } = require("../src/i18n");
 const TAB_MODULES = [
   path.join(SRC_DIR, "settings-tab-general.js"),
   path.join(SRC_DIR, "settings-tab-agents.js"),
@@ -1188,7 +1189,11 @@ describe("settings renderer browser environment", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
 
-    assert.ok(generalSource.includes("const LANGUAGE_OPTIONS = [\"en\", \"zh\", \"ko\", \"ja\"];"));
+    assert.ok(new RegExp(
+      String.raw`const LANGUAGE_OPTIONS = \[` +
+      SUPPORTED_LANGS.map((lang) => String.raw`"${lang}"`).join(String.raw`,\s*`) +
+      String.raw`\];`
+    ).test(generalSource));
     assert.ok(generalSource.includes("language-segmented"));
     assert.ok(generalSource.includes("runtime.languageTransition"));
     assert.ok(!generalSource.includes("language-segmented-transitioning"));
@@ -1200,7 +1205,11 @@ describe("settings renderer browser environment", () => {
     assert.ok(coreSource.includes("const previousLang = getLang();"));
     assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "lang")'));
     assert.ok(coreSource.includes('runtime.languageTransition = state.activeTab === "general" && previousLang !== nextLang'));
-    assert.ok(/\.language-segmented\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/.test(css));
+    assert.ok(
+      new RegExp(
+        String.raw`\.language-segmented\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(${SUPPORTED_LANGS.length},\s*minmax\(0,\s*1fr\)\);`
+      ).test(css)
+    );
     assert.ok(css.includes("language-segmented intentionally overrides .segmented display"));
     assert.ok(/\.language-segmented::before\s*\{[\s\S]*transform:\s*translateX\(calc\(var\(--language-active-index\)\s*\*\s*100%\)\);[\s\S]*transition:\s*transform 0\.24s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/.test(css));
     assert.ok(/\.language-segmented button\.active\s*\{[\s\S]*background:\s*transparent;[\s\S]*box-shadow:\s*none;/.test(css));
