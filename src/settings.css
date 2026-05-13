@@ -337,6 +337,11 @@ html, body {
   flex: 0 0 auto;
   max-width: none;
 }
+.bubble-policy-collapsible .collapsible-group-summary {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  max-width: none;
+}
 .collapsible-group:not(.collapsed) .collapsible-group-summary {
   opacity: 0.72;
   transform: translateX(2px);
