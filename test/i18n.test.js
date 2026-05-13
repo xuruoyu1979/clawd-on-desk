@@ -92,4 +92,19 @@ describe("i18n locales", () => {
       }
     }
   });
+
+  it("keeps Codex Pet main dialog strings available for every supported language", () => {
+    const source = fs.readFileSync(path.join(ROOT, "src", "codex-pet-main.js"), "utf8");
+    for (const name of ["getImportDialogStrings", "getRemovalDialogStrings"]) {
+      const start = source.indexOf(`function ${name}()`);
+      assert.notStrictEqual(start, -1, `missing ${name}`);
+      const end = source.indexOf("\n  async function", start);
+      assert.notStrictEqual(end, -1, `unterminated ${name}`);
+      const block = source.slice(start, end);
+      for (const lang of SUPPORTED_LANGS) {
+        const escapedLang = regexEscape(lang);
+        assert.match(block, new RegExp(`\\n\\s*(?:"${escapedLang}"|${escapedLang}):`), `${name} missing ${lang}`);
+      }
+    }
+  });
 });
