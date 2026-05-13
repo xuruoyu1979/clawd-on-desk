@@ -293,25 +293,31 @@
     return String(formatter).replace("{count}", String(count));
   }
 
-  function formatClockTime(value) {
+  function formatCheckedDateTime(value) {
     if (!value) return "";
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return "";
     try {
       return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
       }).format(date);
     } catch {
+      const year = String(date.getFullYear());
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
       const hour = String(date.getHours()).padStart(2, "0");
       const minute = String(date.getMinutes()).padStart(2, "0");
-      return `${hour}:${minute}`;
+      return `${year}-${month}-${day} ${hour}:${minute}`;
     }
   }
 
   function renderLastChecked(core, result) {
     if (state.checksLoading || !result || !result.generatedAt) return "";
-    const time = formatClockTime(result.generatedAt);
+    const time = formatCheckedDateTime(result.generatedAt);
     if (!time) return "";
     const formatter = t(core, "doctorLastCheckedAt");
     const text = typeof formatter === "function"

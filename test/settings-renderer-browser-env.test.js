@@ -1135,7 +1135,10 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes("doctor-connection-progress"));
     assert.ok(doctorModalSource.includes('state.checksLoading = true'));
     assert.ok(doctorModalSource.includes('state.checksLoading = false'));
-    assert.ok(doctorModalSource.includes("formatClockTime"));
+    assert.ok(doctorModalSource.includes("formatCheckedDateTime"));
+    assert.ok(doctorModalSource.includes('year: "numeric"'));
+    assert.ok(doctorModalSource.includes('month: "2-digit"'));
+    assert.ok(doctorModalSource.includes('day: "2-digit"'));
     assert.ok(doctorModalSource.includes("renderLastChecked"));
     assert.ok(doctorModalSource.includes("doctorLastCheckedAt"));
     assert.ok(doctorModalSource.includes("result.generatedAt"));
