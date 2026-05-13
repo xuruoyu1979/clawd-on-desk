@@ -152,7 +152,7 @@ const BUBBLE_STRINGS = {
     kimiPermission: "Kimi 權限請求",
     checkKimiTerminal: "請在 Kimi 終端機中允許或拒絕此請求。",
     gotIt: "了解",
-    planReview: "計畫預覽",
+    planReview: "計畫審查",
     approve: "允許",
     reject: "拒絕",
   },
