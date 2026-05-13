@@ -3168,10 +3168,10 @@ describe("settings renderer browser environment", () => {
     );
 
     const strings = loadSettingsI18nForTest();
-    assert.strictEqual(strings.en.animOverridesReplacementConfig, "Overrides config");
-    assert.strictEqual(strings.zh.animOverridesReplacementConfig, "动画/音效覆盖配置");
-    assert.strictEqual(strings.ko.animOverridesReplacementConfig, "애니메이션/사운드 덮어쓰기 설정");
-    assert.strictEqual(strings.ja.animOverridesReplacementConfig, "アニメ/サウンド上書き設定");
+    assert.strictEqual(strings.en.animOverridesReplacementConfig, "Animation override settings");
+    assert.strictEqual(strings.zh.animOverridesReplacementConfig, "动画覆盖设置");
+    assert.strictEqual(strings.ko.animOverridesReplacementConfig, "애니메이션 덮어쓰기 설정");
+    assert.strictEqual(strings.ja.animOverridesReplacementConfig, "アニメーション上書き設定");
     assert.strictEqual(strings.en.animOverridesImport, "Import config…");
     assert.strictEqual(strings.zh.animOverridesImport, "导入配置…");
     assert.strictEqual(strings.ko.animOverridesImport, "설정 가져오기…");
