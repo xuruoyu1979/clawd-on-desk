@@ -305,6 +305,22 @@ function buildElicitationUpdatedInput(toolInput, answers) {
   };
 }
 
+function buildPermissionFocusEntry(perm) {
+  if (!perm || typeof perm !== "object") return null;
+  const sessionId = String(perm.sessionId || "");
+  if (!sessionId) return null;
+  const focusEntry = { id: sessionId, agentId: perm.agentId || null };
+  if (perm.sourcePid) focusEntry.sourcePid = perm.sourcePid;
+  if (perm.cwd) focusEntry.cwd = perm.cwd;
+  if (perm.agentPid) focusEntry.agentPid = perm.agentPid;
+  if (perm.pidChain) focusEntry.pidChain = perm.pidChain;
+  if (perm.host) focusEntry.host = perm.host;
+  if (perm.model) focusEntry.model = perm.model;
+  if (perm.codexOriginator) focusEntry.codexOriginator = perm.codexOriginator;
+  if (perm.codexSource) focusEntry.codexSource = perm.codexSource;
+  return focusEntry;
+}
+
 module.exports = function initPermission(ctx) {
 
 // Each entry: { res, abortHandler, suggestions, sessionId, bubble, hideTimer, toolName, toolInput, resolvedSuggestion, createdAt, measuredHeight }
@@ -903,12 +919,16 @@ function handleDecide(event, behavior) {
     // elsewhere" must answer no-decision immediately instead of leaving the
     // hook parked until its long timeout.
     resolvePermissionEntry(perm, "no-decision", `Unsupported Codex bubble action: ${String(behavior)}`);
-    if (behavior === "deny-and-focus") ctx.focusTerminalForSession(perm.sessionId);
+    if (behavior === "deny-and-focus") {
+      ctx.focusTerminalForSession(perm.sessionId, { fallbackEntry: buildPermissionFocusEntry(perm) });
+    }
     return;
   }
   if (perm.isPi && behavior !== "allow" && behavior !== "deny") {
     resolvePermissionEntry(perm, "no-decision", `Unsupported Pi bubble action: ${String(behavior)}`);
-    if (behavior === "deny-and-focus") ctx.focusTerminalForSession(perm.sessionId);
+    if (behavior === "deny-and-focus") {
+      ctx.focusTerminalForSession(perm.sessionId, { fallbackEntry: buildPermissionFocusEntry(perm) });
+    }
     return;
   }
   if (perm.isElicitation && behavior && typeof behavior === "object" && behavior.type === "elicitation-submit") {
@@ -959,7 +979,7 @@ function handleDecide(event, behavior) {
     repositionBubbles();
     repositionDependentBubbles();
     syncPermissionShortcuts();
-    ctx.focusTerminalForSession(perm.sessionId);
+    ctx.focusTerminalForSession(perm.sessionId, { fallbackEntry: buildPermissionFocusEntry(perm) });
   } else {
     resolvePermissionEntry(perm, behavior === "allow" ? "allow" : "deny");
   }

@@ -746,6 +746,51 @@ function updateSession(sessionId, state, event, opts = {}) {
       && typeof ctx.isAgentPermissionsEnabled === "function"
       && !ctx.isAgentPermissionsEnabled("kimi-cli")
     ) return;
+    const shouldPersistCodexPermissionFocus = permAgentId === "codex" && (
+      sourcePid || agentPid || (pidChain && pidChain.length) || cwd || host ||
+      model || provider || codexOriginator || codexSource || platform
+    );
+    if (shouldPersistCodexPermissionFocus) {
+      const existing = sessions.get(sessionId);
+      const srcPid = sourcePid || (existing && existing.sourcePid) || null;
+      const srcCwd = cwd || (existing && existing.cwd) || "";
+      const srcEditor = editor || (existing && existing.editor) || null;
+      const srcPidChain = (pidChain && pidChain.length) ? pidChain : (existing && existing.pidChain) || null;
+      const srcAgentPid = agentPid || (existing && existing.agentPid) || null;
+      const srcAgentId = agentId || (existing && existing.agentId) || null;
+      const srcHost = host || (existing && existing.host) || null;
+      const srcHeadless = headless || (existing && existing.headless) || false;
+      const srcPlatform = platform || (existing && existing.platform) || null;
+      const srcModel = model || (existing && existing.model) || null;
+      const srcProvider = provider || (existing && existing.provider) || null;
+      const srcCodexOriginator = codexOriginator || (existing && existing.codexOriginator) || null;
+      const srcCodexSource = codexSource || (existing && existing.codexSource) || null;
+      const srcSessionTitle = normalizeTitle(sessionTitle) || (existing && existing.sessionTitle) || null;
+      const storedState = existing && existing.state ? existing.state : "notification";
+      const recentEvents = pushRecentEvent(existing, storedState, event);
+      sessions.set(sessionId, {
+        state: storedState,
+        updatedAt: Date.now(),
+        displayHint: existing ? existing.displayHint : null,
+        sourcePid: srcPid,
+        cwd: srcCwd,
+        editor: srcEditor,
+        pidChain: srcPidChain,
+        agentPid: srcAgentPid,
+        agentId: srcAgentId,
+        host: srcHost,
+        headless: srcHeadless,
+        platform: srcPlatform,
+        model: srcModel,
+        provider: srcProvider,
+        codexOriginator: srcCodexOriginator,
+        codexSource: srcCodexSource,
+        sessionTitle: srcSessionTitle,
+        recentEvents,
+        pidReachable: resolvePidReachable(existing, srcAgentPid, srcPid),
+        resumeState: (existing && existing.resumeState) || null,
+      });
+    }
     setState("notification");
     if (permAgentId === "kimi-cli") startKimiPermissionPoll(sessionId);
     return;

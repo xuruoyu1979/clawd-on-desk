@@ -794,7 +794,7 @@ const _permCtx = {
   focusTerminalForSession: (sessionId, options = {}) => {
     focusDashboardSession(sessionId, {
       requestSource: options.requestSource || "permission-bubble",
-      fallbackEntry: getPendingPermissionFocusEntry(sessionId),
+      fallbackEntry: options.fallbackEntry || getPendingPermissionFocusEntry(sessionId),
     });
   },
   getSettingsSnapshot: () => _settingsController.getSnapshot(),

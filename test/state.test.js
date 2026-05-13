@@ -83,6 +83,8 @@ function update(api, o = {}) {
       platform: o.platform ?? null,
       model: o.model ?? null,
       provider: o.provider ?? null,
+      codexOriginator: o.codexOriginator ?? null,
+      codexSource: o.codexSource ?? null,
     },
   );
 }
@@ -104,6 +106,8 @@ function rawSession(state, opts = {}) {
     platform: opts.platform || null,
     model: opts.model || null,
     provider: opts.provider || null,
+    codexOriginator: opts.codexOriginator || null,
+    codexSource: opts.codexSource || null,
     sessionTitle: opts.sessionTitle ?? null,
     recentEvents: opts.recentEvents || [],
     pidReachable: opts.pidReachable ?? false,
@@ -854,6 +858,39 @@ describe("updateSession()", () => {
     update(api, { id: "perm1", state: "notification", event: "PermissionRequest" });
     assert.ok(!api.sessions.has("perm1"));
     assert.strictEqual(api.getCurrentState(), "notification");
+  });
+
+  it("Codex PermissionRequest persists focus metadata for snapshots", () => {
+    update(api, {
+      id: "codex:019e115a-4df2-7ed0-b90e-8e6345aca777",
+      state: "notification",
+      event: "PermissionRequest",
+      agentId: "codex",
+      sourcePid: 456,
+      cwd: "/repo",
+      agentPid: 456,
+      pidChain: [789, 456],
+      model: "gpt-5.4",
+      codexOriginator: "Codex Desktop",
+      codexSource: "vscode",
+    });
+
+    const session = api.sessions.get("codex:019e115a-4df2-7ed0-b90e-8e6345aca777");
+    assert.ok(session);
+    assert.strictEqual(session.agentId, "codex");
+    assert.strictEqual(session.sourcePid, 456);
+    assert.strictEqual(session.cwd, "/repo");
+    assert.deepStrictEqual(session.pidChain, [789, 456]);
+    assert.strictEqual(session.codexOriginator, "Codex Desktop");
+    assert.strictEqual(session.codexSource, "vscode");
+    const entry = api.getLastSessionSnapshot().sessions.find((item) =>
+      item.id === "codex:019e115a-4df2-7ed0-b90e-8e6345aca777"
+    );
+    assert.strictEqual(entry.canFocus, true);
+    assert.deepStrictEqual(entry.focusTarget, {
+      type: "codex-thread",
+      url: "codex://threads/019e115a-4df2-7ed0-b90e-8e6345aca777",
+    });
   });
 
   it("SessionEnd + sweeping → plays sweeping even with other active sessions", () => {

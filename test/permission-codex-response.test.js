@@ -49,7 +49,7 @@ function createCodexDecisionHarness() {
     win: null,
     lang: "en",
     getBubblePolicy: () => ({ enabled: true, autoCloseMs: null }),
-    focusTerminalForSession: (sessionId) => focusCalls.push(sessionId),
+    focusTerminalForSession: (sessionId, options) => focusCalls.push([sessionId, options]),
     permDebugLog: null,
   });
   return { api, focusCalls };
@@ -151,6 +151,13 @@ describe("Codex permission response sanitizer", () => {
       createdAt: Date.now(),
       agentId: "codex",
       isCodex: true,
+      sourcePid: 456,
+      cwd: "/repo",
+      agentPid: 456,
+      pidChain: [789, 456],
+      model: "gpt-5.4",
+      codexOriginator: "Codex Desktop",
+      codexSource: "vscode",
     };
     api.pendingPermissions.push(permEntry);
 
@@ -159,7 +166,22 @@ describe("Codex permission response sanitizer", () => {
     assert.strictEqual(res.statusCode, 204);
     assert.strictEqual(res.writableEnded, true);
     assert.strictEqual(res.body, "");
-    assert.deepStrictEqual(focusCalls, ["codex:s1"]);
+    assert.deepStrictEqual(focusCalls, [[
+      "codex:s1",
+      {
+        fallbackEntry: {
+          id: "codex:s1",
+          agentId: "codex",
+          sourcePid: 456,
+          cwd: "/repo",
+          agentPid: 456,
+          pidChain: [789, 456],
+          model: "gpt-5.4",
+          codexOriginator: "Codex Desktop",
+          codexSource: "vscode",
+        },
+      },
+    ]]);
     assert.strictEqual(api.pendingPermissions.length, 0);
   });
 
@@ -214,7 +236,7 @@ describe("Codex permission response sanitizer", () => {
     assert.strictEqual(res.statusCode, 204);
     assert.strictEqual(res.writableEnded, true);
     assert.strictEqual(res.body, "");
-    assert.deepStrictEqual(focusCalls, ["pi:s1"]);
+    assert.deepStrictEqual(focusCalls, [["pi:s1", { fallbackEntry: { id: "pi:s1", agentId: "pi" } }]]);
     assert.strictEqual(api.pendingPermissions.length, 0);
   });
 
