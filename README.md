@@ -209,7 +209,7 @@ Clawd on Desk is a community-driven project. Bug reports, feature ideas, and pul
 Thanks to everyone who has helped make Clawd better:
 
 <details>
-<summary>Show all 45 contributors</summary>
+<summary>Show all 46 contributors</summary>
 
 <table>
   <tr>
@@ -270,6 +270,7 @@ Thanks to everyone who has helped make Clawd better:
     <td align="center" valign="top" width="110"><a href="https://github.com/jhseo-b"><img src="https://github.com/jhseo-b.png" width="50" style="border-radius:50%" /><br /><sub>jhseo-b</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/Hwasowl"><img src="https://github.com/Hwasowl.png" width="50" style="border-radius:50%" /><br /><sub>Hwasowl</sub></a></td>
     <td align="center" valign="top" width="110"><a href="https://github.com/XiangZheng2002"><img src="https://github.com/XiangZheng2002.png" width="50" style="border-radius:50%" /><br /><sub>XiangZheng2002</sub></a></td>
+    <td align="center" valign="top" width="110"><a href="https://github.com/keiyo118"><img src="https://github.com/keiyo118.png" width="50" style="border-radius:50%" /><br /><sub>keiyo118</sub></a></td>
   </tr>
 </table>
 

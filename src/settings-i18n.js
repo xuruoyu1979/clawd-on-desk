@@ -1663,7 +1663,7 @@
     "Tonic-Jin", "seoki180", "sophie-haynes", "PeterShanxin", "CHIANGANGSTER", "JaeHyeon-KAIST", "hhhzxyhhh",
     "TVpoet", "zeus6768", "anhtrinh919", "tomaioo", "v-avuso", "livlign", "tongguang2",
     "Ziy1-Tan", "tatsuyanakanogaroinc", "yeonhub", "joshua-wu", "nmsn", "sunnysonx", "YuChenYunn", "jhseo-b",
-    "Hwasowl", "XiangZheng2002",
+    "Hwasowl", "XiangZheng2002", "keiyo118",
   ];
 
   root.ClawdSettingsI18n = {

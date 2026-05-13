@@ -206,7 +206,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 感谢每一位让 Clawd 变得更好的贡献者：
 
 <details>
-<summary>展开全部 45 位贡献者</summary>
+<summary>展开全部 46 位贡献者</summary>
 
 <a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
@@ -253,6 +253,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 <a href="https://github.com/jhseo-b"><img src="https://github.com/jhseo-b.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/Hwasowl"><img src="https://github.com/Hwasowl.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/XiangZheng2002"><img src="https://github.com/XiangZheng2002.png" width="50" style="border-radius:50%" /></a>
+<a href="https://github.com/keiyo118"><img src="https://github.com/keiyo118.png" width="50" style="border-radius:50%" /></a>
 
 </details>
 
